@@ -1,0 +1,14 @@
+/target/
+/node_modules/
+/dist/
+/src-tauri/gen/
+/src-tauri/binaries/
+/dist-site/
+/dist-site-ssr/
+/.claude/
+.DS_Store
+
+# Secrets
+*.pem
+.env
+.env.*

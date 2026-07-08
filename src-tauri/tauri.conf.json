@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ronda",
+  "version": "0.0.1",
+  "identifier": "cloud.tryronda.ronda",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "title": "Ronda",
+      "width": 1180,
+      "height": 760,
+      "minWidth": 1024,
+      "minHeight": 680,
+      "titleBarStyle": "Overlay",
+      "hiddenTitle": true,
+      "backgroundColor": "#171719"
+    }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost https://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "publisher": "Ronda",
+    "copyright": "Copyright © 2026 Ronda contributors. Licensed under AGPL-3.0.",
+    "homepage": "https://tryronda.cloud",
+    "license": "AGPL-3.0-only",
+    "licenseFile": "../LICENSE",
+    "category": "DeveloperTool",
+    "shortDescription": "A local library for your coding-agent sessions",
+    "longDescription": "Browse, search, and resume sessions from 18 coding agents. Ronda indexes them on your machine and never uploads them.",
+    "targets": "all",
+    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
+    "externalBin": ["binaries/ronda-cli", "binaries/ronda-mcp"]
+  }
+}
