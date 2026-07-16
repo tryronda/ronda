@@ -1,7 +1,7 @@
 {
   "name": "ronda-desktop",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A local desktop library for coding-agent sessions.",
   "license": "AGPL-3.0-only",
   "homepage": "https://tryronda.cloud",

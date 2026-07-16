@@ -2,6 +2,19 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.0.2] - 2026-07-16
+
+### Added
+- Full-text search with SQLite FTS5 and a trigram tokenizer, matching code fragments like `useEffect(` and Chinese text.
+- Queries shorter than three characters fall back to substring matching.
+- `ronda-cli search` groups hits by session with `ronda://session/…#seq` references.
+
+### Security
+- Search terms are quoted before reaching FTS5, so query syntax can't be injected.
+
+### Performance
+- Search measured 23 ms p50 and 26 ms p95 on an 800 MiB, 300-session library on an Apple M3 Pro, including CLI startup.
+
 ## [0.0.1] - 2026-07-08
 
 ### Added
