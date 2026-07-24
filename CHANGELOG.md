@@ -2,6 +2,15 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.0.3] - 2026-07-24
+
+### Added
+- Incremental indexing: unchanged session files are skipped by modification time, size, and WAL state.
+- Sessions whose files are gone are pruned from the index, but only after a complete scan.
+
+### Performance
+- Appending a message reindexes one session in about 0.6 s on an 800 MiB library.
+
 ## [0.0.2] - 2026-07-16
 
 ### Added
