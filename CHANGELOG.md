@@ -2,6 +2,16 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.1.0] - 2026-07-31
+
+### Added
+- Desktop app built on Tauri 2 with Sessions, Insights, and Settings views.
+- Sidebar with all sessions, starred sessions, projects, and agents, plus an **Include archived** toggle.
+- Transcript view with Markdown rendering, inline images, and collapsible thinking and tool calls.
+- Keyboard shortcuts: ⌘K to search, ⌘1–⌘3 to switch views, ⌘B for the sidebar, Alt ←/→ for history, and ↑/↓ through the session list.
+- Search results jump to the matching message.
+- Window size and position are remembered between launches.
+
 ## [0.0.3] - 2026-07-24
 
 ### Added

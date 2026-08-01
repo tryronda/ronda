@@ -1,0 +1,37 @@
+[package]
+name = "ronda"
+version.workspace = true
+edition.workspace = true
+description = "Ronda desktop app: a local library for coding-agent sessions"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
+build = "build.rs"
+
+[lib]
+name = "ronda_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-window-state = "2"
+ronda-core = { path = "../crates/ronda-core" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+chrono = "0.4"
+trash = "5"
+ureq = { version = "2.12.1", default-features = false, features = ["tls", "gzip", "json"] }
+notify = "8"
+portable-pty = "0.9"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSButton", "NSControl"] }

@@ -1,0 +1,236 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "streamdown/styles.css";
+@import "@fontsource-variable/newsreader/opsz.css";
+@import "@fontsource-variable/afacad";
+@import "@fontsource-variable/jetbrains-mono";
+
+@source "../node_modules/streamdown/dist/*.js";
+
+@custom-variant dark (&:where([data-theme="dusk"], [data-theme="dusk"] *, [data-theme="night"], [data-theme="night"] *));
+
+/*
+ * Ronda brand, taken from sycamore.so: four time-of-day themes (dawn, morning,
+ * dusk, night), a display serif for headlines, Afacad for reading, JetBrains
+ * Mono for controls, square corners, glass controls with a hairline card
+ * shadow, and a pixel field whose palette shifts with the theme.
+ */
+:root, [data-theme="morning"] {
+  color-scheme: light;
+  --paper: #ffffff;
+  --ink: #171717;
+  --ink-soft: #0009;
+  --stone: #707175;
+  --chip: #f5f5f5;
+  --rule: #0000001a;
+  --glass-bg: #fffc;
+  --glass-border: #ffffff40;
+  --lift: 0px 1px 4px 0px #0000001a, 0px 0px 0px 1px #0000000d;
+  --selection: #e8e4d9;
+  --px-base: #a9dbff; --px-light: #fff8f0; --px-dark: #211d1d; --px-olive: #a3b34f; --px-warm: #8c7049;
+}
+[data-theme="dawn"] {
+  color-scheme: light;
+  --paper: #fef6f0;
+  --ink: #2d1f1a;
+  --ink-soft: #2d1f1a99;
+  --stone: #9a7e72;
+  --chip: #fceee4;
+  --rule: #2d1f1a1a;
+  --glass-bg: #fef6f0d9;
+  --glass-border: #ffdcc84d;
+  --lift: 0px 1px 4px 0px #50281414, 0px 0px 0px 1px #5028140a;
+  --selection: #e8e4d9;
+  --px-base: #fef3e1; --px-light: #ffd745; --px-dark: #8c7049; --px-olive: #a3b34f; --px-warm: #e36438;
+}
+[data-theme="dusk"] {
+  color-scheme: dark;
+  --paper: #1a1520;
+  --ink: #e8ddd0;
+  --ink-soft: #e8ddd099;
+  --stone: #9a8e82;
+  --chip: #241e2a;
+  --rule: #e8ddd01a;
+  --glass-bg: #1a1520d9;
+  --glass-border: #e8ddd01a;
+  --lift: 0px 1px 4px 0px #0000004d, 0px 0px 0px 1px #e8ddd00d;
+  --selection: #b4aa8c66;
+  --px-base: #1a1520; --px-light: #e36438; --px-dark: #ffd745; --px-olive: #8a2b51; --px-warm: #595729;
+}
+[data-theme="night"] {
+  color-scheme: dark;
+  --paper: #0a0a0a;
+  --ink: #ededed;
+  --ink-soft: #fff9;
+  --stone: #9a9a9e;
+  --chip: #1a1a1a;
+  --rule: #ffffff1a;
+  --glass-bg: #141414cc;
+  --glass-border: #ffffff1a;
+  --lift: 0px 1px 4px 0px #0000004d, 0px 0px 0px 1px #ffffff0d;
+  --selection: #b4aa8c66;
+  --px-base: #0a0a0a; --px-light: #2a445c; --px-dark: #8a2b51; --px-olive: #595729; --px-warm: #333617;
+}
+
+:root {
+  /* Accents from the brand's pixel art; constant across themes. */
+  --sky: #a9dbff;
+  --sky-deep: #8bcfff;
+  --sun: #ffd745;
+  --olive: #a3b34f;
+  --olive-deep: #5f6d28;
+  --bark: #8c7049;
+  --ember: #e36438;
+  --rust: #c4421a;
+
+  --canvas: color-mix(in oklab, var(--chip) 45%, var(--paper));
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: var(--chip);
+  --secondary-foreground: var(--ink);
+  --muted: var(--chip);
+  --muted-foreground: var(--stone);
+  --accent: var(--chip);
+  --accent-foreground: var(--ink);
+  --destructive: #d94f3f;
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--ink);
+  --radius: 0px;
+  --heat-0: var(--chip);
+  --heat-1: color-mix(in oklab, var(--sky) 45%, var(--paper));
+  --heat-2: var(--sky);
+  --heat-3: var(--olive);
+  --heat-4: var(--sun);
+}
+
+@theme {
+  --font-sans: "Afacad Variable", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --font-serif: "Newsreader Variable", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--canvas);
+
+  --color-paper: var(--paper);
+  --color-canvas: var(--canvas);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-stone: var(--stone);
+  --color-rule: var(--rule);
+  --color-chip: var(--chip);
+  --color-sky: var(--sky);
+  --color-sky-deep: var(--sky-deep);
+  --color-sun: var(--sun);
+  --color-olive-deep: var(--olive-deep);
+  --color-ember: var(--ember);
+  --color-rust: var(--rust);
+  --color-olive: var(--olive);
+  --color-bark: var(--bark);
+  --color-forest: var(--forest);
+
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --shadow-lift: var(--lift);
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root { @apply h-full w-full m-0; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-synthesis: none;
+    transition: background-color .3s, color .3s;
+  }
+  .font-serif { font-variation-settings: "opsz" 72; font-weight: 400; }
+  button:not(:disabled) { cursor: pointer; }
+  a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+    outline: none; border-radius: 2px; box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--foreground);
+  }
+  ::selection { background: var(--selection); }
+  * { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+}
+
+@layer components {
+  /* Mono control label: JetBrains Mono, medium, tracking-wide. */
+  .label-mono { @apply font-mono text-[11px] font-medium tracking-[0.025em]; }
+  /* Announcement chip: surface fill, mono, uneven vertical padding like the site. */
+  .eyebrow-chip { @apply inline-block w-fit bg-chip px-2.5 pt-1 pb-1.5 font-mono text-[12px] leading-none font-medium tracking-[0.025em] text-ink-soft; }
+  .raised { @apply border-0 bg-card shadow-lift; }
+  /* Glass control: blurred translucent fill, card shadow, inset hairline. */
+  .glass { @apply relative bg-[var(--glass-bg)] shadow-lift backdrop-blur-[4px]; }
+  .glass::after { content: ""; pointer-events: none; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--glass-border); }
+
+  .markdown { @apply text-[15px] leading-[1.65] tracking-[0.01em] text-foreground; overflow-wrap: anywhere; }
+  .markdown p { @apply my-2 first:mt-0.5; }
+  .markdown :not([data-streamdown="code-block-body"]) > pre, .message-pre {
+    @apply max-w-full overflow-x-auto bg-canvas px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-foreground shadow-lift;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .markdown code { @apply font-mono text-[0.84em]; }
+  .markdown [data-streamdown="code-block"] { @apply rounded-none border-0 bg-canvas p-1 shadow-lift; }
+  .markdown [data-streamdown="code-block-body"] { @apply rounded-none border-0 bg-paper text-[12px]; }
+  .markdown :not(pre) > code { @apply bg-chip px-1 py-px; }
+  .markdown a { @apply text-foreground underline decoration-stone underline-offset-2 hover:decoration-foreground; }
+  .markdown ul, .markdown ol { @apply pl-5; }
+  .markdown h1, .markdown h2, .markdown h3 { @apply font-serif tracking-tight; }
+  .markdown blockquote { @apply ml-0 border-l-2 border-olive pl-3 text-muted-foreground; }
+
+  .agent-dot { @apply inline-block size-2 shrink-0 bg-stone; }
+  .agent-claude-code { background: #e36438; }
+  .agent-codex { background: var(--ink); }
+  .agent-cursor { background: #8ab4d6; }
+  .agent-gemini { background: #a9dbff; }
+  .agent-qoder { background: #ffd745; }
+  .agent-opencode { background: #a3b34f; }
+  .agent-pi, .agent-omp { background: #8c7049; }
+  .agent-copilot { background: #707175; }
+  .agent-kiro { background: #8a2b51; }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-soft { to { opacity: .45; } }
+.skeleton { @apply bg-chip; animation: pulse-soft 1.1s ease-in-out infinite alternate; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  body { transition: none; }
+}
+
+/* Stacked top-level pages (see PageView in App.tsx). */
+.page-layer { position: absolute; inset: 0; min-width: 0; min-height: 0; }
+.page-layer[data-visible="false"] { visibility: hidden; content-visibility: hidden; pointer-events: none; }
+
+/* Embedded session terminals (Workbench). Hidden ones keep their size so xterm doesn't refit to zero. */
+.terminal-layer[data-visible="false"] { visibility: hidden; pointer-events: none; }
+.session-terminal .xterm { height: 100%; }
+.session-terminal .xterm-viewport { background-color: transparent !important; }
+.session-terminal .xterm .xterm-scrollable-element > .scrollbar.vertical { width: 8px !important; }
