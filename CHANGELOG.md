@@ -2,6 +2,18 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.2.0] - 2026-08-07
+
+### Added
+- Qoder, CodeBuddy, WorkBuddy, and Cursor agent transcript sessions.
+- Subagent transcripts for Claude Code and Cursor, linked to their parent and hidden from the main list.
+- Qoder sessions follow the active conversation branch.
+
+### Changed
+- Codex sessions read names, models, token counts, and archive state from Codex's own thread database.
+- Internal Codex rollouts (subagents, reviews, memory consolidation) no longer appear as sessions.
+- Cursor transcripts that contain only turn markers are skipped.
+
 ## [0.1.0] - 2026-07-31
 
 ### Added
