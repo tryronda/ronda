@@ -2,6 +2,17 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.3.0] - 2026-08-13
+
+### Added
+- Pi, Oh My Pi, Grok Build, Gemini CLI, Kiro, Kimi Code, and DeepSeek Harness sessions.
+- Streaming decompression for DeepSeek Harness `.zstd` sessions.
+- Grok Build subagents grouped under their parent session.
+
+### Changed
+- Inline images are shown only when embedded in the transcript; remote URLs and `file:` paths are never loaded.
+- DeepSeek Harness subagent sessions are skipped, and when a compressed and uncompressed copy exist, only the newer one is indexed.
+
 ## [0.2.0] - 2026-08-07
 
 ### Added
