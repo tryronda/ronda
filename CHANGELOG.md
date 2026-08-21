@@ -2,6 +2,19 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.4.0] - 2026-08-20
+
+### Added
+- Copilot CLI, OpenCode, Hermes Agent, OpenClaw, and Antigravity CLI sessions.
+- Cursor IDE conversations from `state.vscdb`, alongside Cursor agent transcripts.
+- Both OpenCode database generations, kept under separate keys.
+- Hermes Agent profiles and OpenClaw's legacy JSONL sessions.
+
+### Changed
+- Agent databases open read-only without `immutable`, so sessions still in a live SQLite WAL appear, and agent files are left byte-identical.
+- When a Cursor transcript and an IDE conversation share an ID, the transcript wins.
+- Antigravity transcripts are encrypted, so Ronda shows their metadata only.
+
 ## [0.3.0] - 2026-08-13
 
 ### Added
