@@ -2,6 +2,17 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.5.0] - 2026-08-26
+
+### Added
+- Star and pin sessions; pinned sessions sort to the top and flags survive rescans.
+- Export a session to Markdown.
+- **Resume** reopens a session in its agent: Terminal on macOS, the default terminal emulator on Linux, and Windows Terminal or PowerShell on Windows.
+- **Move to Trash** sends a session's files to the system Trash after confirmation and keeps the session out of later scans.
+
+### Changed
+- **Move to Trash** only removes files inside an enabled location, and never touches shared agent databases or remote mirrors.
+
 ## [0.4.0] - 2026-08-20
 
 ### Added
