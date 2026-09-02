@@ -2,6 +2,20 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.6.0] - 2026-09-02
+
+### Added
+- `ronda-mcp`, a read-only stdio MCP server with `ronda_search`, `ronda_list_sessions`, `ronda_get_session`, and `ronda_list_projects`.
+- **Settings → Connect** with ready-to-copy MCP setup for Claude Code, Codex, and other clients.
+- `ronda-cli setup` prints the binary paths and an `AGENTS.md` snippet; `ronda-cli index` creates an index when none exists.
+- `--since` accepts `30m`, `12h`, `7d`, `2w`, dates, and RFC 3339 timestamps.
+- `--project` matches the current folder, its closest indexed parent, or a project name.
+- Agent aliases such as `claude`, `deepseek`, and `gemini-cli` in `--agent`.
+- `ronda-cli` and `ronda-mcp` ship beside the desktop app.
+
+### Changed
+- The CLI and MCP server share one query layer, so they return identical text for the same request.
+
 ## [0.5.0] - 2026-08-26
 
 ### Added
