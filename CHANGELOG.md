@@ -2,6 +2,17 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.7.0] - 2026-09-07
+
+### Added
+- Insights view with session, prompt, and token totals.
+- 12-month activity heatmap with a tooltip for each day.
+- Activity by weekday, month, and hour of day.
+- Leaderboards for agents, projects, and models, ranked by sessions, prompts, or tokens.
+
+### Changed
+- Unknown token counts stay unknown instead of being estimated.
+
 ## [0.6.0] - 2026-09-02
 
 ### Added
