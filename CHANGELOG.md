@@ -2,6 +2,17 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.8.0] - 2026-09-10
+
+### Added
+- **Settings → Locations** lists the detected path for each agent, with switches to disable a location and a form to add custom folders.
+- Filesystem watching: file-backed sessions update in the library as agents write them.
+- **Settings → Data** shows the index path and can rebuild the index.
+- **Settings → Updates** checks for a newer release, and **Settings → About** shows the version.
+
+### Performance
+- Watcher events are debounced until 250 ms of quiet, and scans are serialized so a refresh never races the watcher.
+
 ## [0.7.0] - 2026-09-07
 
 ### Added
