@@ -2,6 +2,18 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.9.0] - 2026-09-14
+
+### Added
+- **Settings → Remote hosts**: add an SSH alias or `user@host`, enable or disable it, sync on demand, and see the last sync time and error.
+- Remote sessions are mirrored with `rsync` from a fixed allowlist of agent session paths and indexed with their own `agent:host:id` keys.
+- **Resume** on a remote session copies an `ssh -t` command instead of opening a local terminal.
+- Enabled hosts sync on launch and on every **Refresh**.
+
+### Changed
+- Removing a host deletes its mirror and its sessions from the index.
+- Host names are restricted to letters, digits, `@`, `.`, `_`, and `-`, and can't start with `-`.
+
 ## [0.8.0] - 2026-09-10
 
 ### Added
