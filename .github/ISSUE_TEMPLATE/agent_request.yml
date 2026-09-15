@@ -1,0 +1,23 @@
+name: Agent request
+description: Ask Ronda to read sessions from another coding agent
+labels: [agent]
+title: "Agent: "
+body:
+  - type: input
+    id: agent
+    attributes:
+      label: Agent
+      description: Name and link to the agent.
+    validations:
+      required: true
+  - type: textarea
+    id: storage
+    attributes:
+      label: Where does it store sessions?
+      description: Paths on each platform and the format (JSONL, SQLite, …), if you know them. Please don't attach real transcripts.
+      placeholder: ~/.agent/sessions/*.jsonl
+  - type: textarea
+    id: resume
+    attributes:
+      label: How do you resume a session?
+      placeholder: agent --resume <id>

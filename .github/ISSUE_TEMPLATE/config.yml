@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://tryronda.cloud/docs/
+    about: Install help, first-launch security prompts, the CLI, the MCP server, and remote hosts.
+  - name: Report a security vulnerability
+    url: https://github.com/tryronda/ronda/security/advisories/new
+    about: Please report security problems privately, not as public issues.

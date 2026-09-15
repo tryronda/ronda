@@ -2,6 +2,16 @@
 
 All notable changes to Ronda are recorded here.
 
+## [0.9.1] - 2026-09-15
+
+### Added
+- CI builds macOS arm64 and x64 DMGs, Linux x64 and arm64 `.deb` and AppImage packages, and a Windows x64 NSIS installer.
+- Every package is opened in CI to check that `ronda-cli` and `ronda-mcp` are bundled and not empty.
+- Linux and Windows windows draw their own minimize, maximize, and close buttons in the top bar.
+
+### Changed
+- CI runs `cargo fmt --check`, Clippy with warnings as errors, the Rust test suite, and the frontend tests before building packages.
+
 ## [0.9.0] - 2026-09-14
 
 ### Added

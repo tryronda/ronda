@@ -1,0 +1,56 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting. Please don't paste private session content. Redact paths, prompts, and code you don't want public.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Settings → Locations
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: Ronda version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux (.deb)
+        - Linux (AppImage)
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system version
+      placeholder: macOS 26.1, Windows 11 24H2, Ubuntu 24.04…
+  - type: input
+    id: agents
+    attributes:
+      label: Agents involved
+      placeholder: Claude Code, Codex…
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors or logs
+      render: text

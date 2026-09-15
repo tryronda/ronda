@@ -4,7 +4,7 @@ members = ["crates/ronda-core", "src-tauri"]
 
 [workspace.package]
 edition = "2021"
-version = "0.9.0"
+version = "0.9.1"
 license = "AGPL-3.0-only"
 repository = "https://github.com/tryronda/ronda"
 homepage = "https://tryronda.cloud"
