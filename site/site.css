@@ -1,0 +1,21 @@
+@import "../src/index.css";
+
+/* The shared theme lives in src/; make sure Tailwind also scans the app sources the site renders. */
+@source "../src";
+@source ".";
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+.docs-body p { margin: 0 0 14px; font-size: 17px; line-height: 1.55; letter-spacing: .015em; color: var(--ink-soft); }
+.docs-body ul { margin: 0 0 14px; padding-left: 20px; list-style: square; display: grid; gap: 8px; font-size: 17px; line-height: 1.5; color: var(--ink-soft); }
+.docs-body li::marker { color: var(--olive); }
+.docs-body h3 { margin: 28px 0 10px; font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: .025em; text-transform: lowercase; color: var(--ink); }
+.docs-body .docs-table + h3 { margin-top: 32px; }
+.docs-code { margin: 4px 0 18px; overflow-x: auto; background: var(--canvas); box-shadow: var(--lift); padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.7; color: var(--ink); }
+.docs-agents { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
+.docs-agents span { background: var(--chip); padding: 4px 10px 6px; font-family: var(--font-mono); font-size: 13px; letter-spacing: .025em; }
+.docs-table { width: 100%; border-collapse: collapse; font-size: 16px; }
+.docs-table td { padding: 10px 0; border-top: 1px solid var(--rule); color: var(--ink-soft); }
+.docs-table td:first-child { width: 42%; padding-right: 16px; }
+.docs-table kbd { background: var(--glass-bg); box-shadow: var(--lift); padding: 3px 8px 4px; font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
