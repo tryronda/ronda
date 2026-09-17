@@ -41,9 +41,9 @@ test("opens on the library home, then loads a session, shows its transcript, and
   expect(host.querySelector('.transcript-skeleton')).not.toBeNull();
   await act(async () => { root.render(<Workbench api={api} searchFocusToken={1} />); });
   expect(document.activeElement).toBe(host.querySelector('input[type="search"]'));
-  await act(async () => { finishTranscript([{ seq: 0, role: "user", kind: "text", text: "Search for 搜索",
+  await act(async () => { finishTranscript([{ seq: 0, role: "user", kind: "text", text: "Search for naïve ünicode",
     timestamp: null, model: null, thinking: null, tool_calls: [], images: [] }]); });
-  expect(host.textContent).toContain("Search for 搜索");
+  expect(host.textContent).toContain("Search for naïve ünicode");
   const star = host.querySelector<HTMLButtonElement>('button[aria-label="Star"]');
   expect(star).not.toBeNull();
   await act(async () => { star!.click(); });

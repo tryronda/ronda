@@ -79,7 +79,10 @@ fn restore_main_window(window: &tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-async fn list_sessions(state: State<'_, Shared>, query: SessionQuery) -> CommandResult<Vec<SessionMeta>> {
+async fn list_sessions(
+    state: State<'_, Shared>,
+    query: SessionQuery,
+) -> CommandResult<Vec<SessionMeta>> {
     off_main(state, move |state| {
         let limit = query.limit;
         let mut sessions = state
@@ -102,12 +105,31 @@ async fn list_sessions(state: State<'_, Shared>, query: SessionQuery) -> Command
 
 #[tauri::command]
 async fn get_session(state: State<'_, Shared>, key: String) -> CommandResult<Option<SessionMeta>> {
-    off_main(state, move |state| state.store.lock().map_err(error)?.get_session(&key).map_err(error)).await
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .get_session(&key)
+            .map_err(error)
+    })
+    .await
 }
 
 #[tauri::command]
-async fn get_transcript(state: State<'_, Shared>, key: String) -> CommandResult<Vec<TranscriptMessage>> {
-    off_main(state, move |state| state.store.lock().map_err(error)?.get_transcript(&key).map_err(error)).await
+async fn get_transcript(
+    state: State<'_, Shared>,
+    key: String,
+) -> CommandResult<Vec<TranscriptMessage>> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .get_transcript(&key)
+            .map_err(error)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -130,12 +152,18 @@ async fn search_sessions(
 
 #[tauri::command]
 async fn list_projects(state: State<'_, Shared>) -> CommandResult<Vec<ProjectInfo>> {
-    off_main(state, |state| state.store.lock().map_err(error)?.projects().map_err(error)).await
+    off_main(state, |state| {
+        state.store.lock().map_err(error)?.projects().map_err(error)
+    })
+    .await
 }
 
 #[tauri::command]
 async fn get_insights(state: State<'_, Shared>) -> CommandResult<Insights> {
-    off_main(state, |state| state.store.lock().map_err(error)?.insights().map_err(error)).await
+    off_main(state, |state| {
+        state.store.lock().map_err(error)?.insights().map_err(error)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -207,7 +235,11 @@ async fn set_session_flags(
 }
 
 #[tauri::command]
-async fn export_session(state: State<'_, Shared>, key: String, destination: String) -> CommandResult<()> {
+async fn export_session(
+    state: State<'_, Shared>,
+    key: String,
+    destination: String,
+) -> CommandResult<()> {
     off_main(state, move |state| {
         let store = state.store.lock().map_err(error)?;
         let meta = store
@@ -450,7 +482,11 @@ async fn terminal_open(
 ) -> CommandResult<u32> {
     let plan = off_main(state, move |state| resume_plan(state, &key)).await?;
     let command = match &plan.host {
-        Some(host) => format!("ssh -t {} {}", shell_quote(host), shell_quote(&plan.command)),
+        Some(host) => format!(
+            "ssh -t {} {}",
+            shell_quote(host),
+            shell_quote(&plan.command)
+        ),
         None => plan.command.clone(),
     };
     // A remote session's directory lives on the host; start the local shell somewhere that exists.
@@ -464,7 +500,11 @@ async fn terminal_open(
         &directory,
         cols,
         rows,
-        move |chunk| output.send(tauri::ipc::InvokeResponseBody::Raw(chunk)).is_ok(),
+        move |chunk| {
+            output
+                .send(tauri::ipc::InvokeResponseBody::Raw(chunk))
+                .is_ok()
+        },
         move |event| {
             let _ = events.send(event);
         },
@@ -472,12 +512,21 @@ async fn terminal_open(
 }
 
 #[tauri::command]
-async fn terminal_write(terminals: State<'_, terminal::Terminals>, id: u32, data: String) -> CommandResult<()> {
+async fn terminal_write(
+    terminals: State<'_, terminal::Terminals>,
+    id: u32,
+    data: String,
+) -> CommandResult<()> {
     terminals.write(id, data.as_bytes())
 }
 
 #[tauri::command]
-async fn terminal_resize(terminals: State<'_, terminal::Terminals>, id: u32, cols: u16, rows: u16) -> CommandResult<()> {
+async fn terminal_resize(
+    terminals: State<'_, terminal::Terminals>,
+    id: u32,
+    cols: u16,
+    rows: u16,
+) -> CommandResult<()> {
     terminals.resize(id, cols, rows)
 }
 
@@ -519,15 +568,34 @@ fn resume_plan(state: &AppState, key: &str) -> CommandResult<ResumePlan> {
         .collect::<Vec<_>>()
         .join(" ");
     let command = format!("cd {} && {command}", shell_quote(&directory));
-    Ok(ResumePlan { directory, program: spec.program, args: spec.args, host: meta.host, command })
+    Ok(ResumePlan {
+        directory,
+        program: spec.program,
+        args: spec.args,
+        host: meta.host,
+        command,
+    })
 }
 
 #[tauri::command]
 async fn resume_session(state: State<'_, Shared>, key: String) -> CommandResult<String> {
     off_main(state, move |state| {
-        let ResumePlan { directory, program, args, host, command } = resume_plan(state, &key)?;
+        let ResumePlan {
+            directory,
+            program,
+            args,
+            host,
+            command,
+        } = resume_plan(state, &key)?;
         #[cfg(target_os = "windows")]
-        let (directory, spec) = (directory.as_str(), ronda_core::ResumeSpec { program, args, cwd: None });
+        let (directory, spec) = (
+            directory.as_str(),
+            ronda_core::ResumeSpec {
+                program,
+                args,
+                cwd: None,
+            },
+        );
         #[cfg(not(target_os = "windows"))]
         let _ = (directory, program, args);
         if let Some(host) = &host {
@@ -652,7 +720,11 @@ async fn list_remote_hosts(state: State<'_, Shared>) -> CommandResult<Vec<Remote
 }
 
 #[tauri::command]
-async fn set_remote_host(state: State<'_, Shared>, host: String, enabled: bool) -> CommandResult<()> {
+async fn set_remote_host(
+    state: State<'_, Shared>,
+    host: String,
+    enabled: bool,
+) -> CommandResult<()> {
     off_main(state, move |state| {
         state
             .store
@@ -790,7 +862,12 @@ pub fn run() {
                     traffic_lights::hide(&window);
                     let target = window.clone();
                     window.on_window_event(move |event| {
-                        if matches!(event, tauri::WindowEvent::Focused(_) | tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. }) {
+                        if matches!(
+                            event,
+                            tauri::WindowEvent::Focused(_)
+                                | tauri::WindowEvent::Resized(_)
+                                | tauri::WindowEvent::ScaleFactorChanged { .. }
+                        ) {
                             traffic_lights::hide(&target);
                         }
                     });

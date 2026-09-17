@@ -78,7 +78,7 @@ chmod +x Ronda-linux-x86_64.AppImage
     id: "search", title: "Search",
     body: <>
       <P>Press **⌘K** and type. Every result points at the matching message, and opening it scrolls the transcript there.</P>
-      <P>Search uses SQLite FTS5 with a trigram tokenizer, so it matches code fragments like `useEffect(` and Chinese text without a word segmenter. Queries shorter than three characters fall back to substring matching.</P>
+      <P>Search uses SQLite FTS5 with a trigram tokenizer, so it matches code fragments like `useEffect(` and prose in any language without a word segmenter. Queries shorter than three characters fall back to substring matching.</P>
       <P>On an 800 MiB library of 300 sessions, search measured 23 ms p50 and 26 ms p95 on an Apple M3 Pro, including CLI startup.</P>
     </>,
   },

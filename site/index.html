@@ -3,25 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ronda — Search and resume your coding agent sessions</title>
+    <title>Ronda | Search and resume your coding agent sessions</title>
     <meta name="description" content="Ronda is a desktop library for coding-agent conversations. Browse and search sessions from Claude Code, Codex, Cursor, Gemini CLI and 14 more agents, then resume them in a built-in terminal. Indexed locally and never uploaded." />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <link rel="canonical" href="%SITE_URL%" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Ronda" />
     <meta property="og:url" content="%SITE_URL%" />
-    <meta property="og:title" content="Ronda — Search and resume your coding agent sessions" />
+    <meta property="og:title" content="Ronda | Search and resume your coding agent sessions" />
     <meta property="og:description" content="Browse, search, and resume sessions from Claude Code, Codex, Cursor and 15 more agents. Local and private." />
     <meta property="og:image" content="%SITE_URL%og.png" />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Ronda — All your agent sessions in one place." />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Ronda — Search and resume your coding agent sessions" />
+    <meta name="twitter:title" content="Ronda | Search and resume your coding agent sessions" />
     <meta name="twitter:description" content="Browse, search, and resume sessions from Claude Code, Codex, Cursor and 15 more agents. Local and private." />
     <meta name="twitter:image" content="%SITE_URL%og.png" />
+    <meta name="twitter:image:alt" content="Ronda — All your agent sessions in one place." />
 
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
@@ -30,15 +32,40 @@
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Ronda",
-        "url": "%SITE_URL%",
-        "image": "%SITE_URL%og.png",
-        "description": "A local desktop library for coding-agent conversations. Browse and search sessions from 18 agents and resume them in a built-in terminal, without uploading them.",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "macOS, Windows, Linux",
-        "downloadUrl": "https://github.com/tryronda/ronda/releases/latest",
-        "codeRepository": "https://github.com/tryronda/ronda"
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "%SITE_URL%#website",
+            "name": "Ronda",
+            "url": "%SITE_URL%",
+            "inLanguage": "en",
+            "publisher": { "@id": "%SITE_URL%#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "%SITE_URL%#organization",
+            "name": "Ronda",
+            "url": "%SITE_URL%",
+            "logo": "%SITE_URL%brand/ronda-mark.png",
+            "sameAs": ["https://github.com/tryronda/ronda"]
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "%SITE_URL%#app",
+            "name": "Ronda",
+            "url": "%SITE_URL%",
+            "image": "%SITE_URL%og.png",
+            "description": "A local desktop library for coding-agent conversations. Browse and search sessions from 18 agents and resume them in a built-in terminal, without uploading them.",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "macOS, Windows, Linux",
+            "downloadUrl": "https://github.com/tryronda/ronda/releases/latest",
+            "codeRepository": "https://github.com/tryronda/ronda",
+            "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "publisher": { "@id": "%SITE_URL%#organization" }
+          }
+        ]
       }
     </script>
     <!-- The site is light by default; the theme slider switches it for the visit. -->

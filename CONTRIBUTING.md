@@ -6,6 +6,8 @@ Thanks for helping. You can contribute by reporting a bug, asking for an agent, 
 - **Larger changes:** open an issue first so we can agree on the approach before you write the code.
 - **Security problems:** do not open a public issue. Follow [SECURITY.md](SECURITY.md) instead.
 
+This project follows the [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold it.
+
 By contributing, you agree that your contributions are licensed under the [AGPL-3.0](LICENSE).
 
 ## Project layout

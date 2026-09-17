@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -114,7 +118,9 @@ jobs:
           images=("target/${CARGO_BUILD_TARGET}/release/bundle/dmg/"*.dmg)
           test "${#images[@]}" -eq 1
           mount_dir="$(mktemp -d "$RUNNER_TEMP/ronda-dmg.XXXXXX")"
-          hdiutil attach "${images[0]}" -readonly -nobrowse -mountpoint "$mount_dir"
+          # bundle.licenseFile puts the AGPL in the DMG as a software license agreement,
+          # so hdiutil prints it and waits for an answer, cancelling the attach on EOF.
+          echo Y | hdiutil attach "${images[0]}" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/null
           trap 'hdiutil detach "$mount_dir"' EXIT
           find "$mount_dir" -type f -name ronda-cli -print -quit | grep -q .
           find "$mount_dir" -type f -name ronda-mcp -print -quit | grep -q .

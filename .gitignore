@@ -12,3 +12,5 @@
 *.pem
 .env
 .env.*
+# The template carries no values, so it is committed.
+!.env.example

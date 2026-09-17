@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page not found | Ronda</title>
+    <meta name="description" content="That page is not part of the Ronda site." />
+    <!-- GitHub Pages serves this with a 404 status; keep it out of the index so it never competes with a real page. -->
+    <meta name="robots" content="noindex, follow" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!--
+      Served straight from site/public, so it carries its own styling rather than the
+      bundled stylesheet: a missing page should render even if the build's assets do not.
+      The values mirror the morning theme in src/index.css.
+    -->
+    <style>
+      :root { --paper: #fff; --ink: #171717; --ink-soft: #0009; --rule: #0000001a; --sky-deep: #8bcfff; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+        background: var(--paper); color: var(--ink);
+        font-family: Afacad, ui-sans-serif, system-ui, sans-serif; }
+      main { max-width: 46ch; }
+      .mark { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; width: 16px; height: 16px; }
+      .mark span { background: var(--ink); }
+      .mark span:nth-child(5) { background: transparent; }
+      .mark span:nth-child(9) { background: var(--sky-deep); }
+      .lockup { display: inline-flex; align-items: center; gap: 8px;
+        font-family: Newsreader, ui-serif, Georgia, serif; font-size: 21px; color: var(--ink); text-decoration: none; }
+      .code { margin: 32px 0 0; font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px; letter-spacing: .025em; color: var(--ink-soft); }
+      h1 { margin: 12px 0 0; font-family: Newsreader, ui-serif, Georgia, serif; font-weight: 400;
+        font-size: 40px; line-height: 1.1; letter-spacing: -.01em; }
+      p { margin: 12px 0 0; font-size: 17px; line-height: 1.55; letter-spacing: .015em; color: var(--ink-soft); }
+      nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--rule);
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; letter-spacing: .025em; }
+      nav a { color: var(--ink-soft); text-decoration: none; }
+      nav a:hover, nav a:focus-visible { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+      nav a:first-child { color: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="lockup" href="/" aria-label="Ronda home">
+        <span class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+        Ronda
+      </a>
+      <p class="code">404</p>
+      <h1>This page isn't here.</h1>
+      <p>The link may be out of date, or the page may have moved. Everything about Ronda starts from the home page.</p>
+      <nav aria-label="Ronda">
+        <a href="/">home</a>
+        <a href="/intelligence/">intelligence</a>
+        <a href="/docs/">docs</a>
+        <a href="/changelog/">changelog</a>
+        <a href="/brand/">brand</a>
+        <a href="https://github.com/tryronda/ronda">github</a>
+      </nav>
+    </main>
+  </body>
+</html>

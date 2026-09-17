@@ -24,6 +24,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # configure-pages reads the Pages site settings, which needs pages: read.
+    # Job-level permissions replace the top-level block, so contents: read is repeated.
+    permissions:
+      contents: read
+      pages: read
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

@@ -29,12 +29,20 @@ A good session with a coding agent holds the fix for a strange bug, a design dec
 
 Ronda brings them into one fast, private library. You can find the conversation you half remember, open it at the exact message, and pick up where you left off.
 
+<p align="center">
+  <video src="https://github.com/tryronda/ronda/raw/main/site/public/ronda-launch.mp4" controls muted playsinline width="720"></video>
+</p>
+
+<p align="center">
+  <sub>Video not playing? <a href="https://github.com/tryronda/ronda/raw/main/site/public/ronda-launch.mp4">Watch it here</a>.</sub>
+</p>
+
 **[Try the live preview →](https://tryronda.cloud/#preview)**: the real interface runs in your browser on sample data.
 
 ## What Ronda does for you
 
 - **One library for every agent.** Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, and 12 more. Ronda reads the session files these agents already write, so there is nothing to export and no plugin to install.
-- **Find anything in milliseconds.** Full-text search covers every transcript, including code fragments like `useEffect(` and Chinese text, and each result opens at the matching message. On an 800 MiB library, p95 search time is about 26 ms.
+- **Find anything in milliseconds.** Full-text search covers every transcript, including code fragments like `useEffect(` and prose in any language, and each result opens at the matching message. On an 800 MiB library, p95 search time is about 26 ms.
 - **Resume right where you left off.** **Resume** starts the agent's own resume command in a terminal built into Ronda, in the project folder or over SSH for remote sessions. Switch between the transcript and the live terminal, keep several agents running while you browse, or hand the session off to your system terminal. You can also export any session to Markdown.
 - **See how you work.** Insights show a year of activity and which agents, projects, and models your sessions and tokens go to. **[Intelligence](https://tryronda.cloud/intelligence/)** works out where your time goes, where agents get stuck, which errors keep coming back, your real stack, and how sessions end, all on your machine.
 - **Let your agents learn from past sessions.** The bundled CLI and a read-only MCP server let Claude Code, Codex, and other MCP clients search your history. An agent can ask whether an error has been seen before and how that session ended.
@@ -74,5 +82,7 @@ The **[documentation](https://tryronda.cloud/docs/)** covers search, [Intelligen
 Ronda is built with Tauri 2, Rust, React, and SQLite FTS5. Bug reports, agent adapters, and fixes are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build from source, run the checks, and cut a release. To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
+
+Copyright © 2026 Ronda contributors.
 
 Ronda is free software under the [GNU Affero General Public License v3.0](LICENSE). Third-party code is credited in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).

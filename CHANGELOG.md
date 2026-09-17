@@ -2,6 +2,49 @@
 
 All notable changes to Ronda are recorded here.
 
+## [Unreleased]
+
+## [1.0.0] - 2026-09-17
+
+### Added
+- **Resume** opens the session in a terminal inside Ronda, running the agent's resume command in the project folder. Remote sessions connect over `ssh -t` in the same terminal.
+- A **Transcript / Terminal** switch in the session header, with a live status dot while the agent runs.
+- Terminal toolbar with **Restart** after the process exits, **Open in system terminal**, and **Stop and close terminal**.
+- Resumed terminals keep running while you browse other sessions or pages. When the agent exits, the terminal drops into your login shell in the same folder.
+- On macOS, the top bar draws its own close, minimize, and full-screen buttons. They stay visible when the window loses focus, and ⌥-click on the green button zooms instead.
+- **Intelligence** view (⌘3): active time by kind of work, agent failure patterns, errors that keep coming back, your stack, and how sessions end, filtered by range and project. Rows link to the message they came from.
+- Session facts are derived locally while indexing, with fixed rules and no language model.
+- `ronda-cli insights` and `ronda-cli errors`, plus the `ronda_insights` and `ronda_find_error` MCP tools.
+- Library home that opens with "All your agent sessions in one place.", library stats, and the four most recent sessions.
+- Four time-of-day themes (dawn, morning, dusk, night) with a theme slider in the top bar and a matching picker in **Settings → General**.
+- Animated pixel field whose palette follows the active theme.
+- Browser preview mode: the interface renders an empty library instead of failing when it runs outside the desktop shell.
+- Product site with a live interface preview, plus separate changelog and documentation pages.
+- Tagged builds publish a GitHub release with installers for every platform under fixed names, such as `Ronda-macos-arm64.dmg`, plus a `SHA256SUMS.txt` checksum file.
+- macOS builds are signed and notarized with a Developer ID once Apple signing secrets are configured.
+- Install guide for macOS, Windows, and Linux, including first-launch security prompts and checksum verification.
+
+### Changed
+- New app icon, and a smaller Ronda mark and wordmark in the top bar.
+- Ronda starts in the light **morning** theme. Pick **System** in **Settings → General** to follow the OS appearance. The theme slider moved out of the top bar.
+- The top bar no longer repeats the open session's title.
+- The minimum window size is now 1024 × 680. A saved window smaller than the default opens at the default size, centered.
+- Project folders in the sidebar show a folder icon.
+- Redesigned the interface with square glass controls, a display serif for headings, Afacad for reading, and JetBrains Mono for controls.
+- Sessions no longer auto-open on launch; click the Ronda mark to return to the library home.
+- Existing `light` and `dark` theme preferences map to morning and night.
+- Switched the JavaScript toolchain to Bun 1.4.2.
+- Ronda is open source under the AGPL-3.0. The repository moved to `tryronda/ronda`, and the site to [tryronda.cloud](https://tryronda.cloud).
+- The app identifier is now `cloud.tryronda.ronda`, so saved window size and position reset once. The session index is unaffected.
+
+### Performance
+- Library queries run off the main thread, so a slow search or scan no longer freezes the window.
+- Switching between Sessions, Insights, Intelligence, and Settings keeps each page's scroll position and no longer re-animates or reflows.
+- Insights and Intelligence refresh only while visible. Changes made while they are hidden are applied when you return, and bursts of file changes are coalesced.
+- Markdown rendering, Insights, and Settings load after the shell is idle, halving the startup bundle from 945 kB to 480 kB.
+- The pixel field draws on a single canvas, and long session lists and transcripts skip rendering off-screen rows.
+- Search keeps previous results visible while a new query runs, and the debounce dropped from 180 ms to 120 ms.
+
 ## [0.9.1] - 2026-09-15
 
 ### Added
@@ -129,7 +172,7 @@ All notable changes to Ronda are recorded here.
 ## [0.0.2] - 2026-07-16
 
 ### Added
-- Full-text search with SQLite FTS5 and a trigram tokenizer, matching code fragments like `useEffect(` and Chinese text.
+- Full-text search with SQLite FTS5 and a trigram tokenizer, matching code fragments like `useEffect(` and prose in any language.
 - Queries shorter than three characters fall back to substring matching.
 - `ronda-cli search` groups hits by session with `ronda://session/…#seq` references.
 

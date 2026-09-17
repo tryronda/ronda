@@ -26,11 +26,11 @@ const tool = (name: string, input: string, output: string, is_error = false) => 
 
 const scripts: Script[] = [
   {
-    title: "Make session search handle Chinese text and code fragments", agent: "claude-code", project: projects.ronda, model: "claude-opus-5", ago: 2 * HOUR,
+    title: "Make session search handle code fragments and any language", agent: "claude-code", project: projects.ronda, model: "claude-opus-5", ago: 2 * HOUR,
     messages: [
-      text("user", "Search misses results for queries like `useEffect(` and for Chinese text such as 搜索会话. Can you fix the index?"),
-      text("assistant", "The FTS5 table uses the default `unicode61` tokenizer, which splits on punctuation and doesn't segment CJK text. I'll switch it to the **trigram** tokenizer and keep a substring fallback for queries shorter than three characters.\n\n```sql\nCREATE VIRTUAL TABLE message_fts USING fts5(\n  text,\n  tokenize = 'trigram'\n);\n```\n\nTrigram matching gives us:\n\n- exact code fragments such as `useEffect(`\n- Chinese and Japanese text without a segmenter\n- case-insensitive matches by default",
-        { model: "claude-opus-5", thinking: "The unicode61 tokenizer drops '(' and treats CJK runs as one token. Trigram avoids both, at the cost of a larger index.", tool_calls: [
+      text("user", "Search misses results for queries like `useEffect(`, and for languages that don't put spaces between words. Can you fix the index?"),
+      text("assistant", "The FTS5 table uses the default `unicode61` tokenizer, which splits on punctuation and needs a word segmenter it doesn't have. I'll switch it to the **trigram** tokenizer and keep a substring fallback for queries shorter than three characters.\n\n```sql\nCREATE VIRTUAL TABLE message_fts USING fts5(\n  text,\n  tokenize = 'trigram'\n);\n```\n\nTrigram matching gives us:\n\n- exact code fragments such as `useEffect(`\n- prose in any language, with no segmenter to install\n- case-insensitive matches by default",
+        { model: "claude-opus-5", thinking: "The unicode61 tokenizer drops '(' and swallows a whole unspaced run as one token. Trigram avoids both, at the cost of a larger index.", tool_calls: [
           tool("Read", "crates/ronda-core/src/store.rs", "812 lines"),
           tool("Edit", "crates/ronda-core/src/store.rs", "Replaced tokenizer and added short-query fallback"),
           tool("Bash", "cargo test -p ronda-core search", "test result: ok. 14 passed; 0 failed"),
@@ -143,7 +143,7 @@ function reset() {
     sessions.push(meta(key, title, agent, project, agent === "codex" ? "gpt-5-codex" : "claude-sonnet-5", updated, index));
     transcripts.set(key, [
       { ...text("user", `${title}.`), seq: 0, timestamp: updated - 120_000 },
-      { ...text("assistant", "This is a sample session on the Ronda site. Open **Make session search handle Chinese text and code fragments** at the top of the list for a full transcript.", { model: "claude-sonnet-5" }), seq: 1, timestamp: updated },
+      { ...text("assistant", "This is a sample session on the Ronda site. Open **Make session search handle code fragments and any language** at the top of the list for a full transcript.", { model: "claude-sonnet-5" }), seq: 1, timestamp: updated },
     ]);
   });
   sessions.sort((a, b) => b.updated_at - a.updated_at);

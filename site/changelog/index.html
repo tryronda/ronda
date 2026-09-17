@@ -3,20 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Changelog — Ronda</title>
+    <title>Changelog | Ronda</title>
     <meta name="description" content="Every change to Ronda, the local desktop library for coding-agent sessions, newest first." />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <link rel="canonical" href="%SITE_URL%changelog/" />
+
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Ronda" />
     <meta property="og:url" content="%SITE_URL%changelog/" />
-    <meta property="og:title" content="Changelog — Ronda" />
+    <meta property="og:title" content="Changelog | Ronda" />
     <meta property="og:description" content="Every change to Ronda, newest first." />
     <meta property="og:image" content="%SITE_URL%og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Ronda — All your agent sessions in one place." />
+    <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Changelog | Ronda" />
+    <meta name="twitter:description" content="Every change to Ronda, newest first." />
+    <meta name="twitter:image" content="%SITE_URL%og.png" />
+
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
     <link rel="apple-touch-icon" href="../apple-touch-icon.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": "Changelog",
+        "headline": "What's new in Ronda",
+        "description": "Every change to Ronda, the local desktop library for coding-agent sessions, newest first.",
+        "url": "%SITE_URL%changelog/",
+        "inLanguage": "en",
+        "isPartOf": { "@id": "%SITE_URL%#website" },
+        "breadcrumb": {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Ronda", "item": "%SITE_URL%" },
+            { "@type": "ListItem", "position": 2, "name": "Changelog", "item": "%SITE_URL%changelog/" }
+          ]
+        }
+      }
+    </script>
     <!-- The site is light by default; the theme slider switches it for the visit. -->
     <script>document.documentElement.dataset.theme = "morning";</script>
   </head>
