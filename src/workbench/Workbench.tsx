@@ -686,13 +686,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             key={`${session.key}-${searchContext.query}-${searchContext.revision}-${JSON.stringify(searchContext.filter)}`}
             api={api} group={group} query={searchContext.query} filter={searchContext.filter}
             choose={seq => choose(session, seq)} />}</div>)}
-        {!bookmarksOnly && !dates.error && <nav aria-label="Session pages" className="p-2 text-[13px]">
+      </div>
+        {!bookmarksOnly && !dates.error && <nav aria-label="Session pages" className="flex-none border-t border-border p-2 text-[13px]">
           {search.trim() ? searchOffset.current < searchTotals.sessions && <button type="button" disabled={loading || searching}
             onClick={()=>void loadMoreSearch()}>Load more search results</button>
             : browseOffset.current < sessionTotal && <button type="button" disabled={loading || loadingMore}
               onClick={()=>void loadMoreSessions()}>Load more sessions</button>}
         </nav>}
-      </div>
     </section>
 
     <main className="transcript-pane relative flex min-h-0 min-w-0 flex-1 flex-col bg-paper" aria-label="Transcript">

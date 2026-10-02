@@ -14,6 +14,8 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 
+- Keep library and search Load more controls visible outside the scrolling rows as the list grows.
+
 - Libraries larger than the initial page remain accessible; pending pages cannot overwrite refreshed or filtered results.
 
 ## [1.0.4] - 2026-10-02
