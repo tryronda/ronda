@@ -2,7 +2,7 @@
 
 All notable changes to Ronda are recorded here.
 
-## [Unreleased]
+## [1.0.4] - 2026-10-02
 
 ### Added
 
