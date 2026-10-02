@@ -87,6 +87,7 @@ def main():
     parser.add_argument("--mb", type=int, default=800, help="total source size in MiB")
     parser.add_argument("--searches", type=int, default=40)
     parser.add_argument("--cli", type=Path, help="path to a built ronda-cli")
+    parser.add_argument("--grouped", type=Path, help="path to the release grouped-search-benchmark example")
     parser.add_argument("--keep", action="store_true", help="keep synthetic files for inspection")
     args = parser.parse_args()
     if min(args.sessions, args.mb, args.searches) < 1:
@@ -129,6 +130,10 @@ def main():
             "gates": {"search_p95_under_100_ms": samples[math.ceil(len(samples) * .95) - 1] < 100,
                 "sessions_300": indexed >= 300, "source_800_mib": source_bytes >= 800 * 1024 * 1024},
         }
+        if args.grouped:
+            measured = subprocess.run([str(args.grouped.resolve()), str(db), "ronda_benchmark_needle", str(args.searches)],
+                capture_output=True, text=True, check=True)
+            report["grouped_search"] = json.loads(measured.stdout)
         if args.keep: report["fixture_dir"] = str(temporary)
         print(json.dumps(report, indent=2))
     finally:

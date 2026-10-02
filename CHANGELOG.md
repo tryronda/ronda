@@ -4,9 +4,21 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-02
+
+### Added
+
+- Search results group by session with complete message counts, highlighted excerpts, relevance/recent sorting, and session/match pagination.
+- The sample preview demonstrates title matches, multiple excerpts, and both kinds of search paging.
+
+### Changed
+
+- Desktop search honors the archive checkbox instead of always including archived sessions.
+
 ### Fixed
 
 - Search excerpts center on case-insensitive matches, including text with Unicode case expansion.
+- Site previews render cleanly when the HTML contains only the prerender placeholder comment.
 
 ## [1.0.1] - 2026-10-02
 

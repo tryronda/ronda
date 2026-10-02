@@ -2,7 +2,8 @@ use notify::Watcher;
 use ronda_core::{
     intel::report::Intelligence,
     scanner::{Location, ScanReport, Scanner},
-    Insights, ProjectInfo, SearchHit, SessionMeta, SessionQuery, Store, TranscriptMessage,
+    GroupedSearch, Insights, ProjectInfo, SearchHit, SearchMatches, SearchSort, SessionMeta,
+    SessionQuery, Store, TranscriptMessage,
 };
 use serde::Serialize;
 use std::{
@@ -145,6 +146,46 @@ async fn search_sessions(
             .lock()
             .map_err(error)?
             .search(&query, &filter, limit.min(100))
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn search_grouped(
+    state: State<'_, Shared>,
+    query: String,
+    filter: SessionQuery,
+    sort: SearchSort,
+    offset: usize,
+    limit: usize,
+) -> CommandResult<GroupedSearch> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .search_grouped(&query, &filter, sort, offset, limit)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn search_session_matches(
+    state: State<'_, Shared>,
+    query: String,
+    filter: SessionQuery,
+    key: String,
+    offset: usize,
+    limit: usize,
+) -> CommandResult<SearchMatches> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .search_session_matches(&query, &filter, &key, offset, limit)
             .map_err(error)
     })
     .await
@@ -906,6 +947,8 @@ pub fn run() {
             get_session,
             get_transcript,
             search_sessions,
+            search_grouped,
+            search_session_matches,
             list_projects,
             get_insights,
             get_intelligence,

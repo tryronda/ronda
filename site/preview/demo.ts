@@ -1,6 +1,7 @@
+import { searchSnippet } from "@/workbench/search-text";
 import { backend } from "@/workbench/api";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import type { AgentId, ProjectInfo, SearchHit, SessionMeta, SessionQuery, TranscriptMessage } from "@/workbench/api";
+import type { AgentId, ProjectInfo, GroupedSearch, SearchExcerpt, SearchGroup, SearchHit, SearchSort, SessionMeta, SessionQuery, TranscriptMessage } from "@/workbench/api";
 
 /*
  * An in-memory stand-in for the Tauri backend so the real Ronda interface can
@@ -148,11 +149,23 @@ function reset() {
     ]);
   });
   sessions.sort((a, b) => b.updated_at - a.updated_at);
+  // Clearly labelled, older sample sessions let the preview demonstrate both kinds of paging.
+  for (let index = 0; index < 55; index++) {
+    const key = `codex:pagination-${index}`;
+    const session = meta(key, `Search pagination sample ${index + 1}`, "codex", projects.ronda, "sample", now - 30 * DAY - index * HOUR, 100 + index);
+    session.archived = index === 54;
+    sessions.push(session);
+    transcripts.set(key, Array.from({ length: index === 0 ? 25 : 1 }, (_, seq) => ({
+      ...text("assistant", `Pagination sample match ${seq + 1}. This is synthetic preview data.`), seq, timestamp: session.updated_at,
+    })));
+  }
+
 }
 
 function listSessions(query: SessionQuery) {
   return sessions.filter(session => (!query.agent || session.agent === query.agent)
     && (!query.project_path || session.project_path === query.project_path)
+    && (!query.host || session.host === query.host)
     && (!query.starred_only || session.starred)
     && (query.include_archived || !session.archived))
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at - a.updated_at);
@@ -168,21 +181,67 @@ function listProjects(): ProjectInfo[] {
   return [...grouped.values()].sort((a, b) => b.updated_at - a.updated_at);
 }
 
+function searchableRows() {
+  return sessions.flatMap(session => [
+    { session, seq: -1, text: session.title },
+    ...(transcripts.get(session.key) ?? []).map(message => ({ session, seq: message.seq,
+      text: [message.text, ...message.tool_calls.flatMap(tool => [tool.name, tool.input ?? ""])].join(" ") })),
+  ]).filter(row => row.text.trim());
+}
+
+function matchingRows(query: string, filter: SessionQuery) {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+  const allowed = new Set(listSessions(filter).map(session => session.key));
+  const corpus = searchableRows().map(row => ({...row, folded:row.text.toLowerCase(), length:Math.max(0, Array.from(row.text).length - 2)}));
+  const average = corpus.reduce((sum, row) => sum + row.length, 0) / corpus.length || 1;
+  const phrases = query.trim().split(/\s+/).filter(term => Array.from(term).length >= 3).map(term => term.toLowerCase());
+  const idfs = phrases.map(term => {
+    const containing = corpus.filter(row => row.folded.includes(term)).length;
+    return Math.max(1e-6, Math.log((corpus.length - containing + 0.5) / (containing + 0.5)));
+  });
+  // FTS5's documented bm25 constants and trigram lengths, on the small synthetic corpus.
+  // https://www.sqlite.org/fts5.html#the_bm25_function
+  return corpus.filter(row => allowed.has(row.session.key) && terms.every(term => row.folded.includes(term)))
+    .map(row => {
+      let score = 0;
+      phrases.forEach((term, index) => {
+        let frequency = 0;
+        for (let at = row.folded.indexOf(term); at >= 0; at = row.folded.indexOf(term, at + 1)) frequency++;
+        score -= idfs[index] * frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * row.length / average));
+      });
+      return { ...row, snippet: searchSnippet(row.text, query), score };
+    }).sort((a, b) => a.score - b.score || b.session.updated_at - a.session.updated_at || a.session.key.localeCompare(b.session.key) || a.seq - b.seq);
+}
+
 function search(query: string, filter: SessionQuery, limit: number): SearchHit[] {
-  const needle = query.toLowerCase();
-  const hits: SearchHit[] = [];
-  for (const session of listSessions({ ...filter, include_archived: true })) {
-    for (const message of transcripts.get(session.key) ?? []) {
-      const at = message.text.toLowerCase().indexOf(needle);
-      if (at < 0) continue;
-      const start = Math.max(0, at - 48);
-      const snippet = `${start ? "…" : ""}${message.text.slice(start, at + needle.length + 72).replace(/\s+/g, " ")}…`;
-      hits.push({ session, seq: message.seq, snippet });
-      break;
+  return matchingRows(query, filter).sort((a, b) => b.session.updated_at - a.session.updated_at || a.session.key.localeCompare(b.session.key))
+    .slice(0, limit).map(({session, seq, snippet}) => ({session, seq, snippet}));
+}
+
+function searchGrouped(query: string, filter: SessionQuery, sort: SearchSort, offset: number, limit: number): GroupedSearch {
+  const grouped = new Map<string, SearchGroup>();
+  const scores = new Map<string, number>();
+  for (const row of matchingRows(query, filter)) {
+    scores.set(row.session.key, Math.min(scores.get(row.session.key) ?? Infinity, row.score));
+    const group = grouped.get(row.session.key) ?? { session: row.session, title_match: false, message_matches: 0, excerpts: [] };
+    if (row.seq < 0) group.title_match = true;
+    else {
+      group.message_matches++;
+      if (group.excerpts.length < 3) group.excerpts.push({seq: row.seq, snippet: row.snippet});
     }
-    if (hits.length >= limit) break;
+    grouped.set(row.session.key, group);
   }
-  return hits;
+  const groups = [...grouped.values()].sort((a, b) => (sort === "relevance" ? Number(b.title_match) - Number(a.title_match) || scores.get(a.session.key)! - scores.get(b.session.key)! : 0)
+    || b.session.updated_at - a.session.updated_at || a.session.key.localeCompare(b.session.key));
+  return { groups: groups.slice(offset, offset + limit), total_sessions: groups.length,
+    total_message_matches: groups.reduce((total, group) => total + group.message_matches, 0) };
+}
+
+function searchSessionMatches(query: string, filter: SessionQuery, key: string, offset: number, limit: number) {
+  const matches: SearchExcerpt[] = matchingRows(query, filter).filter(row => row.session.key === key && row.seq >= 0)
+    .sort((a, b) => a.seq - b.seq).map(({seq, snippet}) => ({seq, snippet}));
+  return { matches: matches.slice(offset, offset + limit), total_matches: matches.length };
 }
 
 function insights() {
@@ -267,6 +326,8 @@ function handle(command: string, args: Args = {}): unknown {
     case "list_projects": return listProjects();
     case "get_transcript": return transcripts.get(args.key as string) ?? [];
     case "search_sessions": return search(args.query as string, args.filter as SessionQuery, args.limit as number);
+    case "search_grouped": return searchGrouped(args.query as string, args.filter as SessionQuery, args.sort as SearchSort, args.offset as number, args.limit as number);
+    case "search_session_matches": return searchSessionMatches(args.query as string, args.filter as SessionQuery, args.key as string, args.offset as number, args.limit as number);
     case "scan": return { discovered: sessions.length, indexed: 0, unchanged: sessions.length, errors: [] };
     case "set_session_flags":
       sessions = sessions.map(session => session.key === args.key ? { ...session, starred: args.starred as boolean, pinned: args.pinned as boolean } : session);

@@ -15,9 +15,10 @@ import { cn } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { LibraryHome } from "./LibraryHome";
+import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
-  type SearchHit, type SessionMeta, type SessionQuery, type TranscriptMessage,
+  type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
   type WorkbenchBackend,
 } from "./api";
 
@@ -144,7 +145,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [terminalShown, setTerminalShown] = useState<Record<string, boolean>>({});
   const detailHeaderRef = useRef<HTMLElement>(null);
   const [detailHeaderHeight, setDetailHeaderHeight] = useState(88);
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [hits, setHits] = useState<SearchGroup[]>([]);
+  const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [searchTotals, setSearchTotals] = useState({ sessions: 0, messages: 0 });
+  const [searchContext, setSearchContext] = useState({ query: "", filter: queryDefaults, revision: 0 });
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -231,18 +236,29 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     }
   }, [messages]);
 
+  useEffect(() => { setSearchOffset(0); }, [search, filter, searchSort]);
+
   useEffect(() => {
     if (!isActive) return;
     if (!search.trim()) { setHits([]); setSearching(false); return; }
     let cancelled = false;
     setSearching(true);
     const timer = window.setTimeout(() => {
-      void api.searchSessions(search.trim(), { ...filter, include_archived: true }, 100).then(next => {
-        if (!cancelled) { setHits(next); setSearching(false); }
+      void api.searchGrouped(search.trim(), filter, searchSort, searchOffset, 50).then(next => {
+        if (!cancelled) {
+          if (searchOffset > 0 && searchOffset >= next.total_sessions) {
+            setSearchOffset(Math.max(0, Math.floor((next.total_sessions - 1) / 50) * 50));
+            return;
+          }
+          setHits(next.groups);
+          setSearchTotals({ sessions: next.total_sessions, messages: next.total_message_matches });
+          setSearchContext({ query: search.trim(), filter, revision });
+          setSearching(false);
+        }
       }).catch(cause => { if (!cancelled) { setError(String(cause)); setSearching(false); } });
     }, 120);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [api, filter, search, revision, isActive]);
+  }, [api, filter, search, searchSort, searchOffset, revision, isActive]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -290,8 +306,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     onActiveSessionChange?.(selected ? { title: plainTitle(selected.title),
       project: selected.project_path ? basename(selected.project_path) : null } : null);
   }, [onActiveSessionChange, selected?.key, selected?.title, selected?.project_path]);
-  const visible = search.trim() ? hits.map(hit => ({ session: hit.session, hit }))
-    : sessions.map(session => ({ session, hit: null as SearchHit | null }));
+  const visible = search.trim() ? hits.map(group => ({ session: group.session, group }))
+    : sessions.map(session => ({ session, group: null as SearchGroup | null }));
   const agents = useMemo(() => Array.from(new Set(sessions.map(s => s.agent))).sort(), [sessions]);
 
   const choose = (session: SessionMeta, seq?: number) => {
@@ -439,13 +455,20 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </AnimatePresence>
           <span className={scanning ? "[&_svg]:animate-spin" : undefined}><IconButton icon={ReloadIcon} title={t.refresh} onClick={() => void refresh()} disabled={scanning} /></span>
         </div>
-        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{scanning ? t.refreshing : `${visible.length} ${search.trim() ? t.matches : t.sessions}`}</p>
+        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{scanning ? t.refreshing : search.trim() ? `${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `${visible.length} ${t.sessions}`}</p>
         <label className="glass flex h-9 items-center gap-2 px-2.5 text-muted-foreground transition-shadow focus-within:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--foreground)]">
           <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={2} />
           <input ref={searchRef} type="search" value={search} onChange={event => setSearch(event.target.value)}
             placeholder={t.search} aria-label={t.search}
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
+        {search.trim() && <label className="label-mono mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+          Sort results
+          <select aria-label="Sort search results" value={searchSort} className="min-w-0 bg-paper p-1 text-foreground"
+            onChange={event => setSearchSort(event.target.value as SearchSort)}>
+            <option value="relevance">Relevance</option><option value="recent">Recent</option>
+          </select>
+        </label>}
       </div>
       <div className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || searching || scanning}
         onKeyDown={event => {
@@ -462,13 +485,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           {searching ? <Loader variant="dot-matrix" size={22} label={t.searching} className="text-foreground" />
             : <PixelField cols={4} rows={4} cell={9} seed={3} className="size-9" />}
           <strong className="text-[14px] font-medium text-foreground">{loading ? t.loading : search.trim() ? searching ? t.searching : t.searchEmpty : t.noSessions}</strong>
-          {!search.trim() && <p className="m-0 text-[12px] leading-relaxed">{t.noSessionsHint}</p>}</div> : visible.map(({ session, hit }, index) =>
-          <button key={`${session.key}-${hit?.seq ?? index}`} type="button"
+          {!search.trim() && <p className="m-0 text-[12px] leading-relaxed">{t.noSessionsHint}</p>}</div> : visible.map(({ session, group }, index) =>
+          <div key={session.key}><button type="button"
             aria-current={selectedKey === session.key ? "true" : undefined}
             className={cn("session-card relative mb-1 block w-full px-3 py-3 text-left transition-[background-color,border-color,box-shadow] duration-100 [contain-intrinsic-size:auto_86px] [content-visibility:auto]",
               !reduce && index < 16 && "animate-in fade-in fill-mode-both duration-150",
               selectedKey === session.key ? "selected bg-paper shadow-lift" : "hover:bg-chip/70")}
-            onClick={() => choose(session, hit?.seq)}>
+            onClick={() => choose(session)}>
             {selectedKey === session.key && <motion.span layoutId="session-marker" className="absolute top-0 bottom-0 left-0 w-[3px] bg-sky-deep"
               transition={{ type: "spring", stiffness: 700, damping: 45 }} />}
             <div className="label-mono flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
@@ -476,12 +499,22 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               {session.host && <span>@{session.host}</span>}
               {session.pinned && <HugeiconsIcon icon={PinIcon} size={12} />}
               <time className="ml-auto whitespace-nowrap">{timeLabel(session.updated_at)}</time></div>
-            <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{plainTitle(session.title)}</strong>
+            <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{group ? <SearchHighlight text={plainTitle(session.title)} query={searchContext.query} /> : plainTitle(session.title)}</strong>
             <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
               <HugeiconsIcon icon={Folder01Icon} size={12} className="flex-none" /><span className="truncate">{session.project_path ? basename(session.project_path) : t.unknown}</span></div>
-            {hit && <div className="mt-2 line-clamp-2 border-l-2 border-olive pl-2 text-[13px] leading-normal text-ink-soft">{hit.snippet}</div>}
+            {group && <p className="mt-1 text-[12px] text-muted-foreground">
+              {group.title_match && "Title match · "}{group.message_matches} matching message{group.message_matches === 1 ? "" : "s"}
+            </p>}
             {session.starred && <span className="absolute right-3 bottom-3 text-[12px] text-olive" aria-label={t.favorites}>★</span>}
-          </button>)}
+          </button>{group && <SearchExcerpts
+            key={`${session.key}-${searchContext.query}-${searchContext.revision}-${JSON.stringify(searchContext.filter)}`}
+            api={api} group={group} query={searchContext.query} filter={searchContext.filter}
+            choose={seq => choose(session, seq)} />}</div>)}
+        {search.trim() && searchTotals.sessions > 50 && <nav aria-label="Search result pages" className="flex items-center justify-between gap-2 p-2 text-[13px]">
+          <button type="button" disabled={searching || searchOffset === 0} onClick={() => setSearchOffset(value => Math.max(0, value - 50))}>Previous sessions</button>
+          <span>{searchOffset + 1}–{Math.min(searchOffset + 50, searchTotals.sessions)} of {searchTotals.sessions}</span>
+          <button type="button" disabled={searching || searchOffset + 50 >= searchTotals.sessions} onClick={() => setSearchOffset(value => value + 50)}>Next sessions</button>
+        </nav>}
       </div>
     </section>
 

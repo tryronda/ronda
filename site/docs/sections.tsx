@@ -77,9 +77,10 @@ chmod +x Ronda-linux-x86_64.AppImage
   {
     id: "search", title: "Search",
     body: <>
-      <P>Press **⌘K** and type. Every result points at the matching message, and opening it scrolls the transcript there.</P>
-      <P>Search uses SQLite FTS5 with a trigram tokenizer, so it matches code fragments like `useEffect(` and prose in any language without a word segmenter. Queries shorter than three characters fall back to substring matching.</P>
-      <P>On an 800 MiB library of 300 sessions, search measured 23 ms p50 and 26 ms p95 on an Apple M3 Pro, including CLI startup.</P>
+      <P>Press **⌘K** and type. Results are grouped by session, with a count of matching messages and up to three highlighted excerpts. Click an excerpt to open its exact message, or click the session title to open the conversation. **Show all matches** expands the session; **Load more matches** adds twenty excerpts at a time.</P>
+      <P>**Relevance** puts title matches first, then ranks sessions by their best matching excerpt. **Recent** sorts by the last update. Search pages contain fifty sessions, so a conversation with hundreds of matches cannot hide the rest of your library. The **Include archived** checkbox controls archived results; leave it off to search active sessions only.</P>
+      <P>Search uses SQLite FTS5 with a trigram tokenizer, so it matches code fragments like `useEffect(` and prose in any language without a word segmenter. Queries shorter than three characters fall back to substring matching. Matching is case-insensitive and every whitespace-separated query term must occur in the same title or indexed message. Tool names and inputs are searchable; thinking and tool output are not part of the global index.</P>
+      <P>On the September 17, 2026 synthetic 800 MiB / 300-session fixture, raw CLI search measured 23 ms p50 and 26 ms p95 on an Apple M3 Pro, including startup. The October 2 rerun measured 32.16 ms p95 for raw CLI search and 14.70 ms p95 for grouped queries on a warm read-only connection. The grouped query counted 300 sessions and 1,800 matching messages; neither result measures UI paint.</P>
     </>,
   },
   {

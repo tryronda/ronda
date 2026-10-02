@@ -17,7 +17,7 @@ export type SitePage = "home" | "changelog" | "docs" | "brand" | "intelligence";
 export function mount(app: ReactNode) {
   applyTheme(null); // light by default, like the app
   const root = document.getElementById("root")!;
-  if (root.hasChildNodes()) hydrateRoot(root, app);
+  if (root.childElementCount > 0) hydrateRoot(root, app);
   else createRoot(root).render(app);
 }
 

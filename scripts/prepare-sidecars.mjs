@@ -10,6 +10,6 @@ if (release) args.push("--release");
 execFileSync("cargo", args, { stdio: "inherit" });
 mkdirSync("src-tauri/binaries", { recursive: true });
 for (const name of ["ronda-cli", "ronda-mcp"]) {
-  copyFileSync(join("target", triple, release ? "release" : "debug", name + extension),
+  copyFileSync(join(process.env.CARGO_TARGET_DIR || "target", triple, release ? "release" : "debug", name + extension),
     join("src-tauri", "binaries", `${name}-${triple}${extension}`));
 }

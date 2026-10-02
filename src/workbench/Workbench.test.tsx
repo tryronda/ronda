@@ -29,7 +29,8 @@ test("opens on the library home, then loads a session, shows its transcript, and
     listSessions: async () => [session],
     getSession: async () => session,
     getTranscript: async () => transcript,
-    searchSessions: async () => [], listProjects: async () => [{ path: "/projects/hello world", session_count: 1, updated_at: session.updated_at }],
+    searchSessions: async () => [], searchGrouped: async () => ({groups:[],total_sessions:0,total_message_matches:0}),
+    searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [{ path: "/projects/hello world", session_count: 1, updated_at: session.updated_at }],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
     setSessionFlags: setFlags, resumeSession: async () => "", exportSession: async () => {},
     trashSession: async () => {}, onLibraryChanged: async () => () => {},
@@ -63,10 +64,11 @@ test("coalesces library changes, refreshes open content and searches, and defers
     model: null, thinking: null, tool_calls: [], images: [] }];
   const listSessions = vi.fn(async () => [session]);
   const getTranscript = vi.fn(async () => { if (fail) throw new Error("Temporary read failure"); return structuredClone(content); });
-  const searchSessions = vi.fn(async () => []);
+  const searchGrouped = vi.fn(async () => ({groups:[],total_sessions:0,total_message_matches:0}));
   const api: WorkbenchBackend = {
     listSessions, getSession: async () => missing ? null : session,
-    getTranscript, searchSessions, listProjects: async () => [],
+    getTranscript, searchSessions: async () => [], searchGrouped,
+    searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
     setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => {},
     onLibraryChanged: async callback => { changed = callback; return () => { changed = () => {}; }; },
@@ -118,9 +120,84 @@ test("coalesces library changes, refreshes open content and searches, and defers
       input.dispatchEvent(new Event('input', { bubbles: true }));
       await vi.advanceTimersByTimeAsync(121);
     });
-    const searches = searchSessions.mock.calls.length;
+    const searches = searchGrouped.mock.calls.length;
     await notify();
     await act(async () => { await vi.advanceTimersByTimeAsync(121); });
-    expect(searchSessions.mock.calls.length).toBeGreaterThan(searches);
+    expect(searchGrouped.mock.calls.length).toBeGreaterThan(searches);
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+});
+
+test("groups search, pages sessions and excerpts, respects archives, and rejects stale responses", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.useFakeTimers();
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  const { backend } = await import("./api");
+  const first = { ...session, title: "Needle result" };
+  const second = { ...session, key: "codex:two", title: "Second result" };
+  const excerpt = (seq: number) => ({seq, snippet:`Needle <img src=x onerror=alert(1)> match ${seq}`});
+  let changed = () => {};
+  let totalSessions = 51;
+  let finishSlow!: (value: import("./api").GroupedSearch) => void;
+  const searchGrouped = vi.fn(async (query: string, _filter: unknown, _sort: unknown, offset: number) => {
+    if (query === "slow") return new Promise<import("./api").GroupedSearch>(resolve => { finishSlow = resolve; });
+    return {groups:[{session:offset ? second : first,title_match:true,message_matches:150,excerpts:[excerpt(0),excerpt(1),excerpt(2)]}],total_sessions:totalSessions,total_message_matches:151};
+  });
+  const searchSessionMatches = vi.fn(async (_query: string, _filter: unknown, _key: string, offset: number) => ({
+    matches:Array.from({length:20},(_,i)=>excerpt(offset+i)),total_matches:150,
+  }));
+  const api: WorkbenchBackend = { ...backend,
+    listSessions:async()=>[first,second],listProjects:async()=>[],getSession:async()=>first,
+    getTranscript:async()=>[0,1,2].map(seq=>({seq,role:"assistant",kind:"text",text:`body ${seq}`,timestamp:null,model:null,thinking:null,tool_calls:[],images:[]})),
+    searchGrouped,searchSessionMatches,onLibraryChanged:async callback=>{changed=callback;return ()=>{};},
+  };
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const click = async (label: string) => { await act(async()=>{
+    Array.from(host.querySelectorAll("button")).find(button=>button.textContent===label || button.getAttribute("aria-label")===label)!.click();
+  }); };
+  const type = async (value: string) => {
+    await act(async()=>{
+      const input=host.querySelector<HTMLInputElement>('input[type="search"]')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,value);
+      input.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
+  };
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await type("needle");
+    expect(host.querySelectorAll(".session-card")).toHaveLength(1);
+    expect(host.textContent).toContain("51 sessions · 151 matching messages");
+    expect(host.querySelector("mark")?.textContent?.toLowerCase()).toBe("needle");
+    expect(host.querySelector("img")).toBeNull();
+    expect(searchGrouped.mock.calls.at(-1)?.[1]).toMatchObject({include_archived:false});
+    await click("Open message 2");expect(scroll).toHaveBeenCalled();
+    await click("Show all 150 matches");
+    expect(searchSessionMatches.mock.calls.at(-1)?.slice(2)).toEqual([first.key,0,20]);
+    expect(host.querySelectorAll('button[aria-label^="Open message"]')).toHaveLength(20);
+    await click("Load more matches");
+    expect(host.querySelectorAll('button[aria-label^="Open message"]')).toHaveLength(40);
+    await click("Next sessions");await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
+    expect(searchGrouped.mock.calls.at(-1)?.slice(3)).toEqual([50,50]);
+    expect(host.textContent).toContain("Second result");
+    totalSessions = 1;
+    await act(async()=>{changed();await vi.advanceTimersByTimeAsync(401);});
+    await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
+    await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
+    expect(searchGrouped.mock.calls.at(-1)?.slice(3)).toEqual([0,50]);
+    expect(host.querySelectorAll(".session-card")).toHaveLength(1);
+    totalSessions = 51;
+    await act(async()=>{
+      const select=host.querySelector<HTMLSelectElement>('select[aria-label="Sort search results"]')!;
+      select.value="recent";select.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
+    expect(searchGrouped.mock.calls.at(-1)?.slice(2)).toEqual(["recent",0,50]);
+    await click("Include archived");await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
+    expect(searchGrouped.mock.calls.at(-1)?.[1]).toMatchObject({include_archived:true});
+    await type("slow");await type("fast");
+    await act(async()=>finishSlow({groups:[],total_sessions:0,total_message_matches:0}));
+    expect(host.querySelectorAll(".session-card")).toHaveLength(1);
+    expect(host.textContent).toContain("Needle result");
+  } finally {await act(async()=>root.unmount());vi.useRealTimers();}
 });

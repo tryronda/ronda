@@ -16,7 +16,7 @@ const LivePreview = lazy(() => import("./preview/LivePreview"));
 
 const features = [
   { label: "18 agents", title: "Every agent, one library", body: "Claude Code, Codex, Cursor, Gemini CLI and fourteen more, read straight from the session files they already write." },
-  { label: "~26 ms p95", title: "Find it in milliseconds", body: "Full-text search across every transcript, from code fragments to prose in any language, landing on the exact message." },
+  { label: "~26 ms p95", title: "Find it in milliseconds", body: "Search code fragments or prose in any language. Results group by session, with highlighted excerpts that open the exact message." },
   { label: "terminal", title: "Resume without leaving", body: "Resume opens the agent in a terminal built into Ronda, in the right folder or over SSH. Flip between transcript and terminal while it runs." },
   { label: "intelligence", title: "See how you work", body: "Where the hours go, where agents get stuck, the errors that keep coming back, and how sessions end, plus a year of activity across agents and models." },
   { label: "mcp", title: "Agents that remember", body: "A bundled CLI and read-only MCP server let your agents search past sessions and check whether an error has been seen before." },

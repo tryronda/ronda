@@ -61,6 +61,17 @@ export interface SearchHit {
   snippet: string;
 }
 
+export type SearchSort = "relevance" | "recent";
+export interface SearchExcerpt { seq: number; snippet: string }
+export interface SearchGroup {
+  session: SessionMeta;
+  title_match: boolean;
+  message_matches: number;
+  excerpts: SearchExcerpt[];
+}
+export interface GroupedSearch { groups: SearchGroup[]; total_sessions: number; total_message_matches: number }
+export interface SearchMatches { matches: SearchExcerpt[]; total_matches: number }
+
 export interface ProjectInfo {
   path: string;
   session_count: number;
@@ -84,6 +95,8 @@ export interface WorkbenchBackend {
   getSession(key: string): Promise<SessionMeta | null>;
   getTranscript(key: string): Promise<TranscriptMessage[]>;
   searchSessions(query: string, filter: SessionQuery, limit: number): Promise<SearchHit[]>;
+  searchGrouped(query: string, filter: SessionQuery, sort: SearchSort, offset: number, limit: number): Promise<GroupedSearch>;
+  searchSessionMatches(query: string, filter: SessionQuery, key: string, offset: number, limit: number): Promise<SearchMatches>;
   listProjects(): Promise<ProjectInfo[]>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
@@ -98,6 +111,8 @@ export const backend: WorkbenchBackend = {
   getSession: (key) => invoke("get_session", { key }),
   getTranscript: (key) => invoke("get_transcript", { key }),
   searchSessions: (query, filter, limit) => invoke("search_sessions", { query, filter, limit }),
+  searchGrouped: (query, filter, sort, offset, limit) => invoke("search_grouped", { query, filter, sort, offset, limit }),
+  searchSessionMatches: (query, filter, key, offset, limit) => invoke("search_session_matches", { query, filter, key, offset, limit }),
   listProjects: () => invoke("list_projects"),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
