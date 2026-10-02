@@ -329,4 +329,4 @@ The existing launch video and brand assets can remain accurate as an introductio
 
 ## Implementation status
 
-- 2026-10-02: Work started in an isolated `ronda/live-transcripts` worktree with Ronda bot authentication verified. Live transcript and search refresh, regression coverage, sample preview updates, and release/site coordination are implemented. Local Rust checks, installed-app verification, CI, publication, and production-site verification remain release gates. No release has been published for this work yet.
+- 2026-10-02: Live transcripts merged through [PR #1](https://github.com/tryronda/ronda/pull/1). Local checks, installed-app refresh and terminal checks, existing-index compatibility, and all five PR installer builds passed. The main build compiled and signed macOS arm successfully but failed during DMG packaging without the underlying error in its log; verbose installer output is enabled for diagnosis. Publication and production-site verification remain open gates. No feature release has been published yet.
