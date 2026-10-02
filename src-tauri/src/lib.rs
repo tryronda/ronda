@@ -6,7 +6,7 @@ use ronda_core::{
     intel::report::Intelligence,
     scanner::{Location, ScanReport, Scanner},
     GroupedSearch, Insights, ProjectInfo, SearchHit, SearchMatches, SearchSort, SessionMeta,
-    SessionQuery, Store, TranscriptMessage,
+    SessionPage, SessionQuery, Store, TranscriptMessage,
 };
 use serde::Serialize;
 use std::{
@@ -80,6 +80,24 @@ fn restore_main_window(window: &tauri::WebviewWindow) {
         let _ = window.set_size(tauri::LogicalSize::new(DEFAULT_WINDOW.0, DEFAULT_WINDOW.1));
         let _ = window.center();
     }
+}
+
+#[tauri::command]
+async fn session_page(
+    state: State<'_, Shared>,
+    query: SessionQuery,
+    offset: usize,
+    limit: usize,
+) -> CommandResult<SessionPage> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .session_page(&query, offset, limit)
+            .map_err(error)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1095,6 +1113,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
+            session_page,
             get_session,
             get_transcript,
             search_sessions,

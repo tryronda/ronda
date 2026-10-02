@@ -2,6 +2,12 @@
 
 All notable changes to Ronda are recorded here.
 
+## [Unreleased]
+
+### Added
+
+- Shared date, model, and host filtering with a paginated library backend. Desktop filter controls are in progress.
+
 ## [1.0.4] - 2026-10-02
 
 ### Added

@@ -1,6 +1,7 @@
 use crate::{
     GroupedSearch, InsightRow, Insights, ParsedSession, ProjectInfo, SearchExcerpt, SearchGroup,
-    SearchHit, SearchMatches, SearchSort, SessionMeta, SessionQuery, TranscriptMessage,
+    SearchHit, SearchMatches, SearchSort, SessionMeta, SessionPage, SessionQuery,
+    TranscriptMessage,
 };
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -351,6 +352,7 @@ impl Store {
     }
 
     pub fn list_sessions(&self, filter: &SessionQuery) -> Result<Vec<SessionMeta>> {
+        filter.validate()?;
         let mut stmt = self
             .conn
             .prepare("SELECT meta FROM sessions ORDER BY updated_at DESC")?;
@@ -358,23 +360,12 @@ impl Store {
             .query_map([], |r| r.get::<_, String>(0))?
             .map(|row| -> Result<_> { self.overlay_flags(serde_json::from_str(&row?)?) })
             .collect::<Result<_>>()?;
-        sessions.retain(|m| {
-            (filter.include_archived || !m.archived)
-                && filter.agent.is_none_or(|agent| m.agent == agent)
-                && filter
-                    .project_path
-                    .as_ref()
-                    .is_none_or(|path| m.project_path.as_ref() == Some(path))
-                && filter
-                    .host
-                    .as_ref()
-                    .is_none_or(|host| m.host.as_ref() == Some(host))
-                && (!filter.starred_only || m.starred)
-        });
+        sessions.retain(|session| filter.matches(session));
         sessions.sort_by(|a, b| {
             b.pinned
                 .cmp(&a.pinned)
                 .then(b.updated_at.cmp(&a.updated_at))
+                .then(a.key.cmp(&b.key))
         });
         if let Some(limit) = filter.limit {
             sessions.truncate(limit);
@@ -390,6 +381,28 @@ impl Store {
             params![key, starred, pinned],
         )?;
         Ok(())
+    }
+
+    pub fn session_page(
+        &self,
+        filter: &SessionQuery,
+        offset: usize,
+        limit: usize,
+    ) -> Result<SessionPage> {
+        // ponytail: reuse the metadata scan for exact totals; add SQL paging if the measured library scan exceeds its budget.
+        let mut sessions = self.list_sessions(&SessionQuery {
+            limit: None,
+            ..filter.clone()
+        })?;
+        sessions.retain(|session| session.parent_key.is_none());
+        let total = sessions.len();
+        let limit = limit.clamp(1, 100);
+        Ok(SessionPage {
+            items: sessions.into_iter().skip(offset).take(limit).collect(),
+            total,
+            offset,
+            limit,
+        })
     }
 
     pub fn tombstone(&mut self, key: &str) -> Result<()> {
@@ -433,6 +446,7 @@ impl Store {
         filter: &SessionQuery,
         limit: usize,
     ) -> Result<Vec<SearchHit>> {
+        filter.validate()?;
         let query = query.trim();
         if query.is_empty() {
             return Ok(Vec::new());
@@ -462,18 +476,7 @@ impl Store {
             let Some(session) = self.get_session(&key)? else {
                 continue;
             };
-            if (!filter.include_archived && session.archived)
-                || filter.agent.is_some_and(|a| session.agent != a)
-                || filter
-                    .project_path
-                    .as_ref()
-                    .is_some_and(|p| session.project_path.as_ref() != Some(p))
-                || filter
-                    .host
-                    .as_ref()
-                    .is_some_and(|h| session.host.as_ref() != Some(h))
-                || (filter.starred_only && !session.starred)
-            {
+            if !filter.matches(&session) {
                 continue;
             }
             let snippet = search_snippet(&full, first);
@@ -497,6 +500,7 @@ impl Store {
         filter: &SessionQuery,
         session_key: Option<&str>,
     ) -> Result<Vec<(SearchHit, f64)>> {
+        filter.validate()?;
         let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         if terms.is_empty() {
             return Ok(Vec::new());
@@ -517,6 +521,10 @@ impl Store {
              AND (?5=0 OR COALESCE(u.starred,0)=1) \
              AND (?6=1 OR COALESCE(json_extract(s.meta,'$.archived'),0)=0) \
              AND (?7 IS NULL OR s.key=?7) \
+             AND (?8 IS NULL OR s.updated_at>=?8) \
+             AND (?9 IS NULL OR s.updated_at<?9) \
+             AND (?10 IS NULL OR json_extract(s.meta,'$.model')=?10) \
+             AND (?11=0 OR json_extract(s.meta,'$.host') IS NULL) \
              ORDER BY score,s.updated_at DESC,s.key,f.seq"
         );
         let mut statement = self.conn.prepare(&sql)?;
@@ -528,7 +536,11 @@ impl Store {
                 filter.host,
                 filter.starred_only,
                 filter.include_archived,
-                session_key
+                session_key,
+                filter.updated_from_ms,
+                filter.updated_before_ms,
+                filter.model,
+                filter.local_only
             ],
             |row| {
                 Ok((
@@ -848,6 +860,153 @@ mod search_tests {
             assert!(snippet.len() <= 264);
         }
     }
+    #[test]
+    fn library_pages_and_search_share_filters_without_losing_large_libraries() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for i in 0..601 {
+            let key = format!("session-{i:03}");
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":key,"native_id":key,"agent":"claude-code",
+                "host":if i%4==0 {Some("build")} else {None},
+                "parent_key":if i==600 {Some("session-001")} else {None},
+                "title":"Library fixture","project_path":"/repo","source_path":"/fixture",
+                "created_at":0,"updated_at":i/2,
+                "model":if i%3==0 {None} else if i%2==0 {Some("model-a")} else {Some("model-b")},
+                "source":null,"tokens":null,"archived":i<600 && i%10==0,
+                "metadata_only":false,"can_delete":true,"starred":false,"pinned":false
+            }))
+            .unwrap();
+            let message: TranscriptMessage = serde_json::from_value(serde_json::json!({
+                "seq":0,"role":"assistant","kind":"text","text":if i==600 {"Child message"} else {"Needle message"},
+                "timestamp":null,"model":null,"thinking":null,"tool_calls":[],"images":[]
+            })).unwrap();
+            store
+                .upsert(
+                    &ParsedSession {
+                        meta,
+                        messages: vec![message],
+                    },
+                    "fixture",
+                )
+                .unwrap();
+        }
+        store.set_flags("session-001", true, true).unwrap();
+        store.set_flags("session-599", true, true).unwrap();
+        let old: SessionQuery = serde_json::from_str(r#"{"agent":null,"project_path":null,"host":null,"starred_only":false,"include_archived":false,"limit":1}"#).unwrap();
+        assert_eq!(store.list_sessions(&old).unwrap().len(), 1);
+        let first = store.session_page(&old, 0, 100).unwrap();
+        assert_eq!(
+            (first.total, first.offset, first.limit, first.items.len()),
+            (540, 0, 100, 100)
+        );
+        assert_eq!(first.items[0].key, "session-599");
+        assert_eq!(first.items[1].key, "session-001");
+        assert_eq!(first.items[2].key, "session-598");
+        assert_eq!(first.items[3].key, "session-596");
+        assert_eq!(first.items[4].key, "session-597");
+        let mut keys = HashSet::new();
+        for offset in (0..540).step_by(100) {
+            for meta in store.session_page(&old, offset, 100).unwrap().items {
+                assert!(keys.insert(meta.key));
+            }
+        }
+        assert_eq!(keys.len(), 540);
+        assert!(store.session_page(&old, 600, 100).unwrap().items.is_empty());
+        let all = SessionQuery {
+            include_archived: true,
+            ..Default::default()
+        };
+        assert_eq!(store.session_page(&all, 0, 100).unwrap().total, 600);
+        for filter in [
+            SessionQuery {
+                updated_from_ms: Some(100),
+                updated_before_ms: Some(200),
+                ..all.clone()
+            },
+            SessionQuery {
+                model: Some("model-a".into()),
+                ..all.clone()
+            },
+            SessionQuery {
+                host: Some("build".into()),
+                ..all.clone()
+            },
+            SessionQuery {
+                local_only: true,
+                ..all.clone()
+            },
+            SessionQuery {
+                starred_only: true,
+                ..all.clone()
+            },
+            SessionQuery {
+                updated_from_ms: Some(100),
+                updated_before_ms: Some(200),
+                model: Some("model-a".into()),
+                local_only: true,
+                ..all.clone()
+            },
+        ] {
+            let expected: Vec<_> = (0..600)
+                .filter(|i| {
+                    let updated = i / 2;
+                    (filter.updated_from_ms.is_none_or(|from| updated >= from))
+                        && filter
+                            .updated_before_ms
+                            .is_none_or(|before| updated < before)
+                        && (filter.model.is_none() || i % 2 == 0 && i % 3 != 0)
+                        && (filter.host.is_none() || i % 4 == 0)
+                        && (!filter.local_only || i % 4 != 0)
+                        && (!filter.starred_only || *i == 1 || *i == 599)
+                })
+                .map(|i| format!("session-{i:03}"))
+                .collect();
+            assert_eq!(
+                store.session_page(&filter, 0, 100).unwrap().total,
+                expected.len()
+            );
+            let grouped = store
+                .search_grouped("needle", &filter, SearchSort::Recent, 0, 100)
+                .unwrap();
+            assert_eq!(grouped.total_sessions, expected.len());
+            assert!(grouped
+                .groups
+                .iter()
+                .all(|group| expected.contains(&group.session.key)));
+            let raw = store.search("needle", &filter, 1000).unwrap();
+            assert_eq!(raw.len(), expected.len());
+        }
+        let mut grouped_keys = HashSet::new();
+        for offset in (0..540).step_by(100) {
+            let page = store
+                .search_grouped("needle", &old, SearchSort::Recent, offset, 100)
+                .unwrap();
+            assert_eq!(page.total_sessions, 540);
+            for group in page.groups {
+                assert!(grouped_keys.insert(group.session.key));
+            }
+        }
+        assert_eq!(grouped_keys.len(), 540);
+        for invalid in [
+            SessionQuery {
+                updated_from_ms: Some(20),
+                updated_before_ms: Some(10),
+                ..Default::default()
+            },
+            SessionQuery {
+                local_only: true,
+                host: Some("build".into()),
+                ..Default::default()
+            },
+        ] {
+            assert!(store.session_page(&invalid, 0, 100).is_err());
+            assert!(store
+                .search_grouped("needle", &invalid, SearchSort::Recent, 0, 100)
+                .is_err());
+            assert!(store.search("needle", &invalid, 10).is_err());
+        }
+    }
+
     #[test]
     fn grouped_search_counts_pages_ranks_and_filters_without_a_hit_cap() {
         let mut store = Store::open(Path::new(":memory:")).unwrap();

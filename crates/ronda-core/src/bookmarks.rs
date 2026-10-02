@@ -279,11 +279,32 @@ impl Store {
         })
     }
     pub fn list_bookmarks(&self, query: &str, filter: &SessionQuery) -> Result<Vec<BookmarkView>> {
+        filter.validate()?;
+        // Archived/starred session state does not hide an explicitly saved annotation.
+        let metadata_filter = SessionQuery {
+            agent: None,
+            project_path: None,
+            include_archived: true,
+            starred_only: false,
+            ..filter.clone()
+        };
+        let needs_session = filter.host.is_some()
+            || filter.local_only
+            || filter.model.is_some()
+            || filter.updated_from_ms.is_some()
+            || filter.updated_before_ms.is_some();
         let terms: Vec<_> = query.split_whitespace().map(str::to_lowercase).collect();
         let mut views = Vec::new();
         // ponytail: scan small annotation collections; add indexed paging when measured bookmark browsing needs it.
         for bookmark in self.export_bookmarks()?.bookmarks {
             let session = self.get_session(&bookmark.session_key)?;
+            if session
+                .as_ref()
+                .is_some_and(|session| !metadata_filter.matches(session))
+                || session.is_none() && needs_session
+            {
+                continue;
+            }
             let agent = session.as_ref().map_or(bookmark.agent, |meta| meta.agent);
             let project = session
                 .as_ref()
@@ -458,6 +479,46 @@ mod tests {
         store
             .save_bookmark("ssh:build:local", 7, "Remote note", false, None)
             .unwrap();
+        for (filter, expected) in [
+            (
+                SessionQuery {
+                    local_only: true,
+                    ..Default::default()
+                },
+                1,
+            ),
+            (
+                SessionQuery {
+                    host: Some("build".into()),
+                    ..Default::default()
+                },
+                1,
+            ),
+            (
+                SessionQuery {
+                    updated_from_ms: Some(1),
+                    updated_before_ms: Some(2),
+                    ..Default::default()
+                },
+                2,
+            ),
+            (
+                SessionQuery {
+                    updated_before_ms: Some(1),
+                    ..Default::default()
+                },
+                0,
+            ),
+            (
+                SessionQuery {
+                    model: Some("unknown-model".into()),
+                    ..Default::default()
+                },
+                0,
+            ),
+        ] {
+            assert_eq!(store.list_bookmarks("", &filter).unwrap().len(), expected);
+        }
         assert_eq!(
             store
                 .list_bookmarks("αλφα", &SessionQuery::default())
@@ -516,6 +577,26 @@ mod tests {
             .unwrap()
             .iter()
             .all(|view| view.status == BookmarkStatus::Unavailable));
+        assert!(store
+            .list_bookmarks(
+                "",
+                &SessionQuery {
+                    local_only: true,
+                    ..Default::default()
+                }
+            )
+            .unwrap()
+            .is_empty());
+        assert!(store
+            .list_bookmarks(
+                "",
+                &SessionQuery {
+                    updated_from_ms: Some(2),
+                    updated_before_ms: Some(1),
+                    ..Default::default()
+                }
+            )
+            .is_err());
         let unavailable = store
             .save_bookmark(
                 "local",

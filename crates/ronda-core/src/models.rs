@@ -151,6 +151,7 @@ pub struct ResumeSpec {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SessionQuery {
     pub agent: Option<AgentId>,
     pub project_path: Option<String>,
@@ -158,6 +159,57 @@ pub struct SessionQuery {
     pub starred_only: bool,
     pub include_archived: bool,
     pub limit: Option<usize>,
+    pub updated_from_ms: Option<i64>,
+    pub updated_before_ms: Option<i64>,
+    pub model: Option<String>,
+    pub local_only: bool,
+}
+
+impl SessionQuery {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.local_only || self.host.is_none(),
+            "Choose either local sessions or a remote host"
+        );
+        anyhow::ensure!(
+            !matches!((self.updated_from_ms, self.updated_before_ms), (Some(from), Some(before)) if from >= before),
+            "Date range must end after its start"
+        );
+        Ok(())
+    }
+
+    pub fn matches(&self, session: &SessionMeta) -> bool {
+        (self.include_archived || !session.archived)
+            && self.agent.is_none_or(|agent| session.agent == agent)
+            && self
+                .project_path
+                .as_ref()
+                .is_none_or(|path| session.project_path.as_ref() == Some(path))
+            && self
+                .host
+                .as_ref()
+                .is_none_or(|host| session.host.as_ref() == Some(host))
+            && (!self.local_only || session.host.is_none())
+            && self
+                .model
+                .as_ref()
+                .is_none_or(|model| session.model.as_ref() == Some(model))
+            && self
+                .updated_from_ms
+                .is_none_or(|from| session.updated_at >= from)
+            && self
+                .updated_before_ms
+                .is_none_or(|before| session.updated_at < before)
+            && (!self.starred_only || session.starred)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionPage {
+    pub items: Vec<SessionMeta>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
