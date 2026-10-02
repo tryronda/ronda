@@ -35,7 +35,10 @@ export function useLibraryRefresh(refresh: () => () => void, deps: unknown[], ac
     void subscribe(() => {
       if (!activeRef.current) { stale.current = true; return; }
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => { if (live) run(); }, delay);
+      timer = window.setTimeout(() => {
+        if (!live) return;
+        if (activeRef.current) run(); else stale.current = true;
+      }, delay);
     }).then(stop => { if (live) unlisten = stop; else stop(); });
     return () => { live = false; window.clearTimeout(timer); unlisten?.(); cancel.current?.(); };
   }, [delay, subscribe]);

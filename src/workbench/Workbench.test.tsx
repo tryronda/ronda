@@ -61,10 +61,11 @@ test("coalesces library changes, refreshes open content and searches, and defers
   let fail = false;
   let content: TranscriptMessage[] = [{ seq: 0, role: "user", kind: "text", text: "Original message", timestamp: null,
     model: null, thinking: null, tool_calls: [], images: [] }];
+  const listSessions = vi.fn(async () => [session]);
   const getTranscript = vi.fn(async () => { if (fail) throw new Error("Temporary read failure"); return structuredClone(content); });
   const searchSessions = vi.fn(async () => []);
   const api: WorkbenchBackend = {
-    listSessions: async () => [session], getSession: async () => missing ? null : session,
+    listSessions, getSession: async () => missing ? null : session,
     getTranscript, searchSessions, listProjects: async () => [],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
     setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => {},
@@ -96,7 +97,11 @@ test("coalesces library changes, refreshes open content and searches, and defers
     fail = true;
     await notify(); expect(host.textContent).toContain("Temporary read failure");
     expect(host.textContent).toContain("Edited message"); fail = false;
+    await act(async () => changed());
     await render(false);
+    const pendingListCalls = listSessions.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(401); });
+    expect(listSessions).toHaveBeenCalledTimes(pendingListCalls);
     const hiddenCalls = getTranscript.mock.calls.length;
     content.push({ ...content[0], seq: 2, text: "While hidden" });
     await notify(); expect(getTranscript).toHaveBeenCalledTimes(hiddenCalls);
