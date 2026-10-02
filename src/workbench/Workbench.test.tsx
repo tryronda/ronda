@@ -131,7 +131,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
 test("groups search, pages sessions and excerpts, respects archives, and rejects stale responses", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers();
-  const scroll = vi.fn();
+  const scroll = vi.fn(function(this: Element) { return this.id; });
   Element.prototype.scrollIntoView = scroll;
   const { backend } = await import("./api");
   const first = { ...session, title: "Needle result" };
@@ -147,9 +147,11 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
   const searchSessionMatches = vi.fn(async (_query: string, _filter: unknown, _key: string, offset: number) => ({
     matches:Array.from({length:20},(_,i)=>excerpt(offset+i)),total_matches:150,
   }));
+  let finishTranscript!: (messages: TranscriptMessage[]) => void;
+  const delayedTranscript = new Promise<TranscriptMessage[]>(resolve => { finishTranscript = resolve; });
   const api: WorkbenchBackend = { ...backend,
     listSessions:async()=>[first,second],listProjects:async()=>[],getSession:async()=>first,
-    getTranscript:async()=>[0,1,2].map(seq=>({seq,role:"assistant",kind:"text",text:`body ${seq}`,timestamp:null,model:null,thinking:null,tool_calls:[],images:[]})),
+    getTranscript:async()=>delayedTranscript,
     searchGrouped,searchSessionMatches,onLibraryChanged:async callback=>{changed=callback;return ()=>{};},
   };
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
@@ -172,7 +174,10 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
     expect(host.querySelector("mark")?.textContent?.toLowerCase()).toBe("needle");
     expect(host.querySelector("img")).toBeNull();
     expect(searchGrouped.mock.calls.at(-1)?.[1]).toMatchObject({include_archived:false});
-    await click("Open message 2");expect(scroll).toHaveBeenCalled();
+    await click("Open message 2");expect(scroll).not.toHaveBeenCalled();
+    expect(host.querySelector(".transcript-skeleton")).not.toBeNull();
+    await act(async()=>finishTranscript([0,1,2].map(seq=>({seq,role:"assistant",kind:"text",text:`body ${seq}`,timestamp:null,model:null,thinking:null,tool_calls:[],images:[]}))));
+    expect(scroll.mock.results.at(-1)?.value).toBe("message-2");
     await click("Find in transcript");
     // Toggle by label so this check covers the actual shared UI.
     const prompts = Array.from(host.querySelectorAll("label")).find(label=>label.textContent?.includes("Prompts only"))!.querySelector<HTMLInputElement>("input")!;
