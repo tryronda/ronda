@@ -90,6 +90,8 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then extension=".exe"; fi
           test -s "src-tauri/binaries/ronda-cli-${CARGO_BUILD_TARGET}${extension}"
           test -s "src-tauri/binaries/ronda-mcp-${CARGO_BUILD_TARGET}${extension}"
+      - name: Check resume readiness on the packaging platform
+        run: cargo test -p ronda --lib resume::tests
       # Signs and notarizes with a Developer ID when the Apple secrets are configured; otherwise the app is ad-hoc signed.
       - name: Configure macOS signing
         if: runner.os == 'macOS'

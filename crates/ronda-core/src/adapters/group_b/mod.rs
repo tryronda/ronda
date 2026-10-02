@@ -1013,7 +1013,14 @@ impl AgentAdapter for Adapter {
             AgentId::Omp => ("omp", vec!["--resume".into(), meta.native_id.clone()]),
             AgentId::Grok => ("grok", vec!["--resume".into(), meta.native_id.clone()]),
             AgentId::Kimi => ("kimi", vec!["--session".into(), meta.native_id.clone()]),
-            AgentId::Dsh => ("npx", vec!["@deepseek-ai/dsh".into(), "web".into()]),
+            AgentId::Dsh => (
+                "npx",
+                vec![
+                    "--no-install".into(),
+                    "@deepseek-ai/dsh".into(),
+                    "web".into(),
+                ],
+            ),
             _ => return None,
         };
         Some(ResumeSpec {

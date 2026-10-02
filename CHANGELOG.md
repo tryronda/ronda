@@ -4,6 +4,17 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-10-02
+
+### Added
+
+- Read-only resume readiness explanations, effective launch commands, and exact local project-folder recovery with removable mappings in Settings.
+- Explicit sample readiness and Desktop required responses in the browser preview.
+
+### Fixed
+
+- Embedded, restarted, and external resumes share directory and executable checks in the launch environment; incomplete checks stay unknown and remote environments remain unchecked.
+
 ## [1.0.9] - 2026-10-02
 
 ### Added

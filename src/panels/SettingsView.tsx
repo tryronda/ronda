@@ -47,6 +47,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [theme, setTheme] = useState('morning');
   const [locations, setLocations] = useState<Location[]>([]);
   const [customRoots, setCustomRoots] = useState<CustomRoots>({});
+  const [resumeMappings,setResumeMappings]=useState<Record<string,string>>({});
   const [disabledRoots, setDisabledRoots] = useState<string[]>([]);
   const [locationAgent, setLocationAgent] = useState('claude-code');
   const [locationPath, setLocationPath] = useState('');
@@ -60,12 +61,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [loading, setLoading] = useState(true);
 
   async function loadLocations() {
-    const [rows, custom, disabled] = await Promise.all([
+    const [rows, custom, disabled, mappings] = await Promise.all([
       invoke<Location[]>('list_locations'),
       invoke<string | null>('get_pref', { key: 'custom_roots' }),
       invoke<string | null>('get_pref', { key: 'disabled_roots' }),
+      invoke<string | null>('get_pref', { key: 'resume_project_mappings' }),
     ]);
     setLocations(rows);
+    try {setResumeMappings(mappings ? JSON.parse(mappings) as Record<string,string> : {});} catch {setResumeMappings({});}
     try { setCustomRoots(custom ? JSON.parse(custom) as CustomRoots : {}); } catch { setCustomRoots({}); }
     try { setDisabledRoots(disabled ? JSON.parse(disabled) as string[] : []); } catch { setDisabledRoots([]); }
   }
@@ -166,7 +169,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     <div className="settings-layout">
       <nav className="settings-nav" aria-label={t.title}>
         {(['general','locations','remote','connect','data','updates','about'] as Section[]).map(key =>
-          <button key={key} className={section === key ? 'active' : ''} aria-current={section === key ? 'page' : undefined} onClick={() => { setSection(key); setError(''); setNotice(''); }}>
+          <button key={key} className={section === key ? 'active' : ''} aria-current={section === key ? 'page' : undefined} onClick={() => { setSection(key); setError(''); setNotice(''); if(key==='locations')void loadLocations().catch(reason=>setError(String(reason))); }}>
             {section === key && <span className="settings-nav-indicator" />}
             <span className="settings-nav-label">{t[key]}</span></button>)}
       </nav>
@@ -196,6 +199,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 <span>{location.enabled ? t.enabled : t.disabled}</span>
               </span>{location.custom && <button className="panel-link" disabled={busy} onClick={() => removeLocation(location)}>{t.remove}</button>}</div>
             </div>) : <p className="panel-empty">{t.noLocations}</p>}</div>
+          <h3>Recovered project folders</h3><p className="panel-help">Exact local project mappings affect resume only. Session sources and remote folders stay unchanged.</p>
+          {Object.entries(resumeMappings).map(([from,to])=><div key={from} className="location-row"><div><code>{from}</code><code>→ {to}</code></div>
+            <button className="panel-link" disabled={busy} onClick={()=>void act(async()=>{const next={...resumeMappings};delete next[from];
+              await invoke('set_pref',{key:'resume_project_mappings',value:JSON.stringify(next)});await loadLocations();},t.saved)}>Remove mapping for {from}</button></div>)}
+          {!Object.keys(resumeMappings).length && <p className="panel-empty">No recovered project folders.</p>}
           <h3>{t.addLocation}</h3><div className="settings-form">
             <select aria-label={t.agent} value={locationAgent} onChange={event => setLocationAgent(event.target.value)}>{agents.map(agent => <option key={agent}>{agent}</option>)}</select>
             <input aria-label={t.path} placeholder={t.path} value={locationPath} onChange={event => setLocationPath(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') addLocation(); }} />

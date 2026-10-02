@@ -46,10 +46,7 @@ fn size(cols: u16, rows: u16) -> PtySize {
 fn command(plan_command: &str, directory: &str) -> CommandBuilder {
     #[cfg(not(target_os = "windows"))]
     {
-        let shell = std::env::var("SHELL")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "/bin/zsh".into());
+        let shell = crate::resume::login_shell();
         let mut cmd = CommandBuilder::new(&shell);
         // A login, interactive shell loads the user's PATH (apps opened from Finder get a bare one).
         cmd.args([

@@ -5,7 +5,8 @@ import {MotionGlobalConfig} from "motion/react";
 MotionGlobalConfig.skipAnimations=true;
 Reflect.deleteProperty(Element.prototype,"animate");
 import {expect,test,vi} from "vitest";
-import {backend} from "./api";
+import {backend,queryDefaults} from "./api";
+import {Workbench} from "./Workbench";
 import {SessionConnections} from "./SessionConnections";
 import {installDemoBackend,uninstallDemoBackend} from "../../site/preview/demo";
 
@@ -43,11 +44,11 @@ test("connections open indexed children and originals, refresh only when active,
 
 test("changing the selected transcript replaces its connection evidence",async()=>{
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});installDemoBackend();
-  const {Workbench}=await import("./Workbench");
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   try{
+    expect((await backend.sessionPage(queryDefaults,0,100)).items.length).toBe(100);
     await act(async()=>root.render(<Workbench api={backend} />));
-    await act(async()=>Array.from(host.querySelectorAll<HTMLButtonElement>('.session-card')).find(button=>button.textContent!.includes("Make session search"))!.click());
+    await act(async()=>{const first=Array.from(host.querySelectorAll<HTMLButtonElement>('.session-card')).find(button=>button.textContent!.includes("Make session search"));if(!first)throw new Error(host.textContent ?? "No rendered library");first.click();});
     expect(host.querySelector('section[aria-label="Session connections"]')!.textContent).toContain("Subagents · 2");
     await act(async()=>Array.from(host.querySelectorAll<HTMLButtonElement>('section[aria-label="Session connections"] button')).find(button=>button.textContent==="Project overview synthetic error 1")!.click());
     expect(host.querySelector('main[aria-label="Transcript"] h2')!.textContent).toBe("Project overview synthetic error 1");

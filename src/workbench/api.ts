@@ -124,6 +124,9 @@ export interface BookmarkBackup { version: number; bookmarks: MessageBookmark[];
 export interface BookmarkReplacement { session_key: string; seq: number; expected_updated_at: number; }
 export interface BookmarkImport { imported: number; unchanged: number; conflicts: {existing: MessageBookmark; incoming: MessageBookmark}[]; }
 
+export type ResumeReason = "unsupported_agent"|"unsupported_child"|"unknown_project"|"missing_folder"|"missing_executable"|"inspection_unknown"|"remote_environment_unchecked";
+export interface ResumeReadiness {supported:boolean;ready:boolean;host:string|null;original_directory:string|null;directory:string|null;program:string|null;args:string[];command:string|null;reasons:ResumeReason[];sample?:boolean;}
+
 export interface WorkbenchBackend {
   getPref(key: string): Promise<string | null>;
   setPref(key: string, value: string): Promise<void>;
@@ -144,6 +147,8 @@ export interface WorkbenchBackend {
   sessionRelationships(key:string):Promise<SessionRelationships>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
+  inspectResume(key:string):Promise<ResumeReadiness>;
+  setResumeFolder(key:string,folder:string):Promise<ResumeReadiness>;
   resumeSession(key: string): Promise<string>;
   exportSession(key: string, destination: string): Promise<void>;
   trashSession(key: string): Promise<void>;
@@ -170,6 +175,8 @@ export const backend: WorkbenchBackend = {
   sessionRelationships:key=>invoke("get_session_relationships",{key}),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
+  inspectResume:key=>invoke("inspect_resume",{key}),
+  setResumeFolder:(key,folder)=>invoke("set_resume_folder",{key,folder}),
   resumeSession: (key) => invoke("resume_session", { key }),
   exportSession: (key, destination) => invoke("export_session", { key, destination }),
   trashSession: (key) => invoke("trash_session", { key }),

@@ -134,17 +134,21 @@ chmod +x Ronda-linux-x86_64.AppImage
   {
     id: "resume", title: "Resume a session",
     body: <>
-      <P>Open a session and click **Resume**. Ronda opens a terminal inside the app and runs the agent's own resume command in the session's project folder, so you pick up the same conversation with the same agent.</P>
+      <P>Open a session and check **Resume readiness**. Unsupported agents and children, unknown projects, missing folders or executables, and incomplete inspection have explicit explanations. **Check resume again** retries the read-only check; selecting a session does not start an agent or SSH connection.</P>
+      <P>Click **Resume** when available. Ronda opens a terminal inside the app and runs the agent's own resume command in the session's project folder, so you pick up the same conversation with the same agent.</P>
       <List items={[
-        "The session header gets a **Transcript / Terminal** switch. The dot next to **Terminal** pulses while the agent is running.",
+        "The session header gets a **Transcript / Terminal** switch. The dot next to **Terminal** pulses while the terminal process is open; it does not verify agent startup.",
         "Terminals keep running while you open other sessions or switch to Insights or Settings. Each resumed session has its own terminal.",
         "When the agent exits, the terminal stays open in your login shell in the same folder. **Restart** runs the resume command again.",
         "**Open in system terminal** hands the session to Terminal on macOS, Windows Terminal or PowerShell on Windows, or `x-terminal-emulator` on Linux.",
         "**Stop and close terminal** ends the process and returns to the transcript.",
       ]} />
       <P>The terminal starts your login shell (`$SHELL -l`, or PowerShell on Windows), so the agent finds the same `PATH` it has in your usual terminal. Resume needs a known project folder and is not available for subagent transcripts.</P>
+      <P>For a moved local project, **Choose project folder** opens the native folder picker. The exact original path maps to the selected existing folder for every local session from that project. **Effective folder** shows the mapping; session metadata and agent files stay untouched. Remove it under **Settings → Locations → Recovered project folders**. Remote sessions never use local mappings.</P>
+      <P>Embedded Resume, Restart, and Open in system terminal inspect again immediately before launch. Executable lookup uses the configured login shell on macOS/Linux or PowerShell on Windows with a two-second timeout. An incomplete check is **Unknown**, rather than proof the executable is missing. Ronda does not install an agent; DeepSeek’s `npx` resume uses `--no-install` and reports a missing package in terminal output. A spawned terminal does not verify successful startup; terminal errors and output remain visible.</P>
+      <P>The live preview labels readiness as sample data. **Choose sample folder** changes only a synthetic mapping, and Resume reports **Desktop required**. It never inspects the visitor’s filesystem or starts an agent.</P>
       <P>Open transcripts refresh as local agent files change. When you are reading earlier messages, **New messages** lets you jump to the latest content without losing your place. Remote transcripts refresh after a successful sync.</P>
-      <P>Remote sessions resume on their host: the terminal runs `ssh -t` to the host and starts the agent there. **Open in system terminal** copies that SSH command to the clipboard instead.</P>
+      <P>Remote folders and agent availability are explicitly unchecked; only local SSH availability is inspected. Launch can report authentication, connection, or remote-environment errors. Remote sessions resume on their host: the terminal runs `ssh -t` to the host and starts the agent there. **Open in system terminal** copies that SSH command to the clipboard instead.</P>
     </>,
   },
   {
@@ -170,6 +174,7 @@ chmod +x Ronda-linux-x86_64.AppImage
     id: "locations", title: "Locations",
     body: <>
       <P>**Settings → Locations** lists the default path detected for each agent. Turn a location off to stop indexing it, or add a folder for agents that store sessions somewhere custom.</P>
+      <P>**Recovered project folders** lists exact local resume mappings separately from session source locations. Removing a mapping restores the recorded project path for the next inspection and launch. If resume reports **Missing folder**, choose an existing local folder. If it reports **Missing executable**, check the agent installation in your login shell. **Unknown** checks can be retried without starting the agent.</P>
       <P>File-backed sessions update as agents write them. **Refresh** rescans every source. Databases with a live SQLite WAL are opened read-only.</P>
     </>,
   },

@@ -19,6 +19,7 @@ use std::{
 };
 use tauri::{Emitter, Manager, State};
 
+mod resume;
 mod terminal;
 #[cfg(target_os = "macos")]
 mod traffic_lights;
@@ -791,18 +792,14 @@ async fn terminal_open(
     events: tauri::ipc::Channel<terminal::TerminalEvent>,
 ) -> CommandResult<u32> {
     let plan = off_main(state, move |state| resume_plan(state, &key)).await?;
-    let command = match &plan.host {
-        Some(host) => format!(
-            "ssh -t {} {}",
-            shell_quote(host),
-            shell_quote(&plan.command)
-        ),
-        None => plan.command.clone(),
-    };
+    let command = plan.command.clone();
     // A remote session's directory lives on the host; start the local shell somewhere that exists.
-    let directory = if plan.host.is_some() || !Path::new(&plan.directory).is_dir() {
-        std::env::var("HOME").unwrap_or_else(|_| "/".into())
+    let directory = if plan.host.is_some() {
+        resume::local_home()
     } else {
+        if !Path::new(&plan.directory).is_dir() {
+            return Err("Project folder became unavailable before launch".into());
+        }
         plan.directory.clone()
     };
     terminals.open(
@@ -845,46 +842,63 @@ async fn terminal_close(terminals: State<'_, terminal::Terminals>, id: u32) -> C
     terminals.close(id)
 }
 
-/// How to resume a session: where, with what, and the equivalent POSIX shell command.
-struct ResumePlan {
-    directory: String,
-    program: String,
-    args: Vec<String>,
-    host: Option<String>,
-    /// `cd <dir> && <program> <args…>`, quoted for a POSIX shell.
-    command: String,
-}
+type ResumePlan = resume::Plan;
 
 fn resume_plan(state: &AppState, key: &str) -> CommandResult<ResumePlan> {
-    let meta = state
-        .store
-        .lock()
-        .map_err(error)?
-        .get_session(key)
-        .map_err(error)?
-        .ok_or("unknown session")?;
-    let spec = state
-        .scanner
-        .adapter(meta.agent)
-        .and_then(|a| a.resume(&meta))
-        .ok_or("resume is unavailable for this agent")?;
-    let directory = spec
-        .cwd
-        .clone()
-        .or(meta.project_path.clone())
-        .ok_or("project directory is unknown")?;
-    let command = std::iter::once(shell_quote(&spec.program))
-        .chain(spec.args.iter().map(|a| shell_quote(a)))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let command = format!("cd {} && {command}", shell_quote(&directory));
-    Ok(ResumePlan {
-        directory,
-        program: spec.program,
-        args: spec.args,
-        host: meta.host,
-        command,
+    resume::plan(state, key)
+}
+
+#[tauri::command]
+async fn inspect_resume(state: State<'_, Shared>, key: String) -> CommandResult<resume::Readiness> {
+    off_main(state, move |state| resume::inspect(state, &key)).await
+}
+
+#[tauri::command]
+async fn set_resume_folder(
+    state: State<'_, Shared>,
+    app: tauri::AppHandle,
+    key: String,
+    folder: String,
+) -> CommandResult<resume::Readiness> {
+    let result = off_main(state, move |state| {
+        if key.is_empty()
+            || key.chars().count() > 4096
+            || folder.chars().count() > 4096
+            || folder.contains('\0')
+            || !Path::new(&folder).is_absolute()
+            || !Path::new(&folder).is_dir()
+        {
+            return Err("Choose an existing absolute project folder".into());
+        }
+        {
+            let store = state.store.lock().map_err(error)?;
+            let meta = store
+                .get_session(&key)
+                .map_err(error)?
+                .ok_or("unknown session")?;
+            if meta.host.is_some() || meta.parent_key.is_some() {
+                return Err("Folder recovery is available for local root sessions only".into());
+            }
+            let spec = state
+                .scanner
+                .adapter(meta.agent)
+                .and_then(|adapter| adapter.resume(&meta))
+                .ok_or("Unsupported agent")?;
+            let original = spec
+                .cwd
+                .or(meta.project_path)
+                .ok_or("Project directory is unknown")?;
+            let mut values = resume::mappings(store.pref_get(resume::MAPPINGS).map_err(error)?)?;
+            values.insert(original, folder);
+            let value = serde_json::to_string(&values).map_err(error)?;
+            resume::mappings(Some(value.clone()))?;
+            store.pref_set(resume::MAPPINGS, &value).map_err(error)?;
+        }
+        resume::inspect(state, &key)
     })
+    .await?;
+    let _ = app.emit("library-changed", ());
+    Ok(result)
 }
 
 #[tauri::command]
@@ -892,41 +906,26 @@ async fn resume_session(state: State<'_, Shared>, key: String) -> CommandResult<
     off_main(state, move |state| {
         let ResumePlan {
             directory,
-            program,
-            args,
             host,
             command,
         } = resume_plan(state, &key)?;
-        #[cfg(target_os = "windows")]
-        let (directory, spec) = (
-            directory.as_str(),
-            ronda_core::ResumeSpec {
-                program,
-                args,
-                cwd: None,
-            },
-        );
-        #[cfg(not(target_os = "windows"))]
-        let _ = (directory, program, args);
-        if let Some(host) = &host {
-            #[cfg(target_os = "windows")]
-            return Ok(format!(
-                "ssh -t {} {}",
-                powershell_quote(host),
-                powershell_quote(&command)
-            ));
-            #[cfg(not(target_os = "windows"))]
-            return Ok(format!(
-                "ssh -t {} {}",
-                shell_quote(host),
-                shell_quote(&command)
-            ));
+        if host.is_some() {
+            return Ok(command);
         }
+        #[cfg(not(target_os = "windows"))]
+        let shell = resume::login_shell();
         #[cfg(target_os = "macos")]
         {
             let script = format!(
                 "tell application \"Terminal\" to do script \"{}\"",
-                command.replace('\\', "\\\\").replace('"', "\\\"")
+                format!(
+                    "cd {} && {} -l -i -c {}",
+                    shell_quote(&directory),
+                    shell_quote(&shell),
+                    shell_quote(&command)
+                )
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
             );
             std::process::Command::new("osascript")
                 .args(["-e", &script])
@@ -936,37 +935,29 @@ async fn resume_session(state: State<'_, Shared>, key: String) -> CommandResult<
         #[cfg(target_os = "linux")]
         {
             std::process::Command::new("x-terminal-emulator")
-                .args(["-e", "sh", "-lc", &command])
+                .args(["-e", &shell, "-l", "-i", "-c", &command])
+                .current_dir(&directory)
                 .spawn()
                 .map_err(error)?;
         }
         #[cfg(target_os = "windows")]
         {
-            let terminal = std::process::Command::new("wt.exe")
-                .args(["-d", directory, &spec.program])
-                .args(&spec.args)
-                .spawn();
-            if terminal.is_err() {
-                let args = spec
-                    .args
-                    .iter()
-                    .map(|arg| powershell_quote(arg))
-                    .collect::<Vec<_>>()
-                    .join(",");
-                let mut script = format!(
-                    "Start-Process -FilePath {} -WorkingDirectory {}",
-                    powershell_quote(&spec.program),
-                    powershell_quote(directory)
-                );
-                if !args.is_empty() {
-                    script.push_str(&format!(" -ArgumentList @({args})"));
-                }
+            let arguments = ["-NoLogo", "-NoExit", "-Command", &command];
+            if std::process::Command::new("wt.exe")
+                .args(["-d", &directory, "powershell.exe"])
+                .args(arguments)
+                .spawn()
+                .is_err()
+            {
                 std::process::Command::new("powershell.exe")
-                    .args(["-NoProfile", "-Command", &script])
+                    .args(arguments)
+                    .current_dir(&directory)
                     .spawn()
                     .map_err(error)?;
             }
         }
+        #[cfg(not(target_os = "windows"))]
+        let _ = directory;
         Ok(command)
     })
     .await
@@ -986,8 +977,17 @@ async fn get_pref(state: State<'_, Shared>, key: String) -> CommandResult<Option
 }
 
 #[tauri::command]
-async fn set_pref(state: State<'_, Shared>, key: String, value: String) -> CommandResult<()> {
+async fn set_pref(
+    state: State<'_, Shared>,
+    app: tauri::AppHandle,
+    key: String,
+    value: String,
+) -> CommandResult<()> {
+    let mapping_changed = key == resume::MAPPINGS;
     off_main(state, move |state| {
+        if key == resume::MAPPINGS {
+            resume::mappings(Some(value.clone()))?;
+        }
         state
             .store
             .lock()
@@ -995,7 +995,11 @@ async fn set_pref(state: State<'_, Shared>, key: String, value: String) -> Comma
             .pref_set(&key, &value)
             .map_err(error)
     })
-    .await
+    .await?;
+    if mapping_changed {
+        let _ = app.emit("library-changed", ());
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -1240,6 +1244,8 @@ pub fn run() {
             export_context,
             trash_session,
             resume_session,
+            inspect_resume,
+            set_resume_folder,
             terminal_open,
             terminal_write,
             terminal_resize,

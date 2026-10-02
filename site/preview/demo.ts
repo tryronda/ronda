@@ -567,7 +567,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
   await bookmarkSeed;
   switch (command) {
     case "get_pref": return prefs.get(args.key as string) ?? null;
-    case "set_pref": prefs.set(args.key as string, args.value as string); return null;
+    case "set_pref": prefs.set(args.key as string, args.value as string); if(args.key==="resume_project_mappings")libraryListeners.forEach(callback=>callback()); return null;
     case "list_sessions": return listSessions(args.query as SessionQuery);
     case "library_options": {
       const roots = listSessions({...queryDefaults,include_archived:true,limit:null}).filter(session=>!session.parent_key);
@@ -594,7 +594,26 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
       sessions = sessions.map(session => session.key === args.key ? { ...session, starred: args.starred as boolean, pinned: args.pinned as boolean } : session);
       return null;
     case "trash_session": sessions = sessions.filter(session => session.key !== args.key); return null;
-    case "resume_session": return "claude --resume demo";
+    case "inspect_resume": {
+      const session=sessions.find(item=>item.key===args.key);if(!session)throw new Error("Unknown sample session");
+      const program=({"claude-code":"claude",codex:"codex",cursor:"cursor-agent",qoder:"qoder",opencode:"opencode",pi:"pi"} as Record<string,string>)[session.agent];
+      const mappings=JSON.parse(prefs.get("resume_project_mappings") ?? "{}") as Record<string,string>;
+      const directory=session.host ? session.project_path : mappings[session.project_path ?? ""] ?? session.project_path;
+      const reasons=session.parent_key ? ["unsupported_child"] : !program ? ["unsupported_agent"] : !directory ? ["unknown_project"] : session.host ? ["remote_environment_unchecked"] : session.key==="codex:related-search" && directory===session.project_path ? ["missing_folder"] : [];
+      const quote=(value:string)=>`'${value.replaceAll("'","'\\''")}'`;
+      const resumeArgs=[session.agent==="codex" || session.agent==="cursor" ? "resume" : session.agent==="opencode" || session.agent==="pi" ? "--session" : "--resume",session.native_id];
+      const command=directory && program ? `cd ${quote(directory)} && ${quote(program)} ${resumeArgs.map(quote).join(" ")}` : null;
+      return {supported:!!program && !session.parent_key,ready:reasons.every(reason=>reason==="remote_environment_unchecked"),host:session.host,original_directory:session.project_path,directory,program:program ?? null,args:resumeArgs,command:session.host && command ? `ssh -t ${quote(session.host)} ${quote(command)}` : command,reasons,sample:true};
+    }
+    case "set_resume_folder": {
+      const session=sessions.find(item=>item.key===args.key);
+      if(!session || session.host || session.parent_key || !session.project_path)throw new Error("Sample folder recovery is available for local root sessions only");
+      const mappings=JSON.parse(prefs.get("resume_project_mappings") ?? "{}") as Record<string,string>;
+      mappings[session.project_path]=args.folder as string;prefs.set("resume_project_mappings",JSON.stringify(mappings));
+      libraryListeners.forEach(callback=>callback());
+      return handle("inspect_resume",{key:args.key});
+    }
+    case "resume_session": throw new Error("Desktop required: sample sessions cannot open an agent or terminal.");
     case "export_session": return null;
     case "get_insights": return insights();
     case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);

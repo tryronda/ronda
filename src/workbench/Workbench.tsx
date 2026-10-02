@@ -9,7 +9,6 @@ import {
   Search01Icon, StarIcon, Download01Icon, Cancel01Icon, Bookmark01Icon,
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Button } from "@/components/motion/button/base";
 import { Loader } from "@/components/motion/loader";
 import { SharedLayoutBg } from "@/components/motion/shared-layout-bg";
 import { PixelField, PixelStrip } from "@/components/brand/pixel-field";
@@ -23,6 +22,7 @@ import { BookmarkControl } from "./BookmarkControl";
 import { ContextBundle } from "./ContextBundle";
 import { contextEligible, contextId, type ContextSelection } from "./context-bundle";
 import { TranscriptNavigation } from "./TranscriptNavigation";
+import { ResumeReadiness } from "./ResumeReadiness";
 import { SessionConnections } from "./SessionConnections";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
@@ -43,7 +43,7 @@ const copy = {
   deleteConfirm: "Move this session to the system Trash?", deleted: "Session moved to Trash",
   searchResults: "Search results", searching: "Searching…", searchEmpty: "No matching messages", matches: "matches",
   loading: "Loading library…", refreshing: "Refreshing library…", browse: "Browse sessions", sessions: "sessions", scanDone: "Library refreshed",
-  transcript: "Transcript", terminal: "Terminal", terminalRunning: "running", terminalExited: "exited",
+  transcript: "Transcript", terminal: "Terminal", terminalRunning: "terminal open", terminalExited: "exited",
   restart: "Restart", stop: "Stop and close terminal", openExternal: "Open in system terminal",
   you: "You", assistant: "Assistant", note: "Note", localPrivate: "Local and private", error: "Error",
 };
@@ -781,10 +781,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
                   {shown && <span className={cn("size-1.5", terminals[selected.key].running ? "animate-pulse bg-olive" : "bg-stone")} />}{label}
                 </button>)}
             </div>}
-            {selected.project_path && !selected.parent_key && !(terminals[selected.key]?.running && terminalShown[selected.key]) && <Button size="sm" onClick={() => void resume()}
-              className="label-mono ml-2 h-9 gap-2 rounded-none px-3.5 text-[13px] lowercase">{t.resume}<HugeiconsIcon icon={ArrowRight01Icon} size={15} /></Button>}
+
           </div>
         </header>
+        <ResumeReadiness api={api} session={selected} active={isActive} running={!!terminals[selected.key]?.running} onResume={()=>void resume()} />
         <SessionConnections api={api} session={selected} active={isActive} onOpen={session=>choose(session,0)} />
         <TranscriptNavigation key={selected.key} container={transcriptRef} scope={scopeRef} embedded={embedded}
           active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnly} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} findRequest={findRequest} />
