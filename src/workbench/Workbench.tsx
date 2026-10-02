@@ -332,10 +332,12 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const shortcut = navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl+";
 
   useEffect(() => {
-    if (jumpTo === null || !messages.some(m => m.seq === jumpTo)) return;
-    document.getElementById(`message-${jumpTo}`)?.scrollIntoView({ block: "center", behavior: reduce ? "instant" : "smooth" });
+    if (jumpTo === null || transcriptLoading || !messages.some(m => m.seq === jumpTo)) return;
+    const target = transcriptRef.current?.querySelector<HTMLElement>(`#message-${jumpTo}`);
+    if (!target) return;
+    target.scrollIntoView({ block: "center", behavior: reduce ? "instant" : "smooth" });
     setJumpTo(null);
-  }, [jumpTo, messages, reduce, promptsOnly]);
+  }, [jumpTo, messages, transcriptLoading, reduce, promptsOnly]);
 
   useEffect(() => {
     if (!notice) return;
