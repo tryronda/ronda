@@ -60,7 +60,7 @@ const agentNames: Record<AgentId, string> = {
 const loadStreamdown = () => import("streamdown");
 const SessionTerminal = lazy(() => import("./SessionTerminal").then(module => ({ default: module.SessionTerminal })));
 /** A resumed session's terminal; `run` remounts it for a restart. */
-type TerminalEntry = { run: number; running: boolean; code: number | null };
+type TerminalEntry = { run: number; running: boolean; code: number | null; directory?:string };
 const Streamdown = lazy(() => loadStreamdown().then(module => ({ default: module.Streamdown })));
 
 function timeLabel(ms: number) {
@@ -823,7 +823,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           <div className="label-mono flex h-10 flex-none items-center gap-3 border-b border-border px-5 text-[12px] text-muted-foreground">
             <span className={cn("size-1.5 flex-none", entry.running ? "animate-pulse bg-olive" : "bg-stone")} />
             <span className="whitespace-nowrap text-foreground">{entry.running ? t.terminalRunning : `${t.terminalExited}${entry.code === null ? "" : ` · ${entry.code}`}`}</span>
-            {session && <span className="min-w-0 truncate">{agentNames[session.agent]} · {session.host ? `@${session.host}:` : ""}{session.project_path ?? t.unknown}</span>}
+            {session && <span className="min-w-0 truncate">{agentNames[session.agent]} · {session.host ? `@${session.host}:` : ""}{entry.directory ?? session.project_path ?? t.unknown}</span>}
             <div className="ml-auto flex items-center gap-0.5">
               {!entry.running && <IconButton icon={ReloadIcon} title={t.restart} onClick={() => startTerminal(key)} />}
               <IconButton icon={ArrowRight01Icon} title={t.openExternal} onClick={() => void openExternally()} />
@@ -833,6 +833,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           <div className="min-h-0 flex-1 py-3 pr-2 pl-5">
             <Suspense fallback={null}>
               <SessionTerminal key={entry.run} sessionKey={key} visible={visible}
+                onOpen={directory=>setTerminals(current=>current[key]?.run===entry.run ? {...current,[key]:{...current[key],directory}} : current)}
                 onExit={code => setTerminals(current => current[key] ? { ...current, [key]: { ...current[key], running: false, code } } : current)}
                 onError={message => { setError(message); setTerminals(current => current[key] ? { ...current, [key]: { ...current[key], running: false } } : current); }} />
             </Suspense>

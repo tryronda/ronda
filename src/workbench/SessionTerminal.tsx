@@ -44,15 +44,16 @@ function readTheme(): ITheme {
  * One live terminal resuming a session. It stays mounted while hidden so the agent keeps
  * running; `visible` only controls sizing and focus. Closing the component kills the process.
  */
-export function SessionTerminal({ sessionKey, visible, onExit, onError }: {
+export function SessionTerminal({ sessionKey, visible, onExit, onError, onOpen }: {
   sessionKey: string; visible: boolean;
+  onOpen:(directory:string)=>void;
   onExit: (code: number | null) => void; onError: (message: string) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const termRef = useRef<Terminal | null>(null);
-  const callbacks = useRef({ onExit, onError });
-  callbacks.current = { onExit, onError };
+  const callbacks = useRef({ onExit, onError, onOpen });
+  callbacks.current = { onExit, onError, onOpen };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -94,9 +95,10 @@ export function SessionTerminal({ sessionKey, visible, onExit, onError }: {
         callbacks.current.onExit(message.code);
       };
       try {
-        const opened = await invoke<number>("terminal_open", { key: sessionKey, cols: term.cols, rows: term.rows, output, events });
-        if (disposed) { void invoke("terminal_close", { id: opened }); return; }
-        id = opened;
+        const opened = await invoke<{id:number;directory:string}>("terminal_open", { key: sessionKey, cols: term.cols, rows: term.rows, output, events });
+        if (disposed) { void invoke("terminal_close", { id: opened.id }); return; }
+        id = opened.id;
+        callbacks.current.onOpen(opened.directory);
         term.focus();
       } catch (cause) {
         callbacks.current.onError(String(cause));

@@ -781,6 +781,12 @@ async fn sync_remote_host(
     Ok(report)
 }
 
+#[derive(Serialize)]
+struct OpenedTerminal {
+    id: u32,
+    directory: String,
+}
+
 #[tauri::command]
 async fn terminal_open(
     state: State<'_, Shared>,
@@ -790,7 +796,7 @@ async fn terminal_open(
     rows: u16,
     output: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
     events: tauri::ipc::Channel<terminal::TerminalEvent>,
-) -> CommandResult<u32> {
+) -> CommandResult<OpenedTerminal> {
     let plan = off_main(state, move |state| resume_plan(state, &key)).await?;
     let command = plan.command.clone();
     // A remote session's directory lives on the host; start the local shell somewhere that exists.
@@ -802,7 +808,7 @@ async fn terminal_open(
         }
         plan.directory.clone()
     };
-    terminals.open(
+    let id = terminals.open(
         &command,
         &directory,
         cols,
@@ -815,7 +821,11 @@ async fn terminal_open(
         move |event| {
             let _ = events.send(event);
         },
-    )
+    )?;
+    Ok(OpenedTerminal {
+        id,
+        directory: plan.directory,
+    })
 }
 
 #[tauri::command]
