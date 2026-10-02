@@ -318,7 +318,7 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
     let dir = std::env::temp_dir().join(format!("ronda-overview-{}-{n}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let mut store = Store::open(&dir.join("overview.db")).unwrap();
-    for i in 0..24 {
+    for i in 0..224 {
         let mut item = session(
             AgentId::ClaudeCode,
             &format!("overview-{i}"),
@@ -326,12 +326,38 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
             "Synthetic overview",
             &[("Bash", "test", LOCKED, true)],
         );
-        item.meta.project_path = Some(if i == 23 { "/other/repo" } else { "/repo" }.into());
+        item.meta.project_path = Some(if i == 223 { "/other/repo" } else { "/repo" }.into());
         if i % 2 == 1 {
             item.meta.host = Some("local".into());
         }
+        if i == 223 {
+            for message in &mut item.messages {
+                message.timestamp = None;
+                message.tool_calls.clear();
+            }
+        }
         store.upsert(&item, &format!("fixture-{i}")).unwrap();
     }
+    let mut child = session(
+        AgentId::Codex,
+        "overview-child",
+        1000,
+        "Synthetic child",
+        &[],
+    );
+    child.meta.parent_key = Some("claude-code:overview-0".into());
+    store.upsert(&child, "child-fixture").unwrap();
+    let incomplete = store
+        .project_overview("/other/repo", None, false, 225 * MIN)
+        .unwrap();
+    assert_eq!(
+        incomplete.intelligence.as_ref().unwrap().coverage[0].with_tools,
+        0
+    );
+    assert_eq!(
+        incomplete.intelligence.as_ref().unwrap().coverage[0].with_time,
+        0
+    );
     store
         .save_bookmark("claude-code:overview-0", 0, "Local decision", false, None)
         .unwrap();
@@ -339,9 +365,9 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
         .save_bookmark("claude-code:overview-1", 0, "Remote decision", false, None)
         .unwrap();
     let all = store
-        .project_overview("/repo", None, false, 25 * MIN)
+        .project_overview("/repo", None, false, 225 * MIN)
         .unwrap();
-    assert_eq!(all.total_sessions, 23);
+    assert_eq!(all.total_sessions, 223);
     assert_eq!(all.sessions.len(), 10);
     assert_eq!(all.total_bookmarks, 2);
     assert!(all
@@ -349,13 +375,13 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
         .windows(2)
         .all(|p| p[0].updated_at >= p[1].updated_at));
     let local = store
-        .project_overview("/repo", None, true, 25 * MIN)
+        .project_overview("/repo", None, true, 225 * MIN)
         .unwrap();
-    assert_eq!(local.total_sessions, 12);
+    assert_eq!(local.total_sessions, 112);
     assert_eq!(local.total_bookmarks, 1);
     assert_eq!(local.bookmarks[0].bookmark.note, "Local decision");
-    assert_eq!(local.intelligence.as_ref().unwrap().totals.sessions, 12);
-    assert_eq!(local.errors[0].sessions, 12);
+    assert_eq!(local.intelligence.as_ref().unwrap().totals.sessions, 112);
+    assert_eq!(local.errors[0].sessions, 112);
     assert!(local.errors[0].evidence.iter().all(|e| store
         .get_session(&e.session_key)
         .unwrap()
@@ -363,38 +389,38 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
         .host
         .is_none()));
     let remote = store
-        .project_overview("/repo", Some("local"), false, 25 * MIN)
+        .project_overview("/repo", Some("local"), false, 225 * MIN)
         .unwrap();
-    assert_eq!(remote.total_sessions, 11);
+    assert_eq!(remote.total_sessions, 111);
     assert_eq!(remote.total_bookmarks, 1);
     assert_eq!(remote.bookmarks[0].bookmark.note, "Remote decision");
-    assert_eq!(remote.intelligence.as_ref().unwrap().totals.sessions, 11);
-    assert_eq!(remote.errors[0].sessions, 11);
+    assert_eq!(remote.intelligence.as_ref().unwrap().totals.sessions, 111);
+    assert_eq!(remote.errors[0].sessions, 111);
     assert!(remote
         .sessions
         .iter()
         .all(|s| s.host.as_deref() == Some("local")));
     assert_eq!(
         store
-            .project_overview("/other/repo", None, false, 25 * MIN)
+            .project_overview("/other/repo", None, false, 225 * MIN)
             .unwrap()
             .total_sessions,
         1
     );
     assert_eq!(
         store
-            .project_overview("/missing/repo", None, false, 25 * MIN)
+            .project_overview("/missing/repo", None, false, 225 * MIN)
             .unwrap()
             .total_sessions,
         0
     );
-    assert!(store.project_overview("", None, false, 25 * MIN).is_err());
+    assert!(store.project_overview("", None, false, 225 * MIN).is_err());
     assert!(store
-        .project_overview("/repo", Some("local"), true, 25 * MIN)
+        .project_overview("/repo", Some("local"), true, 225 * MIN)
         .is_err());
     store.tombstone("claude-code:overview-0").unwrap();
     let unavailable = store
-        .project_overview("/repo", None, false, 25 * MIN)
+        .project_overview("/repo", None, false, 225 * MIN)
         .unwrap();
     assert_eq!(unavailable.total_bookmarks, 2);
     assert!(unavailable
@@ -403,7 +429,7 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
         .any(|b| b.status == ronda_core::bookmarks::BookmarkStatus::Unavailable));
     assert_eq!(
         store
-            .project_overview("/repo", None, true, 25 * MIN)
+            .project_overview("/repo", None, true, 225 * MIN)
             .unwrap()
             .total_bookmarks,
         0
@@ -413,9 +439,9 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
         .execute("DROP TABLE session_facts", [])
         .unwrap();
     let without = store
-        .project_overview("/repo", None, true, 25 * MIN)
+        .project_overview("/repo", None, true, 225 * MIN)
         .unwrap();
-    assert_eq!(without.total_sessions, 11);
+    assert_eq!(without.total_sessions, 111);
     assert!(without.intelligence.is_none());
     assert!(without.intelligence_error.is_some());
     drop(store);

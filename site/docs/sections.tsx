@@ -118,6 +118,17 @@ chmod +x Ronda-linux-x86_64.AppImage
     </>,
   },
   {
+    id:"projects",title:"Projects",
+    body:<>
+      <P>Select a project in the Sessions sidebar to open its overview and filter the library. Project identity is the complete folder path; matching basenames remain separate and show full paths in the sidebar. All hosts combines the same path across machines, while Local sessions or a remote host narrows every overview section.</P>
+      <P>The overview shows ten recent root sessions, ten recently updated bookmarks, and five recurring errors with exact total counts. Sessions and bookmarks are all-time sections; archived sessions are excluded from the recent-session section. Intelligence totals and coverage use the last 30 days. Recurring errors may include earlier occurrences when the same error also appears in this range.</P>
+      <P>Choose a session, bookmark, or error evidence to open its exact message. Back and Forward restore the project and host context. View all opens the corresponding project session or bookmark list; View all project Intelligence keeps the project and host filters in the existing Intelligence page.</P>
+      <P>In the Bookmarks destination, project buttons keep filtering saved annotations. Unavailable bookmarks retain their note and excerpt but cannot open a missing original. Local or remote host filters need available session metadata. An unavailable analytics section does not hide usable sessions and annotations.</P>
+      <P>Outcomes are inferred from recorded tool events. A commit command is not proof of a fix. Tool and timestamp coverage shows which sessions can contribute errors, outcomes, and active time. The overview refreshes while visible; source changes while another view is open are read when it returns.</P>
+      <P>The sample preview derives project totals and evidence from its displayed synthetic transcripts. Select ronda and try All hosts or buildbox, then open a synthetic project error and return with Back.</P>
+    </>,
+  },
+  {
     id: "resume", title: "Resume a session",
     body: <>
       <P>Open a session and click **Resume**. Ronda opens a terminal inside the app and runs the agent's own resume command in the session's project folder, so you pick up the same conversation with the same agent.</P>
@@ -140,7 +151,7 @@ chmod +x Ronda-linux-x86_64.AppImage
       <List items={[
         "**Where your time goes:** active time split into building features, fixing bugs, refactoring, writing tests, setup and config, and exploring, plus time spent recovering from failing commands. Gaps longer than 15 minutes count as time away.",
         "**Agent failures:** edit loops (one file edited five or more times around errors), context that filled up and was compacted, sessions that ended with tests failing, denied tool calls, and calls to APIs that don't exist.",
-        "**Errors that keep coming back:** error lines are normalized so paths, line numbers, and ids don't split one bug into many. Errors are flagged when they return after a session that committed a fix.",
+        "**Errors that keep coming back:** error lines are normalized so paths, line numbers, and ids don't split one bug into many. Errors are flagged when they return after a session that recorded a commit command.",
         "**Your stack:** languages, frameworks, and tools detected from edited files and commands, as a share of sessions with tool calls. Tech first seen in the selected range is marked new.",
         "**How sessions end:** committed, edited but not committed, ended failing, or no file changes.",
         "**Worth knowing:** short notes, such as recovery time outgrowing tests and setup, or failing sessions running much longer than committed ones.",

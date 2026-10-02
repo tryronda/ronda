@@ -247,13 +247,20 @@ async fn get_intelligence(
     state: State<'_, Shared>,
     since: Option<i64>,
     project: Option<String>,
+    host: Option<String>,
+    local_only: Option<bool>,
 ) -> CommandResult<Intelligence> {
     off_main(state, move |state| {
         state
             .store
             .lock()
             .map_err(error)?
-            .intelligence(since, project.as_deref())
+            .intelligence_scoped(
+                since,
+                project.as_deref(),
+                host.as_deref(),
+                local_only.unwrap_or(false),
+            )
             .map_err(error)
     })
     .await

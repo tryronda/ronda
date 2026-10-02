@@ -1,6 +1,7 @@
+import type { ProjectContext } from "@/workbench/api";
 import { invoke } from '@/lib/tauri';
 import { sameJson, useLibraryRefresh } from '@/lib/hooks/use-library-refresh';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { AnimatedNumber } from '@/components/motion/animated-number';
 import { Tabs, TabsList, TabsTrigger } from '@/components/motion/tabs';
@@ -33,7 +34,7 @@ const labels = {
   activeTime: 'Active time', sessions: 'Sessions', endedFailing: 'Ended failing', recurring: 'Recurring errors',
   time: 'Where your time goes', recovering: 'Recovering from failing commands', failures: 'Agent failures',
   bugs: 'Errors that keep coming back', stack: 'Your stack', outcomes: 'How sessions end', notes: 'Worth knowing',
-  shareOfSessions: 'share of sessions with tool calls', cameBack: 'came back after a committed fix', open: 'Open',
+  shareOfSessions: 'share of sessions with tool calls', cameBack: 'came back after a session with a commit command', open: 'Open',
   sessionsCount: (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'}`, newTech: 'new',
   none: 'Nothing in this range.', empty: 'No sessions in this range yet.', retry: 'Retry',
   noTools: (agents: string) => `No tool data from ${agents}, so failures, errors, stack, and outcomes leave them out.`,
@@ -55,27 +56,32 @@ export function hours(ms: number) {
 
 const day = (ms: number) => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(ms));
 
-export function IntelligenceView({ onOpen, active = true }: { onOpen?: (key: string, seq: number) => void; active?: boolean }) {
+export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (key: string, seq: number) => void; active?: boolean; scope?:ProjectContext }) {
   const t = labels;
   const reduce = useReducedMotion();
   const [range, setRange] = useState<Range>('month');
   const [project, setProject] = useState<string>('');
+  const [hostScope,setHostScope]=useState<{host:string|null;local_only:boolean}>({host:null,local_only:false});
+  useEffect(()=>{if(scope){setProject(scope.path);setRange('month');setHostScope({host:scope.host,local_only:scope.local_only});}},[scope?.path,scope?.host,scope?.local_only]);
   const [projects, setProjects] = useState<string[]>([]);
-  const [data, setData] = useState<Intelligence | null>(null);
+  const [storedData, setData] = useState<Intelligence | null>(null);
+  const [dataScope,setDataScope]=useState("");
+  const scopeKey=JSON.stringify([range,project,hostScope.host,hostScope.local_only]);
+  const data=dataScope===scopeKey ? storedData : null;
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
 
   useLibraryRefresh(() => {
     let live = true;
     const span = ranges[range];
-    invoke<Intelligence>('get_intelligence', { since: span === null ? null : Date.now() - span, project: project || null })
-      .then(result => { if (live) { setData(current => sameJson(current, result) ? current : result); setError(''); } })
+    invoke<Intelligence>('get_intelligence', { since: span === null ? null : Date.now() - span, project: project || null, host:hostScope.host, localOnly:hostScope.local_only })
+      .then(result => { if (live) { setData(current => sameJson(current, result) ? current : result); setDataScope(scopeKey); setError(''); } })
       .catch(reason => { if (live) setError(String(reason)); });
     invoke<{ path: string }[]>('list_projects')
       .then(list => { if (live) setProjects(current => { const next = list.map(p => p.path); return sameJson(current, next) ? current : next; }); })
       .catch(() => {});
     return () => { live = false; };
-  }, [range, project, reload], active);
+  }, [range, project, reload,hostScope.host,hostScope.local_only], active);
 
   const time = useMemo(() => {
     if (!data) return [];
@@ -107,6 +113,7 @@ export function IntelligenceView({ onOpen, active = true }: { onOpen?: (key: str
       <option value="">{t.allProjects}</option>
       {projects.map(path => <option key={path} value={path}>{path.split(/[\\/]/).filter(Boolean).pop() ?? path}</option>)}
     </select>
+    {(hostScope.host || hostScope.local_only) && <p>{hostScope.local_only ? 'Local sessions' : `Remote host: ${hostScope.host}`} · <button type="button" onClick={()=>setHostScope({host:null,local_only:false})}>All hosts</button></p>}
   </div>;
 
   if (!data && !error) return <div className="ronda-panel insights-panel" role="status" aria-label={t.eyebrow} aria-busy="true">

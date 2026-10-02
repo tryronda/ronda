@@ -7,6 +7,7 @@ import {
   AiBrain01Icon, ArrowLeft01Icon, ArrowRight01Icon, Cancel01Icon, ChartIcon, Home01Icon,
   Maximize01Icon, MinusSignIcon, PanelLeftIcon, Search01Icon, Settings01Icon,
 } from "@hugeicons/core-free-icons";
+import type { ProjectContext, WorkbenchLocation } from "./workbench/api";
 import { Workbench } from "./workbench/Workbench";
 import { Tabs, TabsList, TabsTrigger } from "@/components/motion/tabs";
 import { RondaLockup } from "@/components/brand/pixel-field";
@@ -19,6 +20,7 @@ const IntelligenceView = lazy(() => import("./panels/IntelligenceView").then(mod
 const SettingsView = lazy(() => import("./panels/SettingsView").then(module => ({ default: module.SettingsView })));
 
 type Page = "workbench" | "insights" | "intelligence" | "settings";
+type Entry = {page:Page; detail?:WorkbenchLocation; project?:ProjectContext};
 
 const pages: Page[] = ["workbench", "insights", "intelligence", "settings"];
 const icons = { workbench: Home01Icon, insights: ChartIcon, intelligence: AiBrain01Icon, settings: Settings01Icon };
@@ -30,33 +32,35 @@ const labels = { workbench: "Sessions", insights: "Insights", intelligence: "Int
 /** `embedded` hosts the app inside another page: shortcuts stay scoped to its element and it uses macOS window chrome. */
 export default function App({ embedded = false }: { embedded?: boolean } = {}) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [navigation, setNavigation] = useState<{ entries: Page[]; index: number }>({ entries: ["workbench"], index: 0 });
+  const [navigation, setNavigation] = useState<{ entries: Entry[]; index: number }>({ entries: [{page:"workbench",detail:{kind:"home"}}], index: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mounted, setMounted] = useState<Record<Page, boolean>>({ workbench: true, insights: false, intelligence: false, settings: false });
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const [homeToken, setHomeToken] = useState(0);
-  const [openRequest, setOpenRequest] = useState<{ key: string; seq: number; token: number } | null>(null);
-  const page = navigation.entries[navigation.index];
+  const entry = navigation.entries[navigation.index];
+  const page = entry.page;
   const t = labels;
   // Embedded hosts draw macOS window chrome, so reserve the traffic-light space there too.
   const isMac = embedded || navigator.platform.toLowerCase().includes("mac");
   const shortcut = isMac ? "⌘" : "Ctrl+";
 
-  const navigate = useCallback((next: Page) => {
+  const navigate = useCallback((next: Page, detail?:WorkbenchLocation, project?:ProjectContext) => {
     setMounted(current => current[next] ? current : { ...current, [next]: true });
     setNavigation(current => {
-      if (current.entries[current.index] === next) return current;
-      const entries = [...current.entries.slice(0, current.index + 1), next];
+      const previous=current.entries[current.index];
+      if(previous.page===next && detail===undefined && project===undefined) return current;
+      const destination:Entry={page:next,...(detail ? {detail} : {}),...(project ? {project} : {})};
+      if(JSON.stringify(previous)===JSON.stringify(destination)) return current;
+      const entries = [...current.entries.slice(0, current.index + 1), destination];
       return { entries, index: entries.length - 1 };
     });
   }, []);
   const go = useCallback((delta: number) => setNavigation(current => ({
     ...current, index: Math.max(0, Math.min(current.entries.length - 1, current.index + delta)),
   })), []);
-  const goHome = useCallback(() => { navigate("workbench"); setHomeToken(value => value + 1); }, [navigate]);
+  const goHome = useCallback(() => { navigate("workbench",{kind:"home"}); setHomeToken(value => value + 1); }, [navigate]);
   const openSession = useCallback((key: string, seq: number) => {
-    navigate("workbench");
-    setOpenRequest(current => ({ key, seq, token: (current?.token ?? 0) + 1 }));
+    navigate("workbench",{kind:"session",key,seq});
   }, [navigate]);
   const openSearch = useCallback(() => { navigate("workbench"); setSearchFocusToken(value => value + 1); }, [navigate]);
 
@@ -152,10 +156,11 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
     <div className="relative min-h-0 min-w-0 flex-1">
       <div className="workspace-view page-layer" {...layer(page === "workbench")}>
         <Workbench embedded={embedded} sidebarOpen={sidebarOpen} isActive={page === "workbench"}
-          searchFocusToken={searchFocusToken} homeToken={homeToken} openRequest={openRequest} />
+          searchFocusToken={searchFocusToken} homeToken={homeToken} location={page==="workbench" ? entry.detail : undefined}
+          onNavigateDetail={detail=>navigate("workbench",detail)} onOpenIntelligence={project=>navigate("intelligence",undefined,project)} />
       </div>
       {mounted.insights && <PageView hidden={page !== "insights"}><InsightsView active={page === "insights"} /></PageView>}
-      {mounted.intelligence && <PageView hidden={page !== "intelligence"}><IntelligenceView onOpen={openSession} active={page === "intelligence"} /></PageView>}
+      {mounted.intelligence && <PageView hidden={page !== "intelligence"}><IntelligenceView onOpen={openSession} active={page === "intelligence"} scope={entry.project} /></PageView>}
       {mounted.settings && <PageView hidden={page !== "settings"}><SettingsView embedded={embedded} /></PageView>}
     </div>
   </div>;

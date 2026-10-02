@@ -1,3 +1,4 @@
+import type { Intelligence } from "@/panels/IntelligenceView";
 import { matchesSession } from "@/workbench/library-filters";
 import { searchSnippet } from "@/workbench/search-text";
 import { agentIds, type BookmarkBackup, type BookmarkView, type MessageBookmark, type BookmarkReplacement, type BookmarkImport, backend } from "@/workbench/api";
@@ -178,6 +179,13 @@ function reset() {
     transcripts.set(key,[{...text("assistant","Library browsing sample. Synthetic data with illustrative model names."),seq:0,timestamp:null}]);
   }
 
+  for(let index=0;index<4;index++){
+    const key=`codex:overview-${index}`,session=meta(key,`Project overview synthetic error ${index+1}`,index%2 ? "claude-code" : "codex",projects.ronda,"illustrative-overview-model",now-(index+3)*HOUR,2000+index);
+    session.host=index>=2 ? "buildbox" : null;
+    sessions.push(session);
+    transcripts.set(key,[{...text("user","Check the synthetic project tests."),seq:0,timestamp:session.updated_at-60000},
+      {...text("assistant","Recorded synthetic failure for project overview.",{tool_calls:[tool("Bash","bun test","Error: SYNTHETIC_PROJECT_CHECK failed",true)]}),seq:1,timestamp:session.updated_at}]);
+  }
   bookmarkSeed = (async () => {
     const first = sessions.find(session => session.key === "claude-code:demo-0")!;
     const message = transcripts.get(first.key)![1];
@@ -351,9 +359,65 @@ function intelligence(args: Args) {
     callouts: [
       `Recovering from failing commands took ${Math.round(8.5 * scale * 10) / 10} h (14% of active time), more than writing tests and setup combined.`,
       "Sessions that ended failing ran 2.3× longer than committed ones.",
-      "“Error: Hydration failed because the server rendered HTML didn't match the client” came back after a session that committed a fix.",
+      "“Error: Hydration failed because the server rendered HTML didn't match the client” came back after a session that recorded a commit command.",
     ],
   };
+}
+
+function projectIntelligence(args: Args): Intelligence {
+  const project=args.project as string;
+  const filter={...queryDefaults,project_path:project,host:(args.host as string|null) ?? null,local_only:args.localOnly===true,include_archived:true,limit:null};
+  const scoped=listSessions(filter).filter(session=>!session.parent_key);
+  const since=(args.since as number|null) ?? null;
+  const current=scoped.filter(session=>since===null || session.updated_at>=since);
+  const coverage=new Map<string,Intelligence["coverage"][number]>();
+  let active=0,recovery=0,calls=0,errors=0,failed=0;
+  for(const session of current){
+    const messages=transcripts.get(session.key) ?? [];
+    const tools=messages.flatMap(message=>message.tool_calls);
+    const stamped=messages.filter(message=>message.timestamp!==null);
+    let duration=0,repair=0,recovering=false;
+    for(let index=0;index<stamped.length-1;index++){
+      const message=stamped[index],shell=message.tool_calls.filter(tool=>tool.name==="Bash");
+      if(shell.length)recovering=shell.some(tool=>tool.is_error);
+      const gap=stamped[index+1].timestamp!-message.timestamp!;
+      if(gap>0 && gap<=15*60000){duration+=gap;if(recovering)repair+=gap;}
+    }
+    active+=duration;recovery+=repair;calls+=tools.length;errors+=tools.filter(tool=>tool.is_error).length;
+    if(tools.at(-1)?.is_error)failed++;
+    const row=coverage.get(session.agent) ?? {agent:session.agent,sessions:0,with_tools:0,with_time:0};
+    row.sessions++;row.with_tools+=Number(tools.length>0);row.with_time+=Number(duration>0);coverage.set(session.agent,row);
+  }
+  const occurrences=new Map<string,{session:SessionMeta;seq:number}[]>();
+  for(const session of scoped)for(const message of transcripts.get(session.key) ?? [])for(const tool of message.tool_calls){
+    if(!tool.is_error || !tool.output)continue;
+    const hits=occurrences.get(tool.output) ?? [];
+    if(!hits.some(hit=>hit.session.key===session.key))hits.push({session,seq:message.seq});
+    occurrences.set(tool.output,hits);
+  }
+  // Synthetic wording is fixed; production uses the shared Rust error signatures, never this preview grouping.
+  const recurring: Intelligence["recurring"]=[];
+  for(const [message,hits] of occurrences){
+    if(hits.length<2 || !hits.some(hit=>since===null || hit.session.updated_at>=since))continue;
+    hits.sort((a,b)=>b.session.updated_at-a.session.updated_at);
+    recurring.push({signature:message,message,sessions:hits.length,agents:[...new Set(hits.map(hit=>hit.session.agent))],projects:[project],
+      first_seen:Math.min(...hits.map(hit=>hit.session.updated_at)),last_seen:hits[0].session.updated_at,came_back:false,
+      evidence:hits.slice(0,5).map(hit=>({session_key:hit.session.key,seq:hit.seq,title:hit.session.title}))});
+  }
+  recurring.sort((a,b)=>b.sessions-a.sessions || b.last_seen-a.last_seen);
+  return {since,project,totals:{sessions:current.length,active_ms:active,recovery_ms:recovery,tool_calls:calls,tool_errors:errors,failed_sessions:failed,recurring_bugs:recurring.length},
+    time:[],failures:[],recurring,stack:[],outcomes:[],coverage:[...coverage.values()],callouts:["Synthetic project figures are derived from the sample messages and tool calls shown here."]};
+}
+
+async function projectOverview(args: Args){
+  const path=args.project as string;
+  if(typeof path!=="string" || !path.trim() || Array.from(path).length>4096)throw new Error("Choose a valid project path");
+  const host=(args.host as string|null) ?? null,localOnly=args.localOnly===true,since=Date.now()-30*DAY;
+  const filter={...queryDefaults,project_path:path,host,local_only:localOnly,limit:null};
+  const roots=listSessions(filter).filter(session=>!session.parent_key).sort((a,b)=>b.updated_at-a.updated_at || a.key.localeCompare(b.key));
+  const saved=await listBookmarks("",filter),report=projectIntelligence({...args,since});
+  return {path,host,local_only:localOnly,since,sessions:roots.slice(0,10),total_sessions:roots.length,bookmarks:saved.slice(0,10),total_bookmarks:saved.length,
+    errors:report.recurring.slice(0,5),total_errors:report.totals.recurring_bugs,intelligence:report,intelligence_error:null};
 }
 
 async function messageHash(text: string) {
@@ -465,6 +529,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     }
     case "session_page": return sessionPage(args.query as SessionQuery, args.offset as number, args.limit as number);
     case "list_projects": return listProjects();
+    case "get_project_overview": return projectOverview(args);
     case "list_bookmarks": return listBookmarks(args.query as string, args.filter as SessionQuery);
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
@@ -482,7 +547,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "resume_session": return "claude --resume demo";
     case "export_session": return null;
     case "get_insights": return insights();
-    case "get_intelligence": return intelligence(args);
+    case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);
     case "get_session": return sessions.find(session => session.key === args.key) ?? null;
     case "list_locations": return [
       { agent: "claude-code", path: "/Users/you/.claude/projects", enabled: true, custom: false },

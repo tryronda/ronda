@@ -13,7 +13,7 @@ const IDEA_URL = `${REPO_URL}/issues/new?title=${encodeURIComponent("Session int
 const questions = [
   { title: "Where did the time go?", body: "Active time split into features, bug fixes, refactoring, tests, setup, and exploring, plus the time spent recovering from failing commands. Breaks longer than 15 minutes don't count." },
   { title: "Where do agents get stuck?", body: "Edit loops, context that filled up and was compacted, tests still failing at the end, denied tool calls, and calls to APIs that don't exist." },
-  { title: "Which errors keep coming back?", body: "Error lines are normalized so the same bug matches across sessions, agents, and projects, and flagged when it returns after a session that committed a fix." },
+  { title: "Which errors keep coming back?", body: "Error lines are normalized so the same bug matches across sessions, agents, and projects, and flagged when it returns after a session that recorded a commit command." },
   { title: "What is my real stack?", body: "Languages, frameworks, and tools read from the files your agents edit and the commands they run, with anything new in the period marked." },
   { title: "How do sessions end?", body: "Committed, edited but not committed, ended failing, or no file changes, with the time each outcome took." },
   { title: "Where's the proof?", body: "Failures and recurring errors link to the sessions behind them. Click one to open the transcript at the message where it happened." },
@@ -55,7 +55,7 @@ export function Intelligence() {
           </div>
           <p className="mt-3 font-mono text-[12px] tracking-[0.025em] text-muted-foreground">
             Open <b className="font-medium text-foreground">Intelligence</b> in the top bar, or press ⌘3 ·{" "}
-            <a href={`${base}docs/#intelligence`} className="underline decoration-stone underline-offset-2 hover:text-foreground">read the docs</a>
+            <a href={`${base}docs/#intelligence`} className="underline decoration-stone underline-offset-2 hover:text-foreground">read the docs</a> · <a href={`${base}docs/#projects`} className="underline decoration-stone underline-offset-2 hover:text-foreground">project overviews</a>
           </p>
         </div>
       </section>

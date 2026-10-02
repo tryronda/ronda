@@ -544,7 +544,7 @@ fn callouts(
     }
     if let Some(bug) = recurring.iter().find(|b| b.came_back) {
         out.push(format!(
-            "“{}” came back after a session that committed a fix.",
+            "“{}” came back after a session that recorded a commit command.",
             bug.message
         ));
     }

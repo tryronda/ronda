@@ -1,3 +1,4 @@
+import { ProjectOverview } from "./ProjectOverview";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -24,7 +25,7 @@ import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
   type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
-  type WorkbenchBackend, type BookmarkView, type LibraryOptions,
+  type WorkbenchBackend, type BookmarkView, type LibraryOptions, type WorkbenchLocation, type ProjectContext,
 } from "./api";
 
 const copy = {
@@ -129,13 +130,19 @@ function Message({ message, animate, children }: { message: TranscriptMessage; a
 }
 
 export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive = true, embedded = false,
-  searchFocusToken = 0, homeToken = 0, openRequest = null, onActiveSessionChange }: {
+  searchFocusToken = 0, homeToken = 0, openRequest = null, onActiveSessionChange, location, onNavigateDetail, onOpenIntelligence }: {
   api?: WorkbenchBackend; sidebarOpen?: boolean; isActive?: boolean; embedded?: boolean;
   searchFocusToken?: number; homeToken?: number;
   /** Opens a session at a message from elsewhere in the app; a new token repeats the request. */
   openRequest?: { key: string; seq: number; token: number } | null;
+  location?:WorkbenchLocation; onNavigateDetail?:(location:WorkbenchLocation)=>void; onOpenIntelligence?:(context:ProjectContext)=>void;
   onActiveSessionChange?: (session: { title: string; project: string | null } | null) => void;
 }) {
+  const [localLocation,setLocalLocation]=useState<WorkbenchLocation>({kind:"home"});
+  const detail=location ?? localLocation;
+  const navigateDetail=(next:WorkbenchLocation)=>{setLocalLocation(next);onNavigateDetail?.(next);};
+  const projectContext:ProjectContext|null=detail.kind==="project" ? {path:detail.path,host:detail.host,local_only:detail.local_only}
+    : detail.kind==="session" ? detail.project ?? null : null;
   const t = copy;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkView[]>([]);
@@ -149,6 +156,19 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [project, setProject] = useState<string | null>(null);
+  useEffect(()=>{
+    if(!isActive)return;
+    if(detail.kind==="session"){
+      setSelectedKey(detail.key);setMobileDetail(true);
+      if(detail.seq!==undefined){setPromptsOnly(false);setJumpTo(detail.seq);setTranscriptJumpToken(value=>value+1);}
+    }else{
+      setSelectedKey(null);
+      if(detail.kind==="project"){
+        setProject(detail.path);setHost(detail.local_only ? "local" : detail.host ? `remote:${detail.host}` : "");
+        setMobileDetail(true);
+      }
+    }
+  },[detail,isActive]);
   const [agent, setAgent] = useState<AgentId | null>(null);
   const [starredOnly, setStarredOnly] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -414,7 +434,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   }, []);
 
   useEffect(() => { if (isActive && searchFocusToken) searchRef.current?.focus(); }, [isActive, searchFocusToken]);
-  useEffect(() => { if (homeToken) { setSelectedKey(null); setMobileDetail(false); setBookmarksOnly(false); } }, [homeToken]);
+  useEffect(() => { if (homeToken) { setSelectedKey(null); setLocalLocation({kind:"home"}); setMobileDetail(false); setBookmarksOnly(false); } }, [homeToken]);
   useEffect(() => {
     if (!openRequest) return;
     let cancelled = false;
@@ -422,6 +442,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     void api.getSession(openRequest.key).then(meta => {
       if (cancelled || !meta) return;
       setOpened(meta);
+      navigateDetail({kind:"session",key:meta.key,seq:openRequest.seq,...(projectContext ? {project:projectContext} : {})});
       setSelectedKey(meta.key);
       setPromptsOnly(false);
       setTranscriptJumpToken(value => value + 1);
@@ -458,6 +479,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const agents = useMemo(() => Array.from(new Set(bookmarksOnly ? bookmarks.map(view => view.session?.agent ?? view.bookmark.agent) : options.agents)).sort(), [options, bookmarks, bookmarksOnly]);
 
   const choose = (session: SessionMeta, seq?: number) => {
+    navigateDetail({kind:"session",key:session.key,...(seq!==undefined ? {seq} : {}),...(projectContext ? {project:projectContext} : {})});
     setOpened(session);
     setSelectedKey(session.key);
     if (seq !== undefined) { setPromptsOnly(false); setTranscriptJumpToken(value => value + 1); }
@@ -555,7 +577,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       <div className={sectionHeading}>{t.library}</div>
       <SharedLayoutBg inset={0} className="gap-px" pillClassName="rounded-none bg-chip/70">
         <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !agent && !host && !model && !dateFrom && !dateThrough && !includeArchived)} type="button"
-          onClick={() => { clearFilters(); setBookmarksOnly(false); }}>
+          onClick={() => { clearFilters(); setBookmarksOnly(false); if(detail.kind==="project")navigateDetail({kind:"home"}); }}>
           <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />{t.all}<span className="label-mono ml-auto text-muted-foreground">{sessionTotal}</span>
         </button>
         <button key="starred" className={navClass(!bookmarksOnly && starredOnly)} type="button"
@@ -563,7 +585,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           <HugeiconsIcon icon={StarIcon} size={16} strokeWidth={1.8} />{t.favorites}
         </button>
         <button key="bookmarks" className={navClass(bookmarksOnly)} type="button" onClick={() => {
-          setBookmarksOnly(true); setProject(null); setAgent(null); setStarredOnly(false);
+          setBookmarksOnly(true); setProject(null); setAgent(null); setStarredOnly(false); if(detail.kind==="project")navigateDetail({kind:"home"});
         }}><HugeiconsIcon icon={Bookmark01Icon} size={16} />Bookmarks<span className="label-mono ml-auto text-muted-foreground">{bookmarks.length}</span></button>
         {!bookmarksOnly && <button key="archived" className={navClass(includeArchived)} type="button"
           aria-pressed={includeArchived} onClick={() => setIncludeArchived(value => !value)}>
@@ -573,9 +595,14 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       <div className={sectionHeading}>{t.projects}</div>
       <div className="max-h-[31vh] overflow-y-auto">
         {projectOptions.map(item => <button className={navClass(project === item.path)}
-          title={item.path} key={item.path} type="button" onClick={() => setProject(value=>value === item.path ? null : item.path)}>
+          title={item.path} key={item.path} type="button" onClick={() => {
+            preferenceTouched.current=true;
+            if(bookmarksOnly){setProject(item.path);return;}
+            clearFilters();setHost(host);setProject(item.path);setSearch("");setBookmarksOnly(false);
+            navigateDetail({kind:"project",path:item.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"});
+          }}>
           <div className="flex w-full min-w-0 items-center gap-2.5">
-            <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} className="flex-none" /><span className="min-w-0 truncate">{basename(item.path)}</span>
+            <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} className="flex-none" /><span className="min-w-0 truncate">{projectOptions.filter(other=>basename(other.path)===basename(item.path)).length>1 ? item.path : basename(item.path)}</span>
             <span className="label-mono ml-auto text-muted-foreground">{item.session_count}</span>
           </div>
         </button>)}
@@ -624,11 +651,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             <label>Model<select aria-label="Filter by model" value={model} onChange={event=>setModel(event.target.value)} className="mt-1 w-full min-w-0 bg-chip p-1">
               <option value="">All models</option>{[...new Set([...options.models,...(model ? [model] : [])])].map(value=><option key={value}>{value}</option>)}
             </select></label>
-            <label>Host<select aria-label="Filter by host" value={host} onChange={event=>setHost(event.target.value)} className="mt-1 w-full min-w-0 bg-chip p-1">
+            <label>Host<select aria-label="Filter by host" value={host} onChange={event=>{const value=event.target.value;setHost(value);if(detail.kind==="project")navigateDetail({kind:"project",path:detail.path,host:value.startsWith("remote:") ? value.slice(7) : null,local_only:value==="local"});}} className="mt-1 w-full min-w-0 bg-chip p-1">
               <option value="">All hosts</option><option value="local">Local sessions</option>
               {[...new Set([...options.hosts,...(host.startsWith("remote:") ? [host.slice(7)] : [])])].map(value=><option value={`remote:${value}`} key={value}>{value}</option>)}
             </select></label>
-            <button type="button" className="text-left underline" onClick={clearFilters}>Clear filters</button>
+            <button type="button" className="text-left underline" onClick={()=>{clearFilters();if(detail.kind==="project")navigateDetail({kind:"home"});}}>Clear filters</button>
           </div>
           <p className="mt-2 text-muted-foreground">Dates use session update time in your local time zone, including the entire end day.</p>
         </details>
@@ -706,7 +733,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     </section>
 
     <main className="transcript-pane relative flex min-h-0 min-w-0 flex-1 flex-col bg-paper" aria-label="Transcript">
-      {selected ? <motion.div key={selected.key} className="flex min-h-0 flex-1 flex-col"
+      {detail.kind==="project" ? <ProjectOverview api={api} context={{path:detail.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"}} active={isActive}
+        onOpen={(key,seq)=>{void api.getSession(key).then(session=>{if(session)choose(session,seq);}).catch(cause=>setError(String(cause)));}}
+        onViewAll={showBookmarks=>{clearFilters();setProject(detail.path);setHost(host);setBookmarksOnly(showBookmarks);setSearch("");navigateDetail({kind:"home"});}}
+        onIntelligence={()=>onOpenIntelligence?.({path:detail.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"})} /> : selected ? <motion.div key={selected.key} className="flex min-h-0 flex-1 flex-col"
         initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }}>
         <header ref={detailHeaderRef} className="flex min-h-[88px] flex-none items-center justify-between gap-4 border-b border-border px-7 py-4 max-[1100px]:flex-wrap max-[1100px]:px-5">
           <button type="button" className="mobile-back hidden size-8 place-items-center hover:bg-chip"

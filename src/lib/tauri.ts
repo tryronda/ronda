@@ -17,6 +17,9 @@ const browserDefaults: Record<string, unknown> = {
 
 export function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
   if (inTauri()) return tauriInvoke<T>(command, args);
+  const query=args as Record<string,unknown> | undefined;
+  if (command === "get_project_overview") return Promise.resolve({path:query?.project,host:query?.host ?? null,local_only:query?.localOnly ?? false,
+    since:Date.now()-30*86400000,sessions:[],total_sessions:0,bookmarks:[],total_bookmarks:0,errors:[],total_errors:0,intelligence:null,intelligence_error:null} as T);
   if (command in browserDefaults) return Promise.resolve(structuredClone(browserDefaults[command]) as T);
   return Promise.reject(new Error("This action is available in the Ronda desktop app."));
 }

@@ -4,11 +4,16 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
-## [Unreleased]
+## [1.0.7] - 2026-10-02
 
 ### Added
 
-- Read-only project overview queries combine recent sessions, bookmarks, recurring errors, and 30-day Intelligence with consistent project and host scope.
+- Project overviews combine recent root sessions, bookmarks, recurring error evidence, and 30-day local Intelligence with exact totals and consistent project/host scope.
+- Open exact messages, browse every project session or bookmark, and return to project context through Back and Forward. The preview derives project totals from its sample originals.
+
+### Changed
+
+- Intelligence describes observed commit commands without presenting them as verified fixes.
 
 ## [1.0.6] - 2026-10-02
 

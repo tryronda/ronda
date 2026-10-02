@@ -1,3 +1,4 @@
+import type { Intelligence } from "@/panels/IntelligenceView";
 import { invoke, listen } from "@/lib/tauri";
 
 export const agentIds = ["claude-code", "codex", "grok", "dsh", "cursor", "opencode",
@@ -84,6 +85,14 @@ export interface ProjectInfo {
   updated_at: number;
 }
 
+export interface ProjectContext { path: string; host: string | null; local_only: boolean }
+export type WorkbenchLocation = {kind:"home"} | ({kind:"project"} & ProjectContext)
+  | {kind:"session"; key:string; seq?:number; project?:ProjectContext};
+export interface ProjectOverview extends ProjectContext {
+  since:number; sessions:SessionMeta[]; total_sessions:number; bookmarks:BookmarkView[]; total_bookmarks:number;
+  errors:Intelligence["recurring"]; total_errors:number; intelligence:Intelligence|null; intelligence_error:string|null;
+}
+
 export interface ScanReport {
   discovered: number;
   indexed: number;
@@ -120,6 +129,7 @@ export interface WorkbenchBackend {
   saveBookmark(key: string, seq: number, note: string, refreshSnapshot: boolean, expectedUpdatedAt: number | null): Promise<MessageBookmark>;
   deleteBookmark(key: string, seq: number): Promise<void>;
   listProjects(): Promise<ProjectInfo[]>;
+  projectOverview(project: string, host: string | null, localOnly: boolean): Promise<ProjectOverview>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
   resumeSession(key: string): Promise<string>;
@@ -143,6 +153,7 @@ export const backend: WorkbenchBackend = {
   saveBookmark: (key, seq, note, refreshSnapshot, expectedUpdatedAt) => invoke("save_bookmark", {key, seq, note, refreshSnapshot, expectedUpdatedAt}),
   deleteBookmark: (key, seq) => invoke("delete_bookmark", {key, seq}),
   listProjects: () => invoke("list_projects"),
+  projectOverview: (project,host,localOnly) => invoke("get_project_overview", {project,host,localOnly}),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
   resumeSession: (key) => invoke("resume_session", { key }),

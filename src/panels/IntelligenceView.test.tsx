@@ -34,7 +34,7 @@ test("renders the report, filters by range, and opens evidence", async () => {
   await act(async () => { root.render(<IntelligenceView onOpen={onOpen} />); });
 
   const text = host.textContent ?? "";
-  for (const expected of ["Fixing bugs", "Recovering from failing commands", "Error: database is locked", "came back after a committed fix",
+  for (const expected of ["Fixing bugs", "Recovering from failing commands", "Error: database is locked", "came back after a session with a commit command",
     "Rust", "75%", "ended failing", "No tool data from antigravity", "33% of active time"]) expect(text).toContain(expected);
   const monthCall = invoke.mock.calls.find(([command]) => command === "get_intelligence")!;
   expect((monthCall[1] as { since: number }).since).toBeGreaterThan(Date.now() - 31 * 86_400_000);

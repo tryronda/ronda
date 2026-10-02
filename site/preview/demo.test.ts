@@ -126,3 +126,30 @@ test("large preview search and host choices stay complete beyond one hundred mat
   expect((await backend.sessionPage({...queryDefaults,local_only:true},0,100)).items.every(session=>session.host === null)).toBe(true);
   expect((await backend.sessionPage({...queryDefaults,include_archived:true},0,100)).total).toBeGreaterThan(600);
 });
+
+
+test("project preview totals and evidence come from scoped sample originals", async()=>{
+  installDemoBackend();
+  const path="/Users/you/dev/ronda";
+  const local=await backend.projectOverview(path,null,true);
+  const sessions=await backend.listSessions({...queryDefaults,project_path:path,local_only:true,limit:null});
+  expect(local.total_sessions).toBe(sessions.filter(session=>!session.parent_key).length);
+  expect(local.sessions).toHaveLength(10);
+  expect(local.intelligence!.totals.sessions).toBe(sessions.filter(session=>session.updated_at>=local.since).length);
+  expect(local.errors).toHaveLength(1);
+  expect(local.errors[0].sessions).toBe(2);
+  for(const evidence of local.errors[0].evidence){
+    expect((await backend.getSession(evidence.session_key))!.host).toBeNull();
+    expect((await backend.getTranscript(evidence.session_key)).find(message=>message.seq===evidence.seq)!.tool_calls[0].is_error).toBe(true);
+  }
+  const remote=await backend.projectOverview(path,"buildbox",false);
+  expect(remote.errors[0].sessions).toBe(2);
+  expect(remote.total_bookmarks).toBe(0);
+  expect(remote.intelligence!.totals.sessions).toBe(2);
+  expect(remote.sessions.every(session=>session.host==="buildbox")).toBe(true);
+  const empty=await backend.projectOverview("/missing/ronda",null,false);
+  expect(empty.total_sessions).toBe(0);expect(empty.total_errors).toBe(0);
+  const unavailable=await backend.projectOverview("/Users/you/dev/payments-api",null,false);
+  expect(unavailable.bookmarks.some(view=>view.status==="unavailable")).toBe(true);
+  await expect(backend.projectOverview(path,"buildbox",true)).rejects.toThrow("either");
+});
