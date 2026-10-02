@@ -1,7 +1,9 @@
 import {expect, test} from "vitest";
-import {calendarRange} from "./library-filters";
+import {calendarRange, restoredFilters} from "./library-filters";
 
 test("calendar ranges include the end day, validate dates, and respect local DST boundaries", () => {
+  for (const raw of ["not json", "[]", "null", '{"dateFrom":"2023-02-29"}', '{"dateFrom":"2026-02-02","dateThrough":"2026-02-01"}']) expect(restoredFilters(raw)).toBeNull();
+  expect(restoredFilters('{"agent":"invalid","starredOnly":"false","host":"unrecognized","searchSort":"other"}')).toMatchObject({agent:null,starredOnly:false,host:"",searchSort:"relevance"});
   expect(calendarRange("", "")).toEqual({updated_from_ms:null,updated_before_ms:null});
   const leap = calendarRange("2024-02-29", "2024-02-29");
   expect(new Date(leap.updated_from_ms!).getDate()).toBe(29);

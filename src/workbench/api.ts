@@ -106,6 +106,8 @@ export interface BookmarkReplacement { session_key: string; seq: number; expecte
 export interface BookmarkImport { imported: number; unchanged: number; conflicts: {existing: MessageBookmark; incoming: MessageBookmark}[]; }
 
 export interface WorkbenchBackend {
+  getPref(key: string): Promise<string | null>;
+  setPref(key: string, value: string): Promise<void>;
   listSessions(query: SessionQuery): Promise<SessionMeta[]>;
   libraryOptions(): Promise<LibraryOptions>;
   sessionPage(query: SessionQuery, offset: number, limit: number): Promise<SessionPage>;
@@ -127,6 +129,8 @@ export interface WorkbenchBackend {
 }
 
 export const backend: WorkbenchBackend = {
+  getPref: key => invoke("get_pref",{key}),
+  setPref: (key,value) => invoke("set_pref",{key,value}),
   listSessions: (query) => invoke("list_sessions", { query }),
   libraryOptions: () => invoke("library_options"),
   sessionPage: (query, offset, limit) => invoke("session_page", {query, offset, limit}),

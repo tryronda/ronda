@@ -82,6 +82,7 @@ test("library pages count before limits and share date/model/host filters with s
   installDemoBackend();
   const filter = {...queryDefaults, limit:1};
   const all = await backend.listSessions({...filter,limit:null});
+  expect(all.length).toBeGreaterThan(500);
   expect(await backend.listSessions(filter)).toHaveLength(1);
   const keys: string[] = [];
   for (let offset=0;offset<all.length;offset+=17) {
@@ -107,4 +108,21 @@ test("library pages count before limits and share date/model/host filters with s
     await expect(backend.searchGrouped("pagination",invalid,"recent",0,100)).rejects.toThrow();
     await expect(backend.listBookmarks("",invalid)).rejects.toThrow();
   }
+});
+
+
+test("large preview search and host choices stay complete beyond one hundred matches", async () => {
+  installDemoBackend();
+  const options=await backend.libraryOptions();
+  expect(options.hosts).toEqual(["buildbox","local"]);
+  const keys:string[]=[];
+  for(let offset=0;offset<540;offset+=50) {
+    const page=await backend.searchGrouped("browsing sample",queryDefaults,"recent",offset,50);
+    expect(page.total_sessions).toBe(540);
+    keys.push(...page.groups.map(group=>group.session.key));
+  }
+  expect(new Set(keys).size).toBe(540);
+  expect((await backend.sessionPage({...queryDefaults,host:"local"},0,100)).items.every(session=>session.host === "local")).toBe(true);
+  expect((await backend.sessionPage({...queryDefaults,local_only:true},0,100)).items.every(session=>session.host === null)).toBe(true);
+  expect((await backend.sessionPage({...queryDefaults,include_archived:true},0,100)).total).toBeGreaterThan(600);
 });

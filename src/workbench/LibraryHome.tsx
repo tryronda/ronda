@@ -16,14 +16,13 @@ const copy = {
   continue: "Pick up where you left off", empty: "Your sessions will appear here once an agent has been used on this machine.",
 };
 
-export function LibraryHome({ sessions, projectCount, agentNames, shortcut, scanning, onOpen, onSearch, onRefresh, titleOf, projectOf, timeOf }: {
-  sessions: SessionMeta[]; projectCount: number; agentNames: Record<AgentId, string>;
+export function LibraryHome({ sessions, sessionCount, agentCount, projectCount, agentNames, shortcut, scanning, onOpen, onSearch, onRefresh, titleOf, projectOf, timeOf }: {
+  sessions: SessionMeta[]; sessionCount: number; agentCount: number; projectCount: number; agentNames: Record<AgentId, string>;
   shortcut: string; scanning: boolean; onOpen: (session: SessionMeta) => void; onSearch: () => void; onRefresh: () => void;
   titleOf: (session: SessionMeta) => string; projectOf: (session: SessionMeta) => string; timeOf: (ms: number) => string;
 }) {
   const t = copy;
   const reduce = useReducedMotion();
-  const agentCount = new Set(sessions.map(session => session.agent)).size;
   const recent = sessions.slice(0, 4);
   const rise = (delay: number) => reduce ? {} : {
     initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3, ease: EASE_OUT, delay },
@@ -52,7 +51,7 @@ export function LibraryHome({ sessions, projectCount, agentNames, shortcut, scan
     </section>
 
     <motion.dl className="label-mono flex flex-wrap gap-x-8 gap-y-2 border-y border-border px-10 py-3.5 text-[13px] text-muted-foreground @max-[640px]:px-7" {...rise(0.1)}>
-      {([[sessions.length, t.sessions], [projectCount, t.projects], [agentCount, t.agents]] as const).map(([value, label]) =>
+      {([[sessionCount, t.sessions], [projectCount, t.projects], [agentCount, t.agents]] as const).map(([value, label]) =>
         <div key={label} className="flex items-baseline gap-1.5">
           <dt className="sr-only">{label}</dt>
           <dd className="m-0 text-[14px] text-foreground"><AnimatedNumber value={value} duration={0.45} startOnView={false} /></dd>

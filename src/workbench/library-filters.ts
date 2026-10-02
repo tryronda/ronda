@@ -1,4 +1,4 @@
-import type { SessionMeta, SessionQuery } from "./api";
+import {agentIds, type AgentId, type SearchSort, type SessionMeta, type SessionQuery } from "./api";
 
 export function matchesSession(session: SessionMeta, query: SessionQuery) {
   return (!query.agent || session.agent === query.agent)
@@ -35,4 +35,21 @@ export function calendarRange(from: string, through: string) {
   if (updated_from_ms != null && updated_before_ms != null && updated_from_ms >= updated_before_ms)
     throw new Error("End date must be on or after the start date");
   return {updated_from_ms, updated_before_ms};
+}
+
+
+export function restoredFilters(raw: string | null) {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (!value || Array.isArray(value) || typeof value !== "object") return null;
+    const agent: AgentId | null = agentIds.includes(value.agent) ? value.agent : null;
+    const text = (key: string) => typeof value[key] === "string" ? value[key] : "";
+    const dateFrom=text("dateFrom"), dateThrough=text("dateThrough");
+    calendarRange(dateFrom,dateThrough);
+    const host=text("host");
+    return {agent,project:text("project") || null,starredOnly:value.starredOnly === true,includeArchived:value.includeArchived === true,
+      dateFrom,dateThrough,model:text("model"),host:host === "local" || host.startsWith("remote:") ? host : "",
+      searchSort:(value.searchSort === "recent" ? "recent" : "relevance") as SearchSort};
+  } catch { return null; }
 }

@@ -14,7 +14,7 @@ import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
-import { calendarRange, matchesSession } from "./library-filters";
+import { calendarRange, matchesSession, restoredFilters } from "./library-filters";
 import { LibraryHome } from "./LibraryHome";
 import { BookmarkControl } from "./BookmarkControl";
 import { TranscriptNavigation } from "./TranscriptNavigation";
@@ -142,6 +142,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const scopeRef = useRef<HTMLDivElement>(null);
+  const sessionListRef = useRef<HTMLDivElement>(null);
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
@@ -169,7 +170,38 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [detailHeaderHeight, setDetailHeaderHeight] = useState(88);
   const [hits, setHits] = useState<SearchGroup[]>([]);
   const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
-  const [searchOffset, setSearchOffset] = useState(0);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const preferenceTouched = useRef(false);
+  const preferenceWrite = useRef(Promise.resolve());
+  useEffect(() => {
+    let cancelled=false;
+    setPreferencesLoaded(false);
+    void api.getPref("library_filters").then(raw => {
+      if (cancelled) return;
+      setPreferencesLoaded(true);
+      if (preferenceTouched.current) return;
+      const saved=restoredFilters(raw);
+      if (!saved) return;
+      setProject(saved.project); setAgent(saved.agent); setStarredOnly(saved.starredOnly); setIncludeArchived(saved.includeArchived);
+      setDateFrom(saved.dateFrom); setDateThrough(saved.dateThrough); setModel(saved.model); setHost(saved.host); setSearchSort(saved.searchSort);
+    }).catch(cause=>{if (!cancelled) setError(`Could not restore filters: ${String(cause)}`);});
+    return ()=>{cancelled=true;};
+  },[api]);
+  useEffect(() => {
+    if (!preferencesLoaded || dates.error) return;
+    const value=JSON.stringify({project,agent,starredOnly,includeArchived,dateFrom,dateThrough,model,host,searchSort});
+    // Serialize writes so an older preference cannot finish after a newer choice.
+    preferenceWrite.current=preferenceWrite.current.catch(()=>{}).then(()=>api.setPref("library_filters",value))
+      .catch(cause=>setError(`Could not save filters: ${String(cause)}`));
+  },[api,preferencesLoaded,project,agent,starredOnly,includeArchived,dateFrom,dateThrough,model,host,searchSort,dates.error]);
+  const [sessionTotal, setSessionTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const browseOffset = useRef(0);
+  const browseBusy = useRef(false);
+  const pageGeneration = useRef(0);
+  const searchOffset = useRef(0);
+  const searchBusy = useRef(false);
+  const searchRun = useRef(0);
   const [searchTotals, setSearchTotals] = useState({ sessions: 0, messages: 0 });
   const [searchContext, setSearchContext] = useState({ query: "", filter: queryDefaults, revision: 0 });
   const [searching, setSearching] = useState(false);
@@ -195,13 +227,26 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     ...dates.range, model:model || null, host:host.startsWith("remote:") ? host.slice(7) : null, local_only:host === "local" }),
     [agent, project, starredOnly, includeArchived, dates, model, host]);
 
+  useEffect(() => {
+    pageGeneration.current++;
+    if (sessionListRef.current) sessionListRef.current.scrollTop = 0;
+    browseBusy.current = false; setLoadingMore(false);
+    setSessions(current => {
+      const first = current.slice(0,100);
+      browseOffset.current = first.length;
+      return current.length > 100 ? first : current;
+    });
+  }, [search,searchSort]);
+
   const reload = useCallback(async () => {
     const run = ++reloadRun.current;
+    browseBusy.current = false; setLoadingMore(false); setLoading(true);
     if (dates.error) { setLoading(false); return; }
     try {
-      const [nextSessions, nextOptions] = await Promise.all([api.listSessions(filter), api.libraryOptions()]);
+      const [page, nextOptions] = await Promise.all([api.sessionPage(filter,0,100), api.libraryOptions()]);
       if (run !== reloadRun.current) return;
-      setSessions(nextSessions);
+      if (sessionListRef.current) sessionListRef.current.scrollTop = 0;
+      setSessions(page.items); setSessionTotal(page.total); browseOffset.current = page.offset + page.items.length;
       setProjects(nextOptions.projects);
       setOptions(nextOptions);
       setRevision(value => value + 1);
@@ -209,6 +254,26 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     } catch (cause) { if (run === reloadRun.current) setError(String(cause)); }
     finally { if (run === reloadRun.current) setLoading(false); }
   }, [api, filter, dates.error]);
+
+  const loadMoreSessions = async () => {
+    if (loading || browseBusy.current || dates.error || browseOffset.current >= sessionTotal) return;
+    const run = reloadRun.current, generation = pageGeneration.current;
+    browseBusy.current = true; setLoadingMore(true);
+    try {
+      const page = await api.sessionPage(filter,browseOffset.current,100);
+      if (run !== reloadRun.current || generation !== pageGeneration.current) return;
+      if (page.total !== sessionTotal) { await reload(); return; }
+      browseOffset.current = page.offset + page.items.length;
+      setSessions(current => [...new Map([...current,...page.items].map(session=>[session.key,session])).values()]);
+      setError(null);
+    } catch (cause) { if (run === reloadRun.current && generation === pageGeneration.current) setError(String(cause)); }
+    finally { if (run === reloadRun.current && generation === pageGeneration.current) { browseBusy.current = false; setLoadingMore(false); } }
+  };
+  const subscribeToLibrary = useCallback((changed: () => void) => api.onLibraryChanged(() => {
+    // Cancel pending pages immediately; the shared hook still coalesces the actual refresh.
+    reloadRun.current++; searchRun.current++; setLoading(true); setSearching(false);
+    changed();
+  }), [api]);
 
   const reloadBookmarks = useCallback(async () => {
     const run = ++bookmarkRun.current;
@@ -243,7 +308,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     return [...projects, ...extra];
   }, [projects, bookmarks, bookmarksOnly]);
 
-  useLibraryRefresh(() => { void reload(); return () => { reloadRun.current++; }; }, [reload], isActive, 400, api.onLibraryChanged);
+  useLibraryRefresh(() => { void reload(); return () => { reloadRun.current++; }; }, [reload], isActive, 400, subscribeToLibrary);
   useEffect(() => {
     const idle = window.requestIdleCallback?.(() => void loadStreamdown()) ?? window.setTimeout(() => void loadStreamdown(), 600);
     return () => { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle); };
@@ -297,29 +362,40 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     }
   }, [messages]);
 
-  useEffect(() => { setSearchOffset(0); }, [search, filter, searchSort]);
-
   useEffect(() => {
-    if (!isActive) return;
+    const run = ++searchRun.current;
+    searchOffset.current = 0; searchBusy.current = false;
+    if (!isActive) { setSearching(false); return; }
     if (dates.error || bookmarksOnly || !search.trim()) { setHits([]); setSearching(false); return; }
-    let cancelled = false;
-    setSearching(true);
+    searchBusy.current = true; setSearching(true);
     const timer = window.setTimeout(() => {
-      void api.searchGrouped(search.trim(), filter, searchSort, searchOffset, 50).then(next => {
-        if (!cancelled) {
-          if (searchOffset > 0 && searchOffset >= next.total_sessions) {
-            setSearchOffset(Math.max(0, Math.floor((next.total_sessions - 1) / 50) * 50));
-            return;
-          }
-          setHits(next.groups);
-          setSearchTotals({ sessions: next.total_sessions, messages: next.total_message_matches });
-          setSearchContext({ query: search.trim(), filter, revision });
-          setSearching(false);
-        }
-      }).catch(cause => { if (!cancelled) { setError(String(cause)); setSearching(false); } });
-    }, 120);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [api, filter, search, searchSort, searchOffset, revision, isActive, bookmarksOnly, dates.error]);
+      void api.searchGrouped(search.trim(),filter,searchSort,0,50).then(next => {
+        if (run !== searchRun.current) return;
+        setHits(next.groups);
+        searchOffset.current = 50;
+        setSearchTotals({sessions:next.total_sessions,messages:next.total_message_matches});
+        setSearchContext({query:search.trim(),filter,revision});
+        setError(null);
+      }).catch(cause => { if (run === searchRun.current) setError(String(cause)); })
+        .finally(() => { if (run === searchRun.current) { searchBusy.current = false; setSearching(false); } });
+    },120);
+    return () => { searchRun.current++; window.clearTimeout(timer); };
+  }, [api,filter,search,searchSort,revision,isActive,bookmarksOnly,dates.error]);
+
+  const loadMoreSearch = async () => {
+    if (loading || searchBusy.current || dates.error || searchOffset.current >= searchTotals.sessions) return;
+    const run = searchRun.current;
+    searchBusy.current = true; setSearching(true);
+    try {
+      const next = await api.searchGrouped(search.trim(),filter,searchSort,searchOffset.current,50);
+      if (run !== searchRun.current) return;
+      if (next.total_sessions !== searchTotals.sessions || next.total_message_matches !== searchTotals.messages) { await reload(); return; }
+      searchOffset.current += 50;
+      setHits(current => [...new Map([...current,...next.groups].map(group=>[group.session.key,group])).values()]);
+      setError(null);
+    } catch (cause) { if (run === searchRun.current) setError(String(cause)); }
+    finally { if (run === searchRun.current) { searchBusy.current = false; setSearching(false); } }
+  };
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -464,7 +540,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     active ? "bg-chip text-foreground" : "text-foreground/60 hover:text-foreground");
   const sectionHeading = "label-mono mx-2.5 mt-6 mb-2 text-[12px] lowercase text-muted-foreground";
 
-  return <div ref={scopeRef} className={cn("workbench-layout relative flex h-full min-h-0 min-w-0", mobileDetail && "detail-open")}>
+  return <div ref={scopeRef} onChangeCapture={()=>{preferenceTouched.current=true;}} onClickCapture={()=>{preferenceTouched.current=true;}} className={cn("workbench-layout relative flex h-full min-h-0 min-w-0", mobileDetail && "detail-open")}>
     <aside aria-label={t.library} aria-hidden={!sidebarOpen} inert={!sidebarOpen}
       className={cn("flex min-h-0 flex-none flex-col overflow-hidden border-r border-border bg-paper transition-[width,opacity] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
         sidebarOpen ? "w-[240px] px-2 pt-2 pb-3 opacity-100 max-[1100px]:w-[200px]" : "invisible w-0 border-r-0 p-0 opacity-0")}>
@@ -472,7 +548,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       <SharedLayoutBg inset={0} className="gap-px" pillClassName="rounded-none bg-chip/70">
         <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !agent && !host && !model && !dateFrom && !dateThrough && !includeArchived)} type="button"
           onClick={() => { clearFilters(); setBookmarksOnly(false); }}>
-          <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />{t.all}<span className="label-mono ml-auto text-muted-foreground">{sessions.length}</span>
+          <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />{t.all}<span className="label-mono ml-auto text-muted-foreground">{sessionTotal}</span>
         </button>
         <button key="starred" className={navClass(!bookmarksOnly && starredOnly)} type="button"
           onClick={() => { setStarredOnly(value=>!value); setBookmarksOnly(false); }}>
@@ -522,7 +598,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </AnimatePresence>
           <span className={scanning ? "[&_svg]:animate-spin" : undefined}><IconButton icon={ReloadIcon} title={t.refresh} onClick={() => void refresh()} disabled={scanning} /></span>
         </div>
-        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{dates.error ? "Choose a valid date range" : scanning ? t.refreshing : bookmarksOnly ? `${visibleBookmarks.length} saved messages` : search.trim() ? `${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `${visible.length} ${t.sessions}`}</p>
+        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{dates.error ? "Choose a valid date range" : scanning ? t.refreshing : bookmarksOnly ? `${visibleBookmarks.length} saved messages` : search.trim() ? `Showing ${hits.length} of ${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `Showing ${sessions.length} of ${sessionTotal} sessions`}</p>
         <label className="glass flex h-9 items-center gap-2 px-2.5 text-muted-foreground transition-shadow focus-within:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--foreground)]">
           <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={2} />
           <input ref={searchRef} type="search" value={search} onChange={event => setSearch(event.target.value)}
@@ -556,7 +632,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </select>
         </label>}
       </div>
-      <div className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || searching || scanning}
+      <div ref={sessionListRef} className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || loadingMore || searching || scanning}
         onKeyDown={event => {
           if (event.target instanceof HTMLElement && event.target.closest("textarea,input,[contenteditable='true']")) return;
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -583,7 +659,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           {searching ? <Loader variant="dot-matrix" size={22} label={t.searching} className="text-foreground" />
             : <PixelField cols={4} rows={4} cell={9} seed={3} className="size-9" />}
           <strong className="text-[14px] font-medium text-foreground">{loading ? t.loading : search.trim() ? searching ? t.searching : t.searchEmpty : t.noSessions}</strong>
-          {!search.trim() && <p className="m-0 text-[12px] leading-relaxed">{t.noSessionsHint}</p>}</div> : visible.map(({ session, group }, index) =>
+          {!search.trim() && <p className="m-0 text-[12px] leading-relaxed">{options.agents.length ? "Try clearing filters or including archived sessions." : t.noSessionsHint}</p>}</div> : visible.map(({ session, group }, index) =>
           <div key={session.key}><button type="button"
             aria-current={selectedKey === session.key ? "true" : undefined}
             className={cn("session-card relative mb-1 block w-full px-3 py-3 text-left transition-[background-color,border-color,box-shadow] duration-100 [contain-intrinsic-size:auto_86px] [content-visibility:auto]",
@@ -608,10 +684,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             key={`${session.key}-${searchContext.query}-${searchContext.revision}-${JSON.stringify(searchContext.filter)}`}
             api={api} group={group} query={searchContext.query} filter={searchContext.filter}
             choose={seq => choose(session, seq)} />}</div>)}
-        {!bookmarksOnly && search.trim() && searchTotals.sessions > 50 && <nav aria-label="Search result pages" className="flex items-center justify-between gap-2 p-2 text-[13px]">
-          <button type="button" disabled={searching || searchOffset === 0} onClick={() => setSearchOffset(value => Math.max(0, value - 50))}>Previous sessions</button>
-          <span>{searchOffset + 1}–{Math.min(searchOffset + 50, searchTotals.sessions)} of {searchTotals.sessions}</span>
-          <button type="button" disabled={searching || searchOffset + 50 >= searchTotals.sessions} onClick={() => setSearchOffset(value => value + 50)}>Next sessions</button>
+        {!bookmarksOnly && !dates.error && <nav aria-label="Session pages" className="p-2 text-[13px]">
+          {search.trim() ? searchOffset.current < searchTotals.sessions && <button type="button" disabled={loading || searching}
+            onClick={()=>void loadMoreSearch()}>Load more search results</button>
+            : browseOffset.current < sessionTotal && <button type="button" disabled={loading || loadingMore}
+              onClick={()=>void loadMoreSessions()}>Load more sessions</button>}
         </nav>}
       </div>
     </section>
@@ -674,7 +751,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         </div>
       </motion.div> : <motion.div key="home" className="flex min-h-0 flex-1 flex-col"
         initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }}>
-        <LibraryHome sessions={sessions} projectCount={projects.length} agentNames={agentNames}
+        <LibraryHome sessions={sessions} sessionCount={sessionTotal} agentCount={options.agents.length} projectCount={projects.length} agentNames={agentNames}
           shortcut={shortcut} scanning={scanning} onOpen={session => choose(session)} onSearch={() => searchRef.current?.focus()}
           onRefresh={() => void refresh()} titleOf={session => plainTitle(session.title)}
           projectOf={session => session.project_path ? basename(session.project_path) : t.unknown} timeOf={ms => timeLabel(ms)} />

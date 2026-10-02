@@ -30,6 +30,7 @@ test("bookmarks search saved notes, filter missing projects, and open messages o
   const api: WorkbenchBackend = {...backend, libraryOptions,listBookmarks:async()=>[missing,available],listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
     getTranscript:async()=>[{seq:1,role:"assistant",kind:"text",text:"Assistant decision",timestamp:null,model:null,thinking:null,tool_calls:[],images:[]}],
     onLibraryChanged:async()=>()=>{},searchGrouped:async()=>({groups:[],total_sessions:0,total_message_matches:0})};
+  api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   const button=(text:string)=>Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button=>button.textContent?.trim()===text)!;
   const click=async(text:string)=>{await act(async()=>button(text).click());};
@@ -76,6 +77,7 @@ test("opens on the library home, then loads a session, shows its transcript, and
     setSessionFlags: setFlags, resumeSession: async () => "", exportSession: async () => {},
     trashSession: async () => {}, onLibraryChanged: async () => () => {},
   };
+  api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -115,6 +117,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
     setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => {},
     onLibraryChanged: async callback => { changed = callback; return () => { changed = () => {}; }; },
   };
+  api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const render = async (active = true) => { await act(async () => root.render(<Workbench api={api} isActive={active} />)); };
@@ -193,6 +196,7 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
     getTranscript:async()=>[0,1,2].map(seq=>({seq,role:"assistant",kind:"text",text:`body ${seq}`,timestamp:null,model:null,thinking:null,tool_calls:[],images:[]})),
     searchGrouped,searchSessionMatches,onLibraryChanged:async callback=>{changed=callback;return ()=>{};},
   };
+  api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   const click = async (label: string) => { await act(async()=>{
     Array.from(host.querySelectorAll("button")).find(button=>button.textContent===label || button.getAttribute("aria-label")===label)!.click();
@@ -209,7 +213,7 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
     await act(async()=>root.render(<Workbench api={api}/>));
     await type("needle");
     expect(host.querySelectorAll(".session-card")).toHaveLength(1);
-    expect(host.textContent).toContain("51 sessions · 151 matching messages");
+    expect(host.textContent).toContain("Showing 1 of 51 sessions · 151 matching messages");
     expect(host.querySelector("mark")?.textContent?.toLowerCase()).toBe("needle");
     expect(host.querySelector("img")).toBeNull();
     expect(searchGrouped.mock.calls.at(-1)?.[1]).toMatchObject({include_archived:false});
@@ -228,7 +232,7 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
     expect(host.querySelectorAll('button[aria-label^="Open message"]')).toHaveLength(20);
     await click("Load more matches");
     expect(host.querySelectorAll('button[aria-label^="Open message"]')).toHaveLength(40);
-    await click("Next sessions");await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
+    await click("Load more search results");await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
     expect(searchGrouped.mock.calls.at(-1)?.slice(3)).toEqual([50,50]);
     expect(host.textContent).toContain("Second result");
     totalSessions = 1;
@@ -259,6 +263,7 @@ test("full-library choices combine filters, preserve hidden selection, and rejec
   const list = vi.fn(async (query: import("./api").SessionQuery)=>matchesSession(session,query) ? [session] : []);
   const api: WorkbenchBackend = {...backend,listSessions:list,libraryOptions:async()=>({...await libraryOptions(),models:["gpt-5","off-page-model"],hosts:["local"]}),
     listBookmarks:async()=>[],getSession:async()=>session,getTranscript:async()=>[],onLibraryChanged:async()=>()=>{}};
+  api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   const change=async(label:string,value:string)=>{await act(async()=>{
     const input=host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
@@ -286,5 +291,84 @@ test("full-library choices combine filters, preserve hidden selection, and rejec
     expect(list).toHaveBeenCalledTimes(calls);
     await clear();expect(host.querySelector('[role="alert"]')).toBeNull();
     expect(list.mock.calls.at(-1)?.[0]).toMatchObject({updated_from_ms:null,updated_before_ms:null,model:null,host:null,local_only:false});
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
+test("complete browsing appends unique pages, resets on query changes, and discards pages invalidated by index updates", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});vi.useFakeTimers();
+  let changed=()=>{};
+  const rows=Array.from({length:601},(_,i)=>({...session,key:`codex:${i.toString().padStart(3,"0")}`,title:`Browse example ${i}`}));
+  let slow=false, finish!: (page: import("./api").SessionPage)=>void;
+  const page=vi.fn(async (_query:import("./api").SessionQuery,offset:number,limit:number)=>{
+    if (slow && offset) return new Promise<import("./api").SessionPage>(resolve=>{finish=resolve;});
+    // Include an overlapping key to check deduplication without changing the next raw offset.
+    return {items:rows.slice(offset,offset+limit),total:rows.length,offset,limit};
+  });
+  const api: WorkbenchBackend={...backend,libraryOptions,listBookmarks:async()=>[],sessionPage:page,
+    searchGrouped:async()=>({groups:[],total_sessions:0,total_message_matches:0}),onLibraryChanged:async callback=>{changed=callback;return ()=>{};}};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const more=()=>Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button=>button.textContent === "Load more sessions")!;
+  const type=async(value:string)=>{await act(async()=>{
+    const input=host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,value);
+    input.dispatchEvent(new Event("input",{bubbles:true}));
+    await vi.advanceTimersByTimeAsync(121);
+  });};
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    expect(host.textContent).toContain("Showing 100 of 601 sessions");
+    expect(host.querySelector('dl')?.textContent).toContain("601");
+    for (let i=0;i<6;i++) await act(async()=>more().click());
+    expect(host.querySelectorAll('.session-card')).toHaveLength(601);
+    expect(more()).toBeUndefined();
+    expect(page.mock.calls.map(call=>call[1])).toEqual([0,100,200,300,400,500,600]);
+    await type("different query");await type("");
+    expect(host.querySelectorAll('.session-card')).toHaveLength(100);
+    slow=true;await act(async()=>more().click());
+    const late=finish;
+    await act(async()=>changed());
+    expect(more().disabled).toBe(true);
+    await act(async()=>late({items:[rows[0],rows[100]],total:601,offset:100,limit:100}));
+    expect(host.querySelectorAll('.session-card')).toHaveLength(100);
+    await act(async()=>vi.advanceTimersByTimeAsync(401));
+    slow=false;await act(async()=>more().click());
+    expect(host.querySelectorAll('.session-card')).toHaveLength(200);
+    slow=true;await act(async()=>more().click());
+    await act(async()=>finish({items:[rows[0],rows[200]],total:601,offset:200,limit:100}));
+    expect(host.querySelectorAll('.session-card')).toHaveLength(201);
+    expect(new Set(Array.from(host.querySelectorAll('.session-card')).map(card=>card.textContent)).size).toBe(201);
+    await act(async()=>more().click());
+    const oldFilterPage=finish;
+    await act(async()=>{
+      const field=host.querySelector<HTMLSelectElement>('[aria-label="Filter by host"]')!;
+      field.value="local";field.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await act(async()=>oldFilterPage({items:[rows[600]],total:601,offset:202,limit:100}));
+    expect(host.querySelectorAll('.session-card')).toHaveLength(100);
+
+  } finally {await act(async()=>root.unmount());vi.useRealTimers();host.remove();}
+},15_000);
+
+test("restores validated filter preferences and serializes the last choice without saving search text", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const saved={project:null,agent:null,starredOnly:false,includeArchived:true,dateFrom:"2026-01-01",dateThrough:"2026-12-31",model:"gpt-5",host:"remote:local",searchSort:"recent"};
+  const writes:string[]=[];let firstDone!:()=>void;
+  const api:WorkbenchBackend={...backend,libraryOptions:async()=>({...await libraryOptions(),models:["gpt-5","new-model"],hosts:["local"]}),
+    getPref:async()=>JSON.stringify(saved),setPref:async(_key,value)=>{writes.push(value);if(writes.length === 1) await new Promise<void>(resolve=>{firstDone=resolve;});},
+    sessionPage:async(_query,offset,limit)=>({items:[],total:0,offset,limit}),listBookmarks:async()=>[],onLibraryChanged:async()=>()=>{}};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const select=async(label:string,value:string)=>{await act(async()=>{
+    const field=host.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!;
+    field.value=value;field.dispatchEvent(new Event("change",{bubbles:true}));
+  });};
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Updated from"]')?.value).toBe(saved.dateFrom);
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="Filter by host"]')?.value).toBe("remote:local");
+    await select("Filter by model","new-model");await select("Filter by host","local");
+    expect(writes).toHaveLength(1);
+    await act(async()=>firstDone());
+    expect(JSON.parse(writes.at(-1)!)).toMatchObject({...saved,model:"new-model",host:"local"});
+    expect(JSON.parse(writes.at(-1)!)).not.toHaveProperty("search");
   } finally {await act(async()=>root.unmount());host.remove();}
 });

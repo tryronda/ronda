@@ -166,6 +166,18 @@ function reset() {
     })));
   }
 
+  for (let index=0;index<600;index++) {
+    const key = `codex:browsing-${index.toString().padStart(3,"0")}`;
+    const session = meta(key,`Library browsing sample ${index+1}`,"codex",index%2 ? projects.infra : projects.ronda,
+      "illustrative-model",now-60*DAY-Math.floor(index/2)*HOUR,1000+index);
+    session.model = index%5 === 0 ? null : `illustrative-model-${index%3}`;
+    session.host = index%6 === 0 ? "buildbox" : index%6 === 1 ? "local" : null;
+    session.archived = index%10 === 0;
+    session.pinned = false;
+    sessions.push(session);
+    transcripts.set(key,[{...text("assistant","Library browsing sample. Synthetic data with illustrative model names."),seq:0,timestamp:null}]);
+  }
+
   bookmarkSeed = (async () => {
     const first = sessions.find(session => session.key === "claude-code:demo-0")!;
     const message = transcripts.get(first.key)![1];
