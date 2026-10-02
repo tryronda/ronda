@@ -67,7 +67,7 @@ bun run site:dev      # http://127.0.0.1:1430
 bun run site:build    # prerendered output in dist-site/
 ```
 
-The **Deploy site** workflow publishes the released tag to GitHub Pages after installers are published. It can also be dispatched manually with a published tag whose release notes identify the same source commit. Unreleased main changes do not deploy automatically. The site is served from `tryronda.cloud`; `site/public/CNAME` holds the domain.
+The **Build Ronda** release job requests **Deploy site** through a repository dispatch after installers are published. The site workflow runs on `main`, which the `github-pages` environment permits, checks out the published tag, and verifies its release/source commit before building. This preserves the environment's branch protection rules. Unreleased main changes do not deploy automatically. A manual workflow dispatch or bot repository dispatch with event `publish-release-site` and payload `ref: vX.Y.Z` can retry a published tag. Verify the separate **Deploy site** run and production site after release publication. The site is served from `tryronda.cloud`; `site/public/CNAME` holds the domain.
 
 ## Pull requests
 

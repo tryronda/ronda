@@ -12,6 +12,8 @@ on:
         description: Published release tag to deploy
         type: string
         required: true
+  repository_dispatch:
+    types: [publish-release-site]
 
 
 permissions:
@@ -32,11 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.event.client_payload.ref }}
       - name: Verify published source
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.ref }}
+          RELEASE_TAG: ${{ inputs.ref || github.event.client_payload.ref }}
         run: |
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
