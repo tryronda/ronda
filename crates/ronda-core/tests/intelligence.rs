@@ -447,3 +447,93 @@ fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
     drop(store);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn error_lookup_scopes_before_matching_and_keeps_cli_mcp_parity() {
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("ronda-errors-{}-{n}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir.join("errors.db")).unwrap();
+    for i in 0..25 {
+        let mut item = session(
+            AgentId::ClaudeCode,
+            &format!("error-{i}"),
+            i * MIN,
+            "Scoped errors",
+            &[
+                ("Bash", "test", LOCKED, true),
+                ("Bash", "test", LOCKED, true),
+            ],
+        );
+        if i == 24 {
+            item.meta.project_path = Some("/other/repo".into());
+        }
+        if i % 2 == 1 {
+            item.meta.host = Some("local".into());
+        }
+        store.upsert(&item, &format!("fixture-{i}")).unwrap();
+    }
+    let global = store.find_error(LOCKED).unwrap().unwrap();
+    assert_eq!(global.1.len(), 25); // repeated events count each session once, beyond a desktop page
+    let partial = store
+        .find_error_scoped("Error: SQLITE_BUSY", Some("/other/repo"), None, false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(partial.1.len(), 1);
+    assert_eq!(partial.1[0].0.session_key, "claude-code:error-24");
+    let local = store
+        .find_error_scoped(LOCKED, Some("/repo"), None, true)
+        .unwrap()
+        .unwrap();
+    let remote = store
+        .find_error_scoped(LOCKED, Some("/repo"), Some("local"), false)
+        .unwrap()
+        .unwrap();
+    assert_eq!((local.1.len(), remote.1.len()), (12, 12));
+    assert!(remote.1.iter().all(|(e, _)| store
+        .get_session(&e.session_key)
+        .unwrap()
+        .unwrap()
+        .host
+        .as_deref()
+        == Some("local")));
+    assert!(local.1.iter().all(|(e, _)| e.seq == 1));
+    assert_eq!(local.1[0].0.session_key, "claude-code:error-22");
+    assert_eq!(
+        store
+            .find_error_scoped(LOCKED, Some("/other/repo"), None, false)
+            .unwrap()
+            .unwrap()
+            .1
+            .len(),
+        1
+    );
+    assert!(store
+        .find_error_scoped(LOCKED, Some("/missing/repo"), None, false)
+        .unwrap()
+        .is_none());
+    assert!(store
+        .find_error_scoped("Error: never recorded", None, None, false)
+        .unwrap()
+        .is_none());
+    assert!(store.find_error_scoped(" ", None, None, false).is_err());
+    assert!(store
+        .find_error_scoped(&"🙂".repeat(20_001), None, None, false)
+        .is_err());
+    assert!(store
+        .find_error_scoped(LOCKED, None, Some("local"), true)
+        .is_err());
+    store.tombstone("claude-code:error-22").unwrap();
+    assert_eq!(
+        store
+            .find_error_scoped(LOCKED, Some("/repo"), None, true)
+            .unwrap()
+            .unwrap()
+            .1
+            .len(),
+        11
+    );
+}

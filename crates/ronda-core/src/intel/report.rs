@@ -1,7 +1,7 @@
 //! Aggregates stored facts into the intelligence report. Reads only the derived tables, never transcripts.
 use super::{patterns::Pattern, Category, Outcome};
 use crate::Store;
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -453,13 +453,38 @@ impl Store {
 
     /// Prior sessions that hit the same error as `text`, newest first.
     pub fn find_error(&self, text: &str) -> Result<Option<ErrorMatches>> {
+        self.find_error_scoped(text, None, None, false)
+    }
+
+    /// The same normalized lookup as CLI/MCP, scoped before signature selection and counting.
+    pub fn find_error_scoped(
+        &self,
+        text: &str,
+        project: Option<&str>,
+        host: Option<&str>,
+        local_only: bool,
+    ) -> Result<Option<ErrorMatches>> {
+        ensure!(!text.trim().is_empty(), "error text is empty");
+        ensure!(
+            text.chars().count() <= 20_000,
+            "error text exceeds 20,000 characters"
+        );
+        crate::SessionQuery {
+            project_path: project.map(str::to_owned),
+            host: host.map(str::to_owned),
+            local_only,
+            ..Default::default()
+        }
+        .validate()?;
         let line = super::errors::extract(text)
             .map(|e| e.message)
             .unwrap_or_else(|| text.lines().next().unwrap_or(text).to_owned());
         let mut signature = super::errors::signature(&line);
         let exact: bool = self.conn().query_row(
-            "SELECT EXISTS(SELECT 1 FROM error_events WHERE signature=?1)",
-            [&signature],
+            "SELECT EXISTS(SELECT 1 FROM error_events e JOIN sessions s ON s.key=e.session_key WHERE e.signature=?1 \
+             AND (?2 IS NULL OR json_extract(s.meta,'$.project_path')=?2) \
+             AND (?3 IS NULL OR json_extract(s.meta,'$.host')=?3) AND (?4=0 OR json_extract(s.meta,'$.host') IS NULL))",
+            params![signature, project, host, local_only],
             |r| r.get(0),
         )?;
         if !exact {
@@ -468,10 +493,16 @@ impl Store {
             if wanted.len() < 12 {
                 return Ok(None);
             }
-            let mut stmt = self.conn().prepare("SELECT signature,message,count(DISTINCT session_key) n FROM error_events GROUP BY signature ORDER BY n DESC")?;
+            let mut stmt = self.conn().prepare("SELECT e.signature,e.message,count(DISTINCT e.session_key) n FROM error_events e JOIN sessions s ON s.key=e.session_key \
+                WHERE (?1 IS NULL OR json_extract(s.meta,'$.project_path')=?1) \
+                AND (?2 IS NULL OR json_extract(s.meta,'$.host')=?2) AND (?3=0 OR json_extract(s.meta,'$.host') IS NULL) \
+                GROUP BY e.signature ORDER BY n DESC,e.signature")?;
             let best = stmt
-                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-                .filter_map(|row| row.ok())
+                .query_map(params![project, host, local_only], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .into_iter()
                 .find(|(_, message)| {
                     let known = super::errors::normalize(message);
                     known.starts_with(&wanted) || (known.len() >= 12 && wanted.starts_with(&known))
@@ -482,11 +513,13 @@ impl Store {
             }
         }
         let mut stmt = self.conn().prepare(
-            "SELECT e.session_key,e.seq,e.message,f.outcome FROM error_events e JOIN session_facts f ON f.session_key=e.session_key \
-             WHERE e.signature=?1 ORDER BY f.ended_at DESC",
+            "SELECT e.session_key,e.seq,e.message,f.outcome FROM error_events e JOIN session_facts f ON f.session_key=e.session_key JOIN sessions s ON s.key=e.session_key \
+             WHERE e.signature=?1 AND (?2 IS NULL OR json_extract(s.meta,'$.project_path')=?2) \
+             AND (?3 IS NULL OR json_extract(s.meta,'$.host')=?3) AND (?4=0 OR json_extract(s.meta,'$.host') IS NULL) \
+             ORDER BY f.ended_at DESC,e.session_key,e.seq",
         )?;
         let rows: Vec<(String, i64, String, String)> = stmt
-            .query_map(params![signature], |r| {
+            .query_map(params![signature, project, host, local_only], |r| {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })?
             .collect::<rusqlite::Result<_>>()?;
