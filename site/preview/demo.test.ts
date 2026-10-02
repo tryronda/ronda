@@ -77,3 +77,34 @@ test("preview groups title and message matches, sorts, pages, and honors filters
   const filter = await backend.searchGrouped("pagination", {...queryDefaults, agent:"cursor"},"recent",0,50);
   expect(filter.total_sessions).toBe(0);
 });
+
+test("library pages count before limits and share date/model/host filters with search and bookmarks", async () => {
+  installDemoBackend();
+  const filter = {...queryDefaults, limit:1};
+  const all = await backend.listSessions({...filter,limit:null});
+  expect(await backend.listSessions(filter)).toHaveLength(1);
+  const keys: string[] = [];
+  for (let offset=0;offset<all.length;offset+=17) {
+    const page = await backend.sessionPage(filter,offset,17);
+    expect(page.total).toBe(all.length);
+    expect(page.offset).toBe(offset);
+    keys.push(...page.items.map(session=>session.key));
+  }
+  expect(keys).toEqual(all.map(session=>session.key));
+  expect(new Set(keys).size).toBe(all.length);
+  expect((await backend.sessionPage(filter,all.length,1000)).items).toEqual([]);
+  const chosen = all.find(session=>session.model === "sample")!;
+  const date = {...filter,model:chosen.model,updated_from_ms:chosen.updated_at,updated_before_ms:chosen.updated_at+1};
+  expect((await backend.sessionPage(date,0,100)).items.map(session=>session.key)).toEqual([chosen.key]);
+  expect((await backend.searchGrouped("pagination",date,"recent",0,100)).total_sessions).toBe(1);
+  expect((await backend.searchGrouped("pagination",filter,"recent",0,100)).total_sessions).toBe(54);
+  expect((await backend.sessionPage({...filter,host:"missing"},0,100)).total).toBe(0);
+  expect((await backend.sessionPage({...filter,local_only:true},0,100)).items.every(session=>!session.host)).toBe(true);
+  expect((await backend.listBookmarks("",{...filter,local_only:true})).some(view=>view.status === "unavailable")).toBe(false);
+  expect((await backend.listBookmarks("",filter)).some(view=>view.status === "unavailable")).toBe(true);
+  for (const invalid of [{...filter,host:"buildbox",local_only:true},{...filter,updated_from_ms:2,updated_before_ms:1}]) {
+    await expect(backend.sessionPage(invalid,0,100)).rejects.toThrow();
+    await expect(backend.searchGrouped("pagination",invalid,"recent",0,100)).rejects.toThrow();
+    await expect(backend.listBookmarks("",invalid)).rejects.toThrow();
+  }
+});

@@ -176,13 +176,35 @@ function reset() {
   })();
 }
 
-function listSessions(query: SessionQuery) {
-  return sessions.filter(session => (!query.agent || session.agent === query.agent)
+function validateFilter(query: SessionQuery) {
+  if (query.local_only && query.host) throw new Error("Choose either local sessions or a remote host");
+  if (query.updated_from_ms != null && query.updated_before_ms != null && query.updated_from_ms >= query.updated_before_ms)
+    throw new Error("Date range must end after its start");
+}
+
+function matchesFilter(session: SessionMeta, query: SessionQuery) {
+  return (!query.agent || session.agent === query.agent)
     && (!query.project_path || session.project_path === query.project_path)
     && (!query.host || session.host === query.host)
+    && (!query.local_only || session.host === null)
+    && (!query.model || session.model === query.model)
+    && (query.updated_from_ms == null || session.updated_at >= query.updated_from_ms)
+    && (query.updated_before_ms == null || session.updated_at < query.updated_before_ms)
     && (!query.starred_only || session.starred)
-    && (query.include_archived || !session.archived))
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at - a.updated_at);
+    && (query.include_archived || !session.archived);
+}
+
+function listSessions(query: SessionQuery) {
+  validateFilter(query);
+  const matched = sessions.filter(session => matchesFilter(session, query))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at - a.updated_at || a.key.localeCompare(b.key));
+  return query.limit == null ? matched : matched.slice(0, query.limit);
+}
+
+function sessionPage(query: SessionQuery, offset: number, limit: number) {
+  const roots = listSessions({...query, limit:null}).filter(session => !session.parent_key);
+  limit = Math.min(100, Math.max(1, limit));
+  return {items:roots.slice(offset, offset + limit), total:roots.length, offset, limit};
 }
 
 function listProjects(): ProjectInfo[] {
@@ -206,7 +228,7 @@ function searchableRows() {
 function matchingRows(query: string, filter: SessionQuery) {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
-  const allowed = new Set(listSessions(filter).map(session => session.key));
+  const allowed = new Set(listSessions({...filter, limit:null}).map(session => session.key));
   const corpus = searchableRows().map(row => ({...row, folded:row.text.toLowerCase(), length:Math.max(0, Array.from(row.text).length - 2)}));
   const average = corpus.reduce((sum, row) => sum + row.length, 0) / corpus.length || 1;
   const phrases = query.trim().split(/\s+/).filter(term => Array.from(term).length >= 3).map(term => term.toLowerCase());
@@ -357,10 +379,14 @@ function parseBookmarkBackup(json: string): BookmarkBackup {
 }
 
 async function listBookmarks(query: string, filter: SessionQuery): Promise<BookmarkView[]> {
+  validateFilter(filter);
   const views: BookmarkView[] = [];
   for (const bookmark of [...bookmarks].sort((a,b)=>b.updated_at-a.updated_at || a.session_key.localeCompare(b.session_key) || a.seq-b.seq)) {
     const session = sessions.find(session=>session.key===bookmark.session_key) ?? null;
     if ((filter.agent && filter.agent !== (session?.agent ?? bookmark.agent)) || (filter.project_path && filter.project_path !== (session?.project_path ?? bookmark.project_path))) continue;
+    const metadataFilter = {...filter, agent:null, project_path:null, include_archived:true, starred_only:false};
+    const needsMetadata = filter.host || filter.local_only || filter.model || filter.updated_from_ms != null || filter.updated_before_ms != null;
+    if (needsMetadata && (!session || !matchesFilter(session, metadataFilter))) continue;
     const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
     if (!query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term=>text.includes(term))) continue;
     const message = transcripts.get(bookmark.session_key)?.find(message=>message.seq===bookmark.seq);
@@ -427,6 +453,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "get_pref": return prefs.get(args.key as string) ?? null;
     case "set_pref": prefs.set(args.key as string, args.value as string); return null;
     case "list_sessions": return listSessions(args.query as SessionQuery);
+    case "session_page": return sessionPage(args.query as SessionQuery, args.offset as number, args.limit as number);
     case "list_projects": return listProjects();
     case "list_bookmarks": return listBookmarks(args.query as string, args.filter as SessionQuery);
     case "save_bookmark": return saveBookmark(args);

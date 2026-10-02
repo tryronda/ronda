@@ -52,7 +52,13 @@ export interface SessionQuery {
   starred_only: boolean;
   include_archived: boolean;
   limit: number | null;
+  updated_from_ms?: number | null;
+  updated_before_ms?: number | null;
+  model?: string | null;
+  local_only?: boolean;
 }
+
+export interface SessionPage { items: SessionMeta[]; total: number; offset: number; limit: number }
 
 export interface SearchHit {
   session: SessionMeta;
@@ -100,6 +106,7 @@ export interface BookmarkImport { imported: number; unchanged: number; conflicts
 
 export interface WorkbenchBackend {
   listSessions(query: SessionQuery): Promise<SessionMeta[]>;
+  sessionPage(query: SessionQuery, offset: number, limit: number): Promise<SessionPage>;
   getSession(key: string): Promise<SessionMeta | null>;
   getTranscript(key: string): Promise<TranscriptMessage[]>;
   searchSessions(query: string, filter: SessionQuery, limit: number): Promise<SearchHit[]>;
@@ -119,6 +126,7 @@ export interface WorkbenchBackend {
 
 export const backend: WorkbenchBackend = {
   listSessions: (query) => invoke("list_sessions", { query }),
+  sessionPage: (query, offset, limit) => invoke("session_page", {query, offset, limit}),
   getSession: (key) => invoke("get_session", { key }),
   getTranscript: (key) => invoke("get_transcript", { key }),
   searchSessions: (query, filter, limit) => invoke("search_sessions", { query, filter, limit }),
