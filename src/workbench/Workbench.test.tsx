@@ -56,7 +56,7 @@ test("bookmarks search saved notes, filter missing projects, and open messages o
     expect(prompts.checked).toBe(false);expect(host.querySelector('#message-1')).not.toBeNull();
     await search("missing source");
     await click("Edit bookmark note for message 1");
-    const editor=host.querySelector<HTMLTextAreaElement>('textarea')!;
+    const editor=host.querySelector<HTMLTextAreaElement>('textarea[rows="4"]')!;
     await act(async()=>editor.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true})));
     expect(document.activeElement).toBe(editor);
   } finally {await act(async()=>root.unmount());host.remove();}
@@ -282,7 +282,7 @@ test("full-library choices combine filters, preserve hidden selection, and rejec
     await change("Filter by model","off-page-model");
     expect(list.mock.calls.at(-1)?.[0].model).toBe("off-page-model");
     expect(host.textContent).toContain("Outside current filters");
-    expect(host.querySelector<HTMLHeadingElement>('h2')?.textContent).toBe(session.title);
+    expect(host.querySelector<HTMLHeadingElement>('.transcript-pane h2')?.textContent).toBe(session.title);
     expect(host.querySelector('option[value="remote:local"]')).not.toBeNull();
     await change("Filter by host","remote:local");
     expect(list.mock.calls.at(-1)?.[0]).toMatchObject({host:"local",local_only:false,model:"off-page-model"});

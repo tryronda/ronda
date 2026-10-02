@@ -384,10 +384,47 @@ async fn get_bookmark_backup(state: State<'_, Shared>) -> CommandResult<String> 
     .await
 }
 
+fn write_export(destination: &Path, bytes: &[u8]) -> CommandResult<()> {
+    use std::io::Write;
+    let name = destination
+        .file_name()
+        .ok_or("Choose an export filename")?
+        .to_string_lossy();
+    let temporary = destination.with_file_name(format!(
+        ".{name}.{}-{}.tmp",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(error)?;
+    let result = (|| {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, destination)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result.map_err(error)
+}
+
+#[tauri::command]
+async fn export_context(destination: PathBuf, text: String) -> CommandResult<()> {
+    if text.chars().count() > 100_000 {
+        return Err("Context exceeds 100,000 characters; reduce the draft".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || write_export(&destination, text.as_bytes()))
+        .await
+        .map_err(error)?
+}
+
 #[tauri::command]
 async fn export_bookmarks(state: State<'_, Shared>, destination: PathBuf) -> CommandResult<()> {
     off_main(state, move |state| {
-        use std::io::Write;
         let backup = serde_json::to_vec_pretty(
             &state
                 .store
@@ -397,30 +434,7 @@ async fn export_bookmarks(state: State<'_, Shared>, destination: PathBuf) -> Com
                 .map_err(error)?,
         )
         .map_err(error)?;
-        let name = destination
-            .file_name()
-            .ok_or("Choose a backup filename")?
-            .to_string_lossy();
-        let temporary = destination.with_file_name(format!(
-            ".{name}.{}-{}.tmp",
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
-        ));
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(error)?;
-        let result = (|| {
-            file.write_all(&backup)?;
-            file.sync_all()?;
-            drop(file);
-            std::fs::rename(&temporary, &destination)
-        })();
-        if result.is_err() {
-            let _ = std::fs::remove_file(&temporary);
-        }
-        result.map_err(error)
+        write_export(&destination, &backup)
     })
     .await
 }
@@ -1147,6 +1161,7 @@ pub fn run() {
             read_bookmark_backup,
             import_bookmarks,
             export_session,
+            export_context,
             trash_session,
             resume_session,
             terminal_open,
@@ -1170,6 +1185,29 @@ pub fn run() {
 mod tests {
     use super::*;
     use std::{fs, os::unix::fs::PermissionsExt};
+
+    #[test]
+    fn context_export_preserves_complete_text_and_cleans_failed_temporary_files() {
+        let root =
+            std::env::temp_dir().join(format!("ronda context export {}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let destination = root.join("context.md");
+        let text = "# Reviewed context\n\n你好 😀\n```rust\nlet answer = 42;\n```\n";
+        write_export(&destination, text.as_bytes()).unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), text);
+        assert!(tauri::async_runtime::block_on(export_context(
+            destination.clone(),
+            "😀".repeat(100_001)
+        ))
+        .is_err());
+        assert_eq!(fs::read_to_string(&destination).unwrap(), text);
+        let directory = root.join("cannot-replace-directory.md");
+        fs::create_dir(&directory).unwrap();
+        assert!(write_export(&directory, text.as_bytes()).is_err());
+        assert!(directory.is_dir());
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+        fs::remove_dir_all(&root).unwrap();
+    }
 
     fn executable(path: &Path, body: &str) {
         fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();

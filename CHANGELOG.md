@@ -4,6 +4,14 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-10-02
+
+### Added
+
+- Select transcript messages and bookmarks across sessions to preview an editable Markdown context bundle, then copy or export it for another coding agent.
+- Context drafts include source metadata and local message references, with tool input/output and thinking included only when chosen. Images and internal/system context are excluded.
+- Oversized selections are rejected without truncation; edited drafts remain available after clipboard or export failures.
+
 ## [1.0.5] - 2026-10-02
 
 ### Added

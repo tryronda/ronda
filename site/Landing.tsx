@@ -20,6 +20,7 @@ const features = [
   { label: "terminal", title: "Resume without leaving", body: "Resume opens the agent in a terminal built into Ronda, in the right folder or over SSH. Flip between transcript and terminal while it runs." },
   { label: "intelligence", title: "See how you work", body: "Where the hours go, where agents get stuck, the errors that keep coming back, and how sessions end, plus a year of activity across agents and models." },
   { label: "mcp", title: "Agents that remember", body: "A bundled CLI and read-only MCP server let your agents search past sessions and check whether an error has been seen before." },
+  { label: "context", title: "Carry the useful context", body: "Select messages across sessions, review an editable Markdown draft, then copy or export it for your next agent. You decide what to share." },
   { label: "bookmarks", title: "Keep the useful decisions", body: "Save message excerpts and plain-text notes, then search them across projects. Export a JSON backup to keep annotations even when their source disappears." },
   { label: "local", title: "Private by design", body: "Sessions and annotations stay on your machine. The session index is rebuildable; bookmarks and notes have their own backup. Agent files are only removed when you move one to Trash." },
 ];

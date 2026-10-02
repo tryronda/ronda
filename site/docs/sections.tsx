@@ -107,6 +107,17 @@ chmod +x Ronda-linux-x86_64.AppImage
     </>,
   },
   {
+    id: "copy-context", title: "Copy context for another agent",
+    body: <>
+      <P>Choose **Select message for context** under user or assistant messages, or select available bookmarks from several sessions. Selections stay while you browse. Choose **Preview context** to load the original messages, group them by session, and order each conversation by message sequence.</P>
+      <P>The editable Markdown draft includes the session title, agent, project, host, recorded timestamp, and message reference. Tool input/output and thinking start off; choose an option and regenerate to include them. Images and internal/system context are always excluded. Existing edits stay when you close the preview; regenerating an edited draft requires the explicit **Discard edits and regenerate** action.</P>
+      <P>Inspect the draft for secrets and personal paths, edit it, then choose **Copy context** and paste it into your chosen agent yourself. **Export context Markdown** opens the desktop save dialog, or downloads a sample file in the browser preview. Nothing is sent to another agent or server, and no agent command runs. Clipboard or file failures keep the draft available for retry; cancelling the save dialog writes nothing.</P>
+      <P>Drafts are capped at 100,000 Unicode characters, including source metadata. An oversized selection is rejected without truncation. Unavailable originals cannot be replaced by saved bookmark excerpts; remove unavailable messages from the selection. A changed bookmark resolves to its current original message, which you can inspect in the draft.</P>
+      <P>For example, select a debugging exchange from Codex and a related decision bookmarked in Claude Code, review the combined draft, then paste it into a new agent conversation. A reference such as **ronda://session/codex:example#7** identifies local indexed content; these are not promised operating-system deep links. An MCP-connected agent can retrieve the original with **ronda_get_session** using the reference as its key. The CLI equivalent is shown below.</P>
+      <Code>{`ronda-cli show 'ronda://session/codex:example#7' --messages 5`}</Code>
+    </>,
+  },
+  {
     id: "resume", title: "Resume a session",
     body: <>
       <P>Open a session and click **Resume**. Ronda opens a terminal inside the app and runs the agent's own resume command in the session's project folder, so you pick up the same conversation with the same agent.</P>

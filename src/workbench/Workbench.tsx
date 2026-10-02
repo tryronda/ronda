@@ -17,6 +17,8 @@ import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { calendarRange, matchesSession, restoredFilters } from "./library-filters";
 import { LibraryHome } from "./LibraryHome";
 import { BookmarkControl } from "./BookmarkControl";
+import { ContextBundle } from "./ContextBundle";
+import { contextEligible, contextId, type ContextSelection } from "./context-bundle";
 import { TranscriptNavigation } from "./TranscriptNavigation";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
@@ -210,6 +212,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [transcriptJumpToken, setTranscriptJumpToken] = useState(0);
+  const [contextSelection, setContextSelection] = useState<ContextSelection[]>([]);
+  const contextSelected = new Set(contextSelection.map(contextId));
+  const toggleContext = (item: ContextSelection) => setContextSelection(current => current.some(selected => contextId(selected) === contextId(item))
+    ? current.filter(selected => contextId(selected) !== contextId(item)) : [...current, item]);
   const [jumpTo, setJumpTo] = useState<number | null>(null);
   const [opened, setOpened] = useState<SessionMeta | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
@@ -607,6 +613,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             placeholder={bookmarksOnly ? "Search notes and saved excerpts" : t.search} aria-label={bookmarksOnly ? "Search bookmarks" : t.search}
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
+        <ContextBundle api={api} selection={contextSelection} clear={()=>setContextSelection([])} embedded={embedded} />
         <details className="mt-2 text-[13px]">
           <summary className="cursor-pointer text-muted-foreground">Filters</summary>
           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -652,6 +659,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <p className="mt-1 text-[12px] text-muted-foreground">Message #{view.bookmark.seq} · {agentNames[view.bookmark.agent]} · {timeLabel(view.bookmark.updated_at)}</p>
               <p className="mt-2 whitespace-pre-wrap text-[13px]"><SearchHighlight text={view.bookmark.excerpt} query={search} /></p>
             </button>
+            <label className="my-2 block text-[13px]"><input type="checkbox" disabled={view.status === "unavailable" && !contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))} checked={contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))}
+              onChange={()=>toggleContext({key:view.bookmark.session_key,seq:view.bookmark.seq})} /> Select bookmarked message {view.bookmark.seq} for context</label>
+            {view.status === "unavailable" && <p className="text-[12px] text-muted-foreground">Original content unavailable; saved excerpts cannot substitute for the original message in context.</p>}
             <BookmarkControl api={api} sessionKey={view.bookmark.session_key} seq={view.bookmark.seq} view={view} changed={reloadBookmarks} />
           </div>)}
         </> : loading && visible.length === 0 ? <div className="session-skeletons grid gap-1 p-1" role="status" aria-label={t.loading}>
@@ -746,6 +756,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
           </div> : messages.length ? <div className="transcript-messages mx-auto max-w-[780px] px-10 pt-6 pb-24 max-[1100px]:px-6">
             {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10}>
+              {contextEligible(message) && <label className="mt-3 block text-[13px]"><input type="checkbox" disabled={unavailable} checked={contextSelected.has(contextId({key:selected.key,seq:message.seq}))}
+                onChange={()=>toggleContext({key:selected.key,seq:message.seq})} /> Select message {message.seq} for context</label>}
               <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)} changed={reloadBookmarks} />
             </Message>)}</div>
             : <div className="flex h-full flex-col items-center justify-center gap-4 text-[13px] text-muted-foreground">
