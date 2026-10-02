@@ -9,6 +9,21 @@ use std::{
     path::{Path, PathBuf},
 };
 
+fn search_snippet(full: &str, first: &str) -> String {
+    let folded_start = full.to_lowercase().find(&first.to_lowercase()).unwrap_or(0);
+    let mut folded_bytes = 0;
+    let match_start = full
+        .char_indices()
+        .find_map(|(offset, character)| {
+            folded_bytes += character.to_lowercase().map(char::len_utf8).sum::<usize>();
+            (folded_start < folded_bytes).then_some(offset)
+        })
+        .unwrap_or(0);
+    let start = full.floor_char_boundary(match_start.saturating_sub(60));
+    let end = full.ceil_char_boundary((start + 260).min(full.len()));
+    full[start..end].replace('\n', " ")
+}
+
 pub struct Store {
     conn: Connection,
 }
@@ -450,10 +465,7 @@ impl Store {
             {
                 continue;
             }
-            let start = full.find(first).unwrap_or(0).saturating_sub(60);
-            let start = full.floor_char_boundary(start);
-            let end = full.ceil_char_boundary((start + 260).min(full.len()));
-            let snippet = full[start..end].replace('\n', " ");
+            let snippet = search_snippet(&full, first);
             results.push(SearchHit {
                 session,
                 seq,
@@ -630,5 +642,24 @@ impl Store {
     pub fn open_read_only(path: &Path) -> Result<Connection> {
         Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .with_context(|| format!("opening {} read-only", path.display()))
+    }
+}
+
+#[cfg(test)]
+mod search_snippet_tests {
+    use super::search_snippet;
+
+    #[test]
+    fn excerpts_center_case_insensitive_matches_on_unicode_boundaries() {
+        for (prefix, text, query) in [
+            ("unrelated ", "UseEffect( response", "useeffect("),
+            ("你好", "MixedCASE response", "mixedcase"),
+            ("İ", "ΑΛΦΑ response", "αλφα"),
+            ("あ", "İ response", "i"),
+        ] {
+            let snippet = search_snippet(&format!("{}{text}", prefix.repeat(400)), query);
+            assert!(snippet.contains(text), "{query}: {snippet}");
+            assert!(snippet.len() <= 264);
+        }
     }
 }

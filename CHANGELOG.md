@@ -4,6 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Search excerpts center on case-insensitive matches, including text with Unicode case expansion.
+
 ## [1.0.1] - 2026-10-02
 
 ### Fixed
