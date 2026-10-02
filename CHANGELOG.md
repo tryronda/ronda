@@ -4,11 +4,17 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-10-02
+
 ### Added
 
 - Date, model, and host controls with combined filters, full-library choices, local calendar boundaries, preserved hidden selections, and restored filter/sort preferences.
-- Complete library browsing and grouped search with exact totals and Load more; libraries larger than the initial page remain accessible.
+- Complete library browsing and grouped search with exact totals and Load more.
 - Over 600 synthetic sessions in the preview demonstrate complete paging, multiple hosts, archived sessions, and unknown models.
+
+### Fixed
+
+- Libraries larger than the initial page remain accessible; pending pages cannot overwrite refreshed or filtered results.
 
 ## [1.0.4] - 2026-10-02
 
