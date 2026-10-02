@@ -225,6 +225,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Matching Edge driver download failed' }
           $PWD.Path >> $env:GITHUB_PATH
       - name: Install Tauri native WebDriver
+        if: runner.os == 'Linux'
         run: cargo install tauri-driver --version 2.1.0 --locked
       - name: Verify installed Linux resume flows
         if: runner.os == 'Linux'

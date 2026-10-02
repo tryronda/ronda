@@ -81,8 +81,10 @@ class Driver:
         return value
 
     def start(self):
-        self.session = self.request("POST", "/session", {"capabilities": {"alwaysMatch": {
-            "tauri:options": {"application": self.app}}}})["sessionId"]
+        capabilities = ({"browserName": "webview2", "ms:edgeChromium": True,
+                         "ms:edgeOptions": {"binary": self.app, "args": []}} if os.name == "nt" else
+                        {"tauri:options": {"application": self.app}})
+        self.session = self.request("POST", "/session", {"capabilities": {"alwaysMatch": capabilities}})["sessionId"]
         self.command("POST", "/timeouts", {"implicit": 0, "script": 30000, "pageLoad": 60000})
 
     def command(self, method, path, data=None):
@@ -183,10 +185,12 @@ def smoke(app, output, self_check=False):
             profile.parent.mkdir(parents=True, exist_ok=True)
             profile.write_text("$env:PATH='" + str(binary.parent).replace("'", "''") + ";' + $env:PATH\n", encoding="utf-8-sig")
         with (output / "driver.log").open("w") as log:
-            server = subprocess.Popen(["tauri-driver"], env=environment, stdout=log, stderr=subprocess.STDOUT)
+            command = ([str(Path("msedgedriver.exe").resolve()), "--port=4444", "--verbose",
+                        "--log-path=" + str((output / "edge.log").resolve())] if os.name == "nt" else ["tauri-driver"])
+            server = subprocess.Popen(command, env=environment, stdout=log, stderr=subprocess.STDOUT)
             wait(lambda: driver.request("GET", "/status"), "native WebDriver startup")
             driver.start()
-            driver.click(f"//button[contains(normalize-space(.),'{title}')]")
+            driver.click(f"//section[@aria-label='Recent sessions']//button[contains(normalize-space(.),'{title}')]")
             driver.contains("Project folder is missing or unavailable.")
             assert not logs(), "Readiness invoked the synthetic agent"
             driver.click(button("Choose project folder"))
@@ -199,7 +203,7 @@ def smoke(app, output, self_check=False):
             driver.screenshot(output / "recovered.png")
             driver.close()
             driver.start()
-            driver.click(f"//button[contains(normalize-space(.),'{title}')]")
+            driver.click(f"//section[@aria-label='Recent sessions']//button[contains(normalize-space(.),'{title}')]")
             wait(lambda: driver.elements(button("Resume")), "persisted Resume")
             driver.click(button("Resume"))
             wait(lambda: len(logs()) == 1, "embedded agent launch")
@@ -216,7 +220,7 @@ def smoke(app, output, self_check=False):
             binary.rename(disabled)
             driver.click("//button[@title='Restart']")
             driver.contains("MissingExecutable")
-            driver.click(button("Dismiss"))
+            driver.click("//button[@aria-label='Dismiss']")
             wait(lambda: "MissingExecutable" not in driver.text(), "dismiss restart error")
             driver.click("//button[@title='Open in system terminal']")
             driver.contains("MissingExecutable")
