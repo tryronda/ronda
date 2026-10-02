@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { listen } from '@/lib/tauri';
 
+const subscribeToLibrary = (callback: () => void) => listen('library-changed', callback);
+
 /**
  * Runs `refresh` when `deps` change and whenever the library changes on disk.
  * While `active` is false, library changes only mark the data stale, and the refresh
  * waits until the page is shown again. Bursts of change events are coalesced.
  */
-export function useLibraryRefresh(refresh: () => () => void, deps: unknown[], active = true, delay = 400) {
+export function useLibraryRefresh(refresh: () => () => void, deps: unknown[], active = true, delay = 400,
+  subscribe: (callback: () => void) => Promise<() => void> = subscribeToLibrary) {
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const activeRef = useRef(active);
@@ -29,13 +32,13 @@ export function useLibraryRefresh(refresh: () => () => void, deps: unknown[], ac
     let live = true;
     let timer: number | undefined;
     let unlisten: (() => void) | undefined;
-    void listen('library-changed', () => {
+    void subscribe(() => {
       if (!activeRef.current) { stale.current = true; return; }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => { if (live) run(); }, delay);
     }).then(stop => { if (live) unlisten = stop; else stop(); });
     return () => { live = false; window.clearTimeout(timer); unlisten?.(); cancel.current?.(); };
-  }, [delay]);
+  }, [delay, subscribe]);
 }
 
 /** Cheap structural equality for IPC payloads, so identical refreshes skip a re-render. */

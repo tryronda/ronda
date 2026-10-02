@@ -6,7 +6,7 @@ import { PixelField } from "@/components/brand/pixel-field";
 import { TextReveal } from "@/components/motion/text-reveal";
 import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
-import { groupTone, parseChangelog, releaseDate, releaseTitle } from "./changelog/releases";
+import { groupTone, latestPublishedRelease, releaseDate, releaseTitle } from "./changelog/releases";
 import { base, SiteFooter, SiteHeader } from "./Chrome";
 import { docs } from "./docs/sections";
 import { Inline } from "./Inline";
@@ -116,7 +116,7 @@ function PreviewPlaceholder() {
 }
 
 function LearnMore() {
-  const latest = parseChangelog().find(release => release.groups.length > 0);
+  const latest = latestPublishedRelease();
   const highlights = latest?.groups.flatMap(group => group.items.map(item => ({ kind: group.kind, item }))).slice(0, 4) ?? [];
 
   return <section aria-label="Changelog and documentation">

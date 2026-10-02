@@ -1,3 +1,4 @@
+import { version as appVersion } from "../../package.json";
 import { invoke } from '@/lib/tauri';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useState } from 'react';
@@ -232,7 +233,7 @@ export function SettingsView() {
           {release && <button className="panel-link" onClick={() => void openUrl(release)}>{t.latest}</button>}
         </section>}
         {section === 'about' && <section className="panel-card"><h2>Ronda</h2><p className="panel-help">{t.aboutText}</p>
-          <p>{t.version} 1.0.0</p>
+          <p>{t.version} {appVersion}</p>
         </section>}
         </>}
       </div>

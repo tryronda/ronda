@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -13,6 +13,7 @@ import { PixelField, PixelStrip } from "@/components/brand/pixel-field";
 import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
+import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { LibraryHome } from "./LibraryHome";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
@@ -153,48 +154,85 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [opened, setOpened] = useState<SessionMeta | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [revision, setRevision] = useState(0);
+  const [unavailable, setUnavailable] = useState(false);
+  const [newMessages, setNewMessages] = useState(false);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const loadedKey = useRef<string | null>(null);
+  const reloadRun = useRef(0);
+  const scrollRestore = useRef<{ bottom: boolean; seq: string | null; offset: number; top: number } | null>(null);
 
   const filter = useMemo<SessionQuery>(() => ({ ...queryDefaults, agent,
     project_path: project, starred_only: starredOnly, include_archived: includeArchived }), [agent, project, starredOnly, includeArchived]);
 
   const reload = useCallback(async () => {
+    const run = ++reloadRun.current;
     try {
       const [nextSessions, nextProjects] = await Promise.all([api.listSessions(filter), api.listProjects()]);
+      if (run !== reloadRun.current) return;
       setSessions(nextSessions);
       setProjects(nextProjects);
-      setSelectedKey(previous => previous && nextSessions.some(s => s.key === previous)
-        ? previous : null);
+      setRevision(value => value + 1);
       setError(null);
-    } catch (cause) { setError(String(cause)); }
-    finally { setLoading(false); }
+    } catch (cause) { if (run === reloadRun.current) setError(String(cause)); }
+    finally { if (run === reloadRun.current) setLoading(false); }
   }, [api, filter]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useLibraryRefresh(() => { void reload(); return () => { reloadRun.current++; }; }, [reload], isActive, 400, api.onLibraryChanged);
   useEffect(() => {
     const idle = window.requestIdleCallback?.(() => void loadStreamdown()) ?? window.setTimeout(() => void loadStreamdown(), 600);
     return () => { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle); };
   }, []);
   useEffect(() => {
+    if (!isActive) return;
+    if (!selectedKey) { setMessages([]); setTranscriptLoading(false); loadedKey.current = null; return; }
     let cancelled = false;
-    void api.onLibraryChanged(() => { if (!cancelled) void reload(); }).then(unlisten => {
-      if (cancelled) unlisten(); else stop = unlisten;
-    }).catch(() => {});
-    let stop: (() => void) | undefined;
-    return () => { cancelled = true; stop?.(); };
-  }, [api, reload]);
-
-  useEffect(() => {
-    if (!selectedKey) { setMessages([]); setTranscriptLoading(false); return; }
-    let cancelled = false;
-    setMessages([]);
-    setTranscriptLoading(true);
-    void api.getTranscript(selectedKey).then(next => { if (!cancelled) setMessages(next); })
-      .catch(cause => { if (!cancelled) setError(String(cause)); })
+    const firstLoad = loadedKey.current !== selectedKey;
+    loadedKey.current = selectedKey;
+    if (firstLoad) {
+      setMessages([]); setTranscriptLoading(true); setUnavailable(false); setNewMessages(false);
+      scrollRestore.current = null;
+    }
+    void Promise.all([api.getSession(selectedKey), api.getTranscript(selectedKey)]).then(([meta, next]) => {
+      if (cancelled) return;
+      setUnavailable(!meta);
+      if (!meta) return;
+      setOpened(meta);
+      setMessages(current => {
+        if (sameJson(current, next)) return current;
+        const container = transcriptRef.current;
+        if (!firstLoad && container) {
+          const bottom = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
+          const rect = container.getBoundingClientRect();
+          const anchor = Array.from(container.querySelectorAll<HTMLElement>('article[id]'))
+            .find(item => item.getBoundingClientRect().bottom > rect.top && next.some(message => item.id === `message-${message.seq}`));
+          scrollRestore.current = { bottom, seq: anchor?.id ?? null,
+            offset: anchor ? anchor.getBoundingClientRect().top - rect.top : 0, top: container.scrollTop };
+          if (!bottom && next.some(message => !current.some(old => old.seq === message.seq))) setNewMessages(true);
+        }
+        return next;
+      });
+    }).catch(cause => { if (!cancelled) setError(String(cause)); })
       .finally(() => { if (!cancelled) setTranscriptLoading(false); });
     return () => { cancelled = true; };
-  }, [api, selectedKey]);
+  }, [api, selectedKey, revision, isActive]);
+
+  useLayoutEffect(() => {
+    const container = transcriptRef.current;
+    const restore = scrollRestore.current;
+    scrollRestore.current = null;
+    if (!container || !restore) return;
+    if (restore.bottom) { container.scrollTop = container.scrollHeight; setNewMessages(false); }
+    else {
+      const anchor = restore.seq ? container.querySelector<HTMLElement>(`#${restore.seq}`) : null;
+      container.scrollTop = anchor
+        ? container.scrollTop + anchor.getBoundingClientRect().top - container.getBoundingClientRect().top - restore.offset
+        : restore.top;
+    }
+  }, [messages]);
 
   useEffect(() => {
+    if (!isActive) return;
     if (!search.trim()) { setHits([]); setSearching(false); return; }
     let cancelled = false;
     setSearching(true);
@@ -204,7 +242,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       }).catch(cause => { if (!cancelled) { setError(String(cause)); setSearching(false); } });
     }, 120);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [api, filter, search]);
+  }, [api, filter, search, revision, isActive]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -257,6 +295,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const agents = useMemo(() => Array.from(new Set(sessions.map(s => s.agent))).sort(), [sessions]);
 
   const choose = (session: SessionMeta, seq?: number) => {
+    setOpened(session);
     setSelectedKey(session.key);
     setJumpTo(seq ?? null);
     setMobileDetail(true);
@@ -482,7 +521,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               className="label-mono ml-2 h-9 gap-2 rounded-none px-3.5 text-[13px] lowercase">{t.resume}<HugeiconsIcon icon={ArrowRight01Icon} size={15} /></Button>}
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto" aria-busy={transcriptLoading}>
+        {unavailable && <p role="status" className="bg-chip px-5 py-2 text-sm">Session no longer available. Previously loaded content is kept below.</p>}
+        {newMessages && <button type="button" className="bg-chip px-5 py-2 text-sm" onClick={() => {
+          const container = transcriptRef.current;
+          if (container) container.scrollTop = container.scrollHeight;
+          setNewMessages(false);
+        }}>New messages ↓</button>}
+        <div ref={transcriptRef} className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto" aria-busy={transcriptLoading}>
           {transcriptLoading ? <div className="transcript-skeleton mx-auto max-w-[780px] px-10 py-9" role="status" aria-label={t.loading}>
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
@@ -528,7 +573,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         {error && <motion.div key="error" role="alert" layout
           initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
           className="pointer-events-auto flex max-w-[min(440px,80vw)] items-center gap-3 bg-destructive px-3.5 py-2.5 text-[12px] text-white shadow-lg">
-          <span>{error}</span><button type="button" className="text-[16px] leading-none opacity-80 hover:opacity-100" onClick={() => setError(null)} aria-label="Dismiss">×</button></motion.div>}
+          <span>{error}</span><button type="button" onClick={() => void reload()} className="underline">Retry refresh</button><button type="button" className="text-[16px] leading-none opacity-80 hover:opacity-100" onClick={() => setError(null)} aria-label="Dismiss">×</button></motion.div>}
         {notice && <motion.div key={notice} role="status" layout
           initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
           className="label-mono pointer-events-auto flex items-center gap-2.5 bg-foreground px-3.5 py-2.5 text-[12px] text-background shadow-lg">

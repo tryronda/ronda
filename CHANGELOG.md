@@ -4,6 +4,19 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-02
+
+### Fixed
+- Open transcripts and active search results refresh when the library changes, without losing the selected session or reading position.
+- Refreshing while the workbench is hidden waits until you return; failed refreshes preserve readable content and offer retry.
+
+### Added
+- The live product preview can append a sample message to demonstrate transcript updates.
+
+### Changed
+- Release checks validate all version sources before packaging, publication safely retries drafts, and the site deploys only after the matching installers are published.
+- Settings shows the packaged app version, and the site's release highlights exclude unreleased changes.
+
 ## [1.0.0] - 2026-09-17
 
 ### Added

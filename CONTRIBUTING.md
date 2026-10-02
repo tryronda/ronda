@@ -41,6 +41,9 @@ CI runs these on every pull request, so run them before you push:
 bun run check
 bun run prepare:sidecars
 cargo fmt --all -- --check
+python3 scripts/check-release.py
+python3 scripts/test_release.py
+bun run site:build
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
@@ -64,7 +67,7 @@ bun run site:dev      # http://127.0.0.1:1430
 bun run site:build    # prerendered output in dist-site/
 ```
 
-The **Deploy site** workflow publishes `site/` to GitHub Pages on every push to `main` that touches it. The site is served from `tryronda.cloud`; `site/public/CNAME` holds the domain.
+The **Deploy site** workflow publishes the released tag to GitHub Pages after installers are published. It can also be dispatched manually with a published tag whose release notes identify the same source commit. Unreleased main changes do not deploy automatically. The site is served from `tryronda.cloud`; `site/public/CNAME` holds the domain.
 
 ## Pull requests
 
@@ -76,14 +79,14 @@ The **Deploy site** workflow publishes `site/` to GitHub Pages on every push to 
 
 1. Set the new version in `package.json`, `Cargo.toml` (`workspace.package.version`), and `src-tauri/tauri.conf.json`.
 2. Rename `## [Unreleased]` in `CHANGELOG.md` to `## [x.y.z] - YYYY-MM-DD`.
-3. Commit, then tag and push:
+3. Commit as `ronda-agent[bot]` on a `ronda/` branch, include matching docs and live preview behavior, and verify all checks. After merging, create an annotated tag and push:
 
    ```sh
-   git tag vX.Y.Z
+   git tag -a vX.Y.Z -m "Ronda X.Y.Z"
    git push origin main vX.Y.Z
    ```
 
-The **Build Ronda** workflow builds every platform, checks that each package contains the CLI and MCP sidecars, and publishes a GitHub release. Its notes come from the changelog section. Release assets have version-free names, such as `Ronda-macos-arm64.dmg`, so `releases/latest/download/<name>` links in the README and on the site always get the newest build. The workflow refuses to publish when the tag doesn't match the app version or the changelog has no section for it.
+The **Build Ronda** workflow builds every platform, checks that each package contains the CLI and MCP sidecars, and publishes a GitHub release only after verifying the draft assets and checksums. Draft publication is retryable; already-published assets are never overwritten. The site then deploys from the same tag. Its notes come from the changelog section. Release assets have version-free names, such as `Ronda-macos-arm64.dmg`, so `releases/latest/download/<name>` links in the README and on the site always get the newest build. The workflow refuses to publish when the tag doesn't match the app version or the changelog has no section for it.
 
 ### Code signing (optional)
 

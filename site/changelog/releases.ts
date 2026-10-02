@@ -37,3 +37,7 @@ export const releaseDate = (release: Release) => release.date ?? (release.versio
 
 /** Stable fragment for a release, e.g. `v0-1-0` or `unreleased`. */
 export const releaseAnchor = (release: Release) => releaseTitle(release).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+/** Landing highlights describe the latest shipped release, never development work. */
+export const latestPublishedRelease = (releases: Release[] = parseChangelog()) =>
+  releases.find(release => release.version !== "Unreleased" && release.groups.length > 0);

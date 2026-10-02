@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import App from "@/App";
-import { installDemoBackend } from "./demo";
+import { installDemoBackend, appendDemoMessage } from "./demo";
 
 // The app is designed for windows of at least 1024 px; render at a fixed desktop
 // size and scale the whole window down to fit narrower layouts.
@@ -23,7 +23,10 @@ export default function LivePreview() {
     return () => observer.disconnect();
   }, []);
 
-  return <div ref={hostRef} className="w-full" style={{ height: HEIGHT * scale }}>
+  return <><div className="mb-3 flex items-center gap-3 text-sm">
+    <button type="button" onClick={appendDemoMessage} className="glass px-3 py-2">Append sample message</button>
+    <span>Open “Make session search handle code fragments and any language” to watch it update.</span>
+  </div><div ref={hostRef} className="w-full" style={{ height: HEIGHT * scale }}>
     {/* The transform also makes the app's fixed-position toasts anchor to this window, not the page. */}
     <div className="relative origin-top-left overflow-hidden bg-background"
       style={{ width: WIDTH, height: HEIGHT, transform: `scale(${scale})` }}>
@@ -32,5 +35,5 @@ export default function LivePreview() {
       </div>
       <App embedded />
     </div>
-  </div>;
+  </div></>;
 }

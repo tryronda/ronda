@@ -94,6 +94,7 @@ chmod +x Ronda-linux-x86_64.AppImage
         "**Stop and close terminal** ends the process and returns to the transcript.",
       ]} />
       <P>The terminal starts your login shell (`$SHELL -l`, or PowerShell on Windows), so the agent finds the same `PATH` it has in your usual terminal. Resume needs a known project folder and is not available for subagent transcripts.</P>
+      <P>Open transcripts refresh as local agent files change. When you are reading earlier messages, **New messages** lets you jump to the latest content without losing your place. Remote transcripts refresh after a successful sync.</P>
       <P>Remote sessions resume on their host: the terminal runs `ssh -t` to the host and starts the agent there. **Open in system terminal** copies that SSH command to the clipboard instead.</P>
     </>,
   },

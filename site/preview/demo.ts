@@ -1,3 +1,4 @@
+import { backend } from "@/workbench/api";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type { AgentId, ProjectInfo, SearchHit, SessionMeta, SessionQuery, TranscriptMessage } from "@/workbench/api";
 
@@ -293,10 +294,28 @@ function handle(command: string, args: Args = {}): unknown {
     case "sync_remote_host": hosts = hosts.map(item => item.host === args.host ? { ...item, last_sync_ms: Date.now() } : item); return null;
     case "app_paths": return ["/Applications/Ronda.app/Contents/MacOS/ronda-mcp", "/Applications/Ronda.app/Contents/MacOS/ronda-cli", "/Users/you/Library/Application Support/ronda/ronda.db"];
     case "check_updates": return "https://github.com/tryronda/ronda/releases";
-    default: return null; // plugin:event|listen, plugin:dialog|save, plugin:window|* and friends
+    default:
+      if (command.startsWith("plugin:event|") || command.startsWith("plugin:window|") || command === "plugin:dialog|save") return null;
+      throw new Error(`Unsupported preview command: ${command}`);
   }
 }
 
+const libraryListeners = new Set<() => void>();
+export function onDemoLibraryChanged(callback: () => void) {
+  libraryListeners.add(callback);
+  return Promise.resolve(() => { libraryListeners.delete(callback); });
+}
+
+export function appendDemoMessage() {
+  const key = "claude-code:demo-0";
+  const messages = transcripts.get(key)!;
+  messages.push({ ...text("assistant", `Sample update ${messages.length}: the transcript refreshes while you read.`),
+    seq: messages.length, timestamp: Date.now() });
+  sessions = sessions.map(session => session.key === key ? { ...session, updated_at: Date.now() } : session);
+  libraryListeners.forEach(callback => callback());
+}
+
+const originalSubscribe = backend.onLibraryChanged;
 let installed = false;
 
 /** Install the demo backend. Safe to call more than once. */
@@ -304,6 +323,7 @@ export function installDemoBackend() {
   if (installed) return;
   installed = true;
   reset();
+  backend.onLibraryChanged = onDemoLibraryChanged;
   mockWindows("main");
   mockIPC((command, args) => handle(command, args as Args));
 }
@@ -311,5 +331,7 @@ export function installDemoBackend() {
 export function uninstallDemoBackend() {
   if (!installed) return;
   installed = false;
+  backend.onLibraryChanged = originalSubscribe;
+  libraryListeners.clear();
   clearMocks();
 }
