@@ -1,5 +1,5 @@
 import { searchSnippet } from "@/workbench/search-text";
-import { backend } from "@/workbench/api";
+import { agentIds, type BookmarkBackup, type BookmarkView, type MessageBookmark, type BookmarkReplacement, type BookmarkImport, backend } from "@/workbench/api";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type { AgentId, ProjectInfo, GroupedSearch, SearchExcerpt, SearchGroup, SearchHit, SearchSort, SessionMeta, SessionQuery, TranscriptMessage } from "@/workbench/api";
 
@@ -116,6 +116,8 @@ const extraTitles: [string, AgentId, string][] = [
   ["Nightly cost report for the GPU pool", "gemini", projects.infra],
 ];
 
+let bookmarks: MessageBookmark[] = [];
+let bookmarkSeed = Promise.resolve();
 let sessions: SessionMeta[] = [];
 const transcripts = new Map<string, TranscriptMessage[]>();
 let prefs = new Map<string, string>();
@@ -162,6 +164,16 @@ function reset() {
     })));
   }
 
+  bookmarkSeed = (async () => {
+    const first = sessions.find(session => session.key === "claude-code:demo-0")!;
+    const message = transcripts.get(first.key)![1];
+    const current: MessageBookmark = {session_key:first.key, seq:1, note:"Keep the trigram indexing decision for the next search change.",
+      excerpt:Array.from(message.text).slice(0,500).join(""), text_hash:await messageHash(message.text),
+      created_at:now-HOUR, updated_at:now-HOUR, title:first.title, agent:first.agent, project_path:first.project_path};
+    bookmarks = [current, {...current,seq:3,note:"This sample note belongs to the earlier excerpt. Review it before updating.",excerpt:"Earlier navigation marker example",text_hash:await messageHash("Earlier navigation marker example"),updated_at:now-2*HOUR,created_at:now-2*HOUR},
+      {...current,session_key:"codex:removed-sample",seq:2,title:"Removed sample session",agent:"codex",project_path:projects.api,
+        excerpt:"A saved decision from a sample session that is no longer available.",text_hash:await messageHash("A saved decision from a sample session that is no longer available."),note:"The original source is gone; this note and excerpt remain.",updated_at:now-3*HOUR,created_at:now-3*HOUR}];
+  })();
 }
 
 function listSessions(query: SessionQuery) {
@@ -318,14 +330,109 @@ function intelligence(args: Args) {
   };
 }
 
+async function messageHash(text: string) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text))))
+    .map(byte=>byte.toString(16).padStart(2,"0")).join("");
+}
+
+const bookmarkFields = ["session_key","seq","note","excerpt","text_hash","created_at","updated_at","title","agent","project_path"] as const;
+function parseBookmarkBackup(json: string): BookmarkBackup {
+  const backup = JSON.parse(json) as BookmarkBackup;
+  if (!backup || backup.version !== 1 || !Array.isArray(backup.bookmarks) || Object.keys(backup).length !== 2) throw new Error("Invalid bookmark backup version or structure");
+  const identities = new Set<string>();
+  for (const b of backup.bookmarks) {
+    if (!b || typeof b !== "object" || Object.values(b).some(value=>typeof value==="string" && new TextDecoder().decode(new TextEncoder().encode(value))!==value) || Object.keys(b).length !== bookmarkFields.length || Object.keys(b).some(key=>!bookmarkFields.includes(key as typeof bookmarkFields[number]))
+      || typeof b.session_key !== "string" || !b.session_key || new TextEncoder().encode(b.session_key).length > 512
+      || !Number.isSafeInteger(b.seq) || b.seq < 0 || typeof b.note !== "string" || Array.from(b.note).length > 4000
+      || typeof b.excerpt !== "string" || Array.from(b.excerpt).length > 500 || typeof b.text_hash !== "string" || !/^[0-9a-f]{64}$/.test(b.text_hash)
+      || !Number.isSafeInteger(b.created_at) || !Number.isSafeInteger(b.updated_at) || b.created_at < 0 || b.updated_at < b.created_at
+      || !Number.isFinite(new Date(b.updated_at).getTime()) || new Date(b.updated_at).getUTCFullYear() > 262142
+      || typeof b.title !== "string" || Array.from(b.title).length > 1000 || !agentIds.includes(b.agent)
+      || (b.project_path !== null && (typeof b.project_path !== "string" || new TextEncoder().encode(b.project_path).length > 4096))) throw new Error("Invalid bookmark backup record");
+    const identity = `${b.session_key}:${b.seq}`;
+    if (identities.has(identity)) throw new Error("Duplicate bookmark identity");
+    identities.add(identity);
+  }
+  return backup;
+}
+
+async function listBookmarks(query: string, filter: SessionQuery): Promise<BookmarkView[]> {
+  const views: BookmarkView[] = [];
+  for (const bookmark of [...bookmarks].sort((a,b)=>b.updated_at-a.updated_at || a.session_key.localeCompare(b.session_key) || a.seq-b.seq)) {
+    const session = sessions.find(session=>session.key===bookmark.session_key) ?? null;
+    if ((filter.agent && filter.agent !== (session?.agent ?? bookmark.agent)) || (filter.project_path && filter.project_path !== (session?.project_path ?? bookmark.project_path))) continue;
+    const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
+    if (!query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term=>text.includes(term))) continue;
+    const message = transcripts.get(bookmark.session_key)?.find(message=>message.seq===bookmark.seq);
+    const status = session && message ? (await messageHash(message.text) === bookmark.text_hash ? "current" : "changed") : "unavailable";
+    views.push({bookmark:structuredClone(bookmark),session:session ? structuredClone(session) : null,status});
+  }
+  return views;
+}
+
+async function saveBookmark(args: Args) {
+  const key = args.key as string, seq = args.seq as number, note = args.note as string;
+  if (!Number.isSafeInteger(seq) || seq < 0 || typeof note !== "string" || Array.from(note).length > 4000) throw new Error("Notes are limited to 4,000 characters");
+  const message = transcripts.get(key)?.find(message=>message.seq===seq);
+  const textHash = message ? await messageHash(message.text) : null;
+  const existing = bookmarks.find(bookmark=>bookmark.session_key===key && bookmark.seq===seq);
+  const expected = args.expectedUpdatedAt ?? null;
+  if (existing && expected === null && !note && !args.refreshSnapshot) return structuredClone(existing);
+  if ((existing && expected !== existing.updated_at) || (!existing && expected !== null)) throw new Error("Bookmark changed; reload it before saving");
+  const timestamp = Math.max(Date.now(), (existing?.updated_at ?? 0)+1);
+  let saved = existing ? {...existing,note,updated_at:timestamp} : null;
+  if (!saved || args.refreshSnapshot) {
+    const session = sessions.find(session=>session.key===key);
+    if (!session || !message || !textHash) throw new Error("Message is unavailable");
+    saved = {session_key:key,seq,note,excerpt:Array.from(message.text).slice(0,500).join(""),text_hash:textHash,
+      created_at:existing?.created_at ?? timestamp,updated_at:timestamp,title:Array.from(session.title).slice(0,1000).join(""),agent:session.agent,project_path:session.project_path};
+  }
+  parseBookmarkBackup(JSON.stringify({version:1,bookmarks:[saved]}));
+  bookmarks = [...bookmarks.filter(bookmark=>bookmark.session_key!==key || bookmark.seq!==seq),saved];
+  libraryListeners.forEach(callback=>callback());
+  return structuredClone(saved);
+}
+
+function importBookmarks(json: string, replacements: BookmarkReplacement[]): BookmarkImport {
+  const backup = parseBookmarkBackup(json);
+  const keys = new Set<string>();
+  for (const replacement of replacements) {
+    const key = `${replacement.session_key}:${replacement.seq}`;
+    if (keys.has(key) || !Number.isSafeInteger(replacement.expected_updated_at) || !backup.bookmarks.some(bookmark=>bookmark.session_key===replacement.session_key && bookmark.seq===replacement.seq)) throw new Error("Invalid bookmark replacement");
+    keys.add(key);
+  }
+  const next = structuredClone(bookmarks);
+  const result: BookmarkImport = {imported:0,unchanged:0,conflicts:[]};
+  for (const incoming of backup.bookmarks) {
+    const index = next.findIndex(existing=>existing.session_key===incoming.session_key && existing.seq===incoming.seq);
+    if (index < 0) {next.push(incoming);result.imported++;continue;}
+    const existing = next[index];
+    if (bookmarkFields.filter(field=>field!=="created_at" && field!=="updated_at").every(field=>existing[field]===incoming[field])) {result.unchanged++;continue;}
+    const replacement = replacements.find(replacement=>replacement.session_key===incoming.session_key && replacement.seq===incoming.seq);
+    if (replacement?.expected_updated_at === existing.updated_at) {
+      next[index] = {...incoming,updated_at:Math.max(incoming.updated_at,existing.updated_at+1)};result.imported++;
+    } else result.conflicts.push({existing:structuredClone(existing),incoming:structuredClone(incoming)});
+  }
+  parseBookmarkBackup(JSON.stringify({version:1,bookmarks:next}));
+  bookmarks = next;
+  libraryListeners.forEach(callback=>callback());
+  return result;
+}
+
 type Args = Record<string, unknown>;
 
-function handle(command: string, args: Args = {}): unknown {
+async function handle(command: string, args: Args = {}): Promise<unknown> {
+  await bookmarkSeed;
   switch (command) {
     case "get_pref": return prefs.get(args.key as string) ?? null;
     case "set_pref": prefs.set(args.key as string, args.value as string); return null;
     case "list_sessions": return listSessions(args.query as SessionQuery);
     case "list_projects": return listProjects();
+    case "list_bookmarks": return listBookmarks(args.query as string, args.filter as SessionQuery);
+    case "save_bookmark": return saveBookmark(args);
+    case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
+    case "get_bookmark_backup": return JSON.stringify({version:1,bookmarks},null,2);
+    case "import_bookmarks": return importBookmarks(args.json as string, args.replacements as BookmarkReplacement[]);
     case "get_transcript": return transcripts.get(args.key as string) ?? [];
     case "search_sessions": return search(args.query as string, args.filter as SessionQuery, args.limit as number);
     case "search_grouped": return searchGrouped(args.query as string, args.filter as SessionQuery, args.sort as SearchSort, args.offset as number, args.limit as number);

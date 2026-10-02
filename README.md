@@ -47,7 +47,8 @@ Ronda brings them into one fast, private library. You can find the conversation 
 - **See how you work.** Insights show a year of activity and which agents, projects, and models your sessions and tokens go to. **[Intelligence](https://tryronda.cloud/intelligence/)** works out where your time goes, where agents get stuck, which errors keep coming back, your real stack, and how sessions end, all on your machine.
 - **Let your agents learn from past sessions.** The bundled CLI and a read-only MCP server let Claude Code, Codex, and other MCP clients search your history. An agent can ask whether an error has been seen before and how that session ended.
 - **Follow your remote machines.** Ronda can mirror sessions from SSH hosts, index them locally next to the rest, and resume them on the host over SSH.
-- **Private by design.** The index is a rebuildable SQLite database on your machine. Sessions are never sent to a server. Agent files are only read. The one exception is the explicit **Move to Trash** action.
+- **Keep decisions close to the message.** Bookmark messages, save plain-text notes, and search those notes and excerpts across projects. Saved annotations survive missing sources; export and import JSON backups in Settings → Data.
+- **Private by design.** The session index is rebuildable SQLite data on your machine; bookmarks and notes need their own backup. Sessions are never sent to a server. Agent files are only read. The one exception is the explicit **Move to Trash** action.
 
 ## Download
 

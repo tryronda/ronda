@@ -1,3 +1,4 @@
+import { BookmarkData } from "./BookmarkData";
 import { version as appVersion } from "../../package.json";
 import { invoke } from '@/lib/tauri';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -40,7 +41,7 @@ const copy = {
 
 function shellQuote(value: string) { return `'${value.replaceAll("'", "'\\''")}'`; }
 
-export function SettingsView() {
+export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const t = copy;
   const [section, setSection] = useState<Section>('general');
   const [theme, setTheme] = useState('morning');
@@ -225,6 +226,7 @@ export function SettingsView() {
         {section === 'data' && <section className="panel-card"><h2>{t.data}</h2><p className="panel-help">{t.dataHelp}</p>
           <div className="settings-field"><div><strong>{t.index}</strong><code className="settings-path">{paths?.[2] ?? '…'}</code></div></div>
           <button disabled={busy} onClick={() => void act(() => invoke('scan'), t.refreshed)}>{t.refresh}</button>
+          <BookmarkData embedded={embedded} />
         </section>}
         {section === 'updates' && <section className="panel-card"><h2>{t.updates}</h2><p className="panel-help">{t.updateHelp}</p>
           <button disabled={busy} onClick={() => void act(async () => {

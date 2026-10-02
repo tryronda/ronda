@@ -6,7 +6,9 @@ All notable changes to Ronda are recorded here.
 
 ### Added
 
-- Message bookmark storage and versioned JSON backups preserve notes across index refreshes and keep conflicting imports for explicit review. The desktop bookmark interface is in progress.
+- Message bookmarks, editable plain-text notes, and a searchable bookmark library with project and agent filters.
+- Versioned JSON backup and import in Settings → Data. Conflicting notes stay saved until explicitly replaced; changed and unavailable messages keep their original excerpt snapshots.
+- The browser preview includes synthetic bookmarks, note editing, backup downloads, and a backup file picker. Changes reset on reload.
 
 ## [1.0.3] - 2026-10-02
 

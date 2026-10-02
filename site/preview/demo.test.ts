@@ -1,10 +1,45 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, test, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { backend } from "@/workbench/api";
+import { backend, queryDefaults, type BookmarkBackup, type BookmarkImport } from "@/workbench/api";
 import { appendDemoMessage, installDemoBackend, uninstallDemoBackend } from "./demo";
 
 afterEach(uninstallDemoBackend);
+
+test("bookmark preview preserves snapshots and notes through conflicts, invalid imports, and round trips", async () => {
+  installDemoBackend();
+  const views = await backend.listBookmarks("",queryDefaults);
+  expect(views.map(view=>view.status).sort()).toEqual(["changed","current","unavailable"]);
+  const current = views.find(view=>view.status === "current")!.bookmark;
+  const saved = await backend.saveBookmark(current.session_key,current.seq,"Plain <b>note</b>",false,current.updated_at);
+  await expect(backend.saveBookmark(current.session_key,current.seq,"stale",false,current.updated_at)).rejects.toThrow("changed");
+  const repeats = await Promise.all([backend.saveBookmark(current.session_key,current.seq,"",false,null),backend.saveBookmark(current.session_key,current.seq,"",false,null)]);
+  expect(repeats.map(bookmark=>bookmark.note)).toEqual([saved.note,saved.note]);
+  const backup = JSON.parse(await invoke<string>("get_bookmark_backup")) as BookmarkBackup;
+  const incoming = structuredClone(backup);
+  incoming.bookmarks.find(bookmark=>bookmark.session_key===saved.session_key && bookmark.seq===saved.seq)!.note = "Imported note";
+  const apply = (data: BookmarkBackup, replacements: unknown[] = []) => invoke<BookmarkImport>("import_bookmarks",{json:JSON.stringify(data),replacements});
+  const conflict = await apply(incoming);
+  expect(conflict.conflicts).toHaveLength(1);
+  expect(conflict.conflicts[0].existing.note).toBe(saved.note);
+  const invalid = structuredClone(incoming);
+  invalid.bookmarks.push({...saved,session_key:"new:bookmark",text_hash:"invalid"});
+  await expect(apply(invalid)).rejects.toThrow("Invalid bookmark");
+  expect(JSON.parse(await invoke<string>("get_bookmark_backup"))).toEqual(backup);
+  const replacement = {session_key:saved.session_key,seq:saved.seq,expected_updated_at:saved.updated_at};
+  expect((await apply(incoming,[{...replacement,expected_updated_at:current.updated_at}])).conflicts).toHaveLength(1);
+  expect((await apply(incoming,[replacement])).imported).toBe(1);
+  expect((await apply(incoming)).conflicts).toHaveLength(0);
+  const unavailable = views.find(view=>view.status==="unavailable")!.bookmark;
+  await backend.saveBookmark(unavailable.session_key,unavailable.seq,"Retained without source",false,unavailable.updated_at);
+  await expect(backend.saveBookmark(unavailable.session_key,unavailable.seq,"",true,null)).rejects.toThrow();
+  const exported = JSON.parse(await invoke<string>("get_bookmark_backup")) as BookmarkBackup;
+  for (const bookmark of exported.bookmarks) await backend.deleteBookmark(bookmark.session_key,bookmark.seq);
+  expect(await backend.listBookmarks("",queryDefaults)).toHaveLength(0);
+  expect((await apply(exported)).imported).toBe(exported.bookmarks.length);
+  expect(JSON.parse(await invoke<string>("get_bookmark_backup"))).toEqual(exported);
+  expect(await backend.listBookmarks("retained source",queryDefaults)).toHaveLength(1);
+});
 
 test("sample messages update the real workbench backend and notify subscribed readers", async () => {
   installDemoBackend();

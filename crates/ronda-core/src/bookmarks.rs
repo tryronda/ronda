@@ -367,6 +367,11 @@ impl Store {
                         incoming.updated_at = incoming
                             .updated_at
                             .max(existing.updated_at.saturating_add(1));
+                        BookmarkBackup {
+                            version: 1,
+                            bookmarks: vec![incoming.clone()],
+                        }
+                        .validate()?;
                         write(&tx, &incoming)?;
                         result.imported += 1;
                     } else {
@@ -616,6 +621,28 @@ mod tests {
         target.delete_bookmark("local", 7).unwrap();
         target.delete_bookmark("local", 7).unwrap();
         assert_eq!(target.export_bookmarks().unwrap().bookmarks.len(), 1);
+        // Replacement must not generate a timestamp outside the backup format's range.
+        let mut edge = target.export_bookmarks().unwrap();
+        let original_timestamp = edge.bookmarks[0].updated_at;
+        edge.bookmarks[0].note = "Maximum valid timestamp".into();
+        edge.bookmarks[0].updated_at = chrono::DateTime::<chrono::Utc>::MAX_UTC.timestamp_millis();
+        let mut replacement = BookmarkReplacement {
+            session_key: edge.bookmarks[0].session_key.clone(),
+            seq: edge.bookmarks[0].seq,
+            expected_updated_at: original_timestamp,
+        };
+        target.import_bookmarks(&edge, &[replacement]).unwrap();
+        replacement = BookmarkReplacement {
+            session_key: edge.bookmarks[0].session_key.clone(),
+            seq: edge.bookmarks[0].seq,
+            expected_updated_at: edge.bookmarks[0].updated_at,
+        };
+        edge.bookmarks[0].note = "Would overflow".into();
+        assert!(target.import_bookmarks(&edge, &[replacement]).is_err());
+        assert_eq!(
+            target.export_bookmarks().unwrap().bookmarks[0].note,
+            "Maximum valid timestamp"
+        );
         std::fs::remove_file(path).unwrap();
     }
 }

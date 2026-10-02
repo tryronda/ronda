@@ -26,7 +26,7 @@ export default function LivePreview() {
   return <><div className="mb-3 flex items-center gap-3 text-sm">
     <button type="button" onClick={appendDemoMessage} className="glass px-3 py-2">Append sample message</button>
     <span>Open “Make session search handle code fragments and any language” to watch it update.</span>
-  </div><p className="mb-3 text-sm text-muted-foreground">Try “useEffect(” for code fragments or “pagination” for grouped results, session pages, and expandable matches. Open the first session and find “navigation marker” to cycle through prose, code, and tool output; try Prompts only. All preview sessions are sample data.</p><div ref={hostRef} className="w-full" style={{ height: HEIGHT * scale }}>
+  </div><p className="mb-3 text-sm text-muted-foreground">Try “useEffect(” for code fragments or “pagination” for grouped results, session pages, and expandable matches. Open the first session and find “navigation marker” to cycle through prose, code, and tool output; try Prompts only. Bookmarks includes current, changed, and unavailable samples. Edit a note or export/import a backup in Settings → Data. All preview data and changes reset on reload.</p><div ref={hostRef} className="w-full" style={{ height: HEIGHT * scale }}>
     {/* The transform also makes the app's fixed-position toasts anchor to this window, not the page. */}
     <div className="relative origin-top-left overflow-hidden bg-background"
       style={{ width: WIDTH, height: HEIGHT, transform: `scale(${scale})` }}>

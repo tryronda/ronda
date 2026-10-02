@@ -6,7 +6,7 @@ export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS
 
 // Read-only commands resolve to an empty library in a browser so the UI still renders.
 const browserDefaults: Record<string, unknown> = {
-  get_pref: null, set_pref: null, list_sessions: [], list_projects: [], search_sessions: [], get_transcript: [],
+  get_pref: null, set_pref: null, list_bookmarks: [], get_bookmark_backup: '{"version":1,"bookmarks":[]}', list_sessions: [], list_projects: [], search_sessions: [], get_transcript: [],
   list_locations: [], list_remote_hosts: [], check_updates: null, app_paths: ["ronda-mcp", "", ""],
   get_insights: { sessions: 0, prompts: 0, tokens: 0, activity: [], agents: [], projects: [], models: [] },
   get_intelligence: { since: null, project: null, time: [], failures: [], recurring: [], stack: [], outcomes: [], coverage: [], callouts: [],

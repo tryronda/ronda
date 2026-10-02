@@ -95,6 +95,16 @@ chmod +x Ronda-linux-x86_64.AppImage
     </>,
   },
   {
+    id: "bookmarks", title: "Bookmarks and notes",
+    body: <>
+      <P>Choose **Bookmark message** on a transcript message to save its excerpt. Write a plain-text note of up to 4,000 characters and choose **Save note**. Unsaved changes stay in the editor if saving fails. Stars and pins still apply to whole sessions.</P>
+      <P>Open **Bookmarks** in the library to search saved notes, excerpts, and session titles. Project and agent filters also apply. Most recently updated bookmarks appear first. Click an available excerpt to open its message in the full transcript.</P>
+      <P>If the source changes, **Changed since bookmarking** keeps the original excerpt and note visible. **Update saved excerpt to this message** explicitly replaces the snapshot. If the message disappears, its saved excerpt and note remain available to read, edit, or remove.</P>
+      <P>Bookmarks live in your index database and survive rescans and derived-fact rebuilds. They cannot be reconstructed from agent files. Before deleting or moving that database, choose **Settings → Data → Export bookmarks** to save a versioned JSON backup. **Import bookmarks** validates the entire file before applying it and keeps conflicting notes. Review both versions before choosing **Replace with imported bookmark**.</P>
+      <P>The browser preview uses synthetic bookmarks. Export downloads sample JSON; Import opens a file picker. All changes reset when you reload the preview.</P>
+    </>,
+  },
+  {
     id: "resume", title: "Resume a session",
     body: <>
       <P>Open a session and click **Resume**. Ronda opens a terminal inside the app and runs the agent's own resume command in the session's project folder, so you pick up the same conversation with the same agent.</P>
@@ -167,7 +177,7 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
     id: "privacy", title: "Privacy and data",
     body: <>
       <List items={[
-        "Sessions are indexed into a separate, rebuildable SQLite database on your machine. They are never sent to a Ronda server.",
+        "Sessions are indexed into a separate SQLite database on your machine. The session index is rebuildable; your bookmarks and notes require a backup from **Settings → Data**. They are never sent to a Ronda server.",
         "Ronda contacts GitHub only when you choose **Check for updates**, and an SSH host only when you configure and sync it.",
         "Agent files are read, not changed. **Move to Trash** is the only action that removes an agent's session file.",
         "Ronda starts an agent only when you click **Resume**, and that terminal runs on your machine or on your own SSH host.",

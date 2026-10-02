@@ -1,9 +1,8 @@
 import { invoke, listen } from "@/lib/tauri";
 
-export type AgentId =
-  | "claude-code" | "codex" | "grok" | "dsh" | "cursor" | "opencode"
-  | "pi" | "omp" | "kiro" | "kimi" | "gemini" | "copilot"
-  | "antigravity" | "qoder" | "hermes" | "openclaw" | "codebuddy" | "workbuddy";
+export const agentIds = ["claude-code", "codex", "grok", "dsh", "cursor", "opencode",
+  "pi", "omp", "kiro", "kimi", "gemini", "copilot", "antigravity", "qoder", "hermes", "openclaw", "codebuddy", "workbuddy"] as const;
+export type AgentId = typeof agentIds[number];
 
 export interface SessionMeta {
   key: string;

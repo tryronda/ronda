@@ -156,7 +156,7 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
       </div>
       {mounted.insights && <PageView hidden={page !== "insights"}><InsightsView active={page === "insights"} /></PageView>}
       {mounted.intelligence && <PageView hidden={page !== "intelligence"}><IntelligenceView onOpen={openSession} active={page === "intelligence"} /></PageView>}
-      {mounted.settings && <PageView hidden={page !== "settings"}><SettingsView /></PageView>}
+      {mounted.settings && <PageView hidden={page !== "settings"}><SettingsView embedded={embedded} /></PageView>}
     </div>
   </div>;
 }

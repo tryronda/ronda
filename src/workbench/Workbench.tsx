@@ -1,9 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Archive01Icon, ArrowLeft01Icon, ArrowRight01Icon, Delete02Icon, Folder01Icon, PinIcon, ReloadIcon,
-  Search01Icon, StarIcon, Download01Icon, Cancel01Icon,
+  Search01Icon, StarIcon, Download01Icon, Cancel01Icon, Bookmark01Icon,
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button } from "@/components/motion/button/base";
@@ -15,12 +15,13 @@ import { cn } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { LibraryHome } from "./LibraryHome";
+import { BookmarkControl } from "./BookmarkControl";
 import { TranscriptNavigation } from "./TranscriptNavigation";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
   type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
-  type WorkbenchBackend,
+  type WorkbenchBackend, type BookmarkView,
 } from "./api";
 
 const copy = {
@@ -82,7 +83,7 @@ function IconButton({ icon, title, onClick, active, disabled }: {
   </motion.button>;
 }
 
-function Message({ message, animate }: { message: TranscriptMessage; animate: boolean }) {
+function Message({ message, animate, children }: { message: TranscriptMessage; animate: boolean; children?: ReactNode }) {
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
@@ -119,6 +120,7 @@ function Message({ message, animate }: { message: TranscriptMessage; animate: bo
           {tool.output && <pre data-transcript-field={`tool-${index}-output`} className="message-pre mt-1.5 text-muted-foreground">{tool.output}</pre>}
         </div>)}
       </details>}
+      {children}
     </div>
   </article>;
 }
@@ -133,6 +135,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 }) {
   const t = copy;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
+  const [bookmarks, setBookmarks] = useState<BookmarkView[]>([]);
+  const [bookmarksOnly, setBookmarksOnly] = useState(false);
+  const bookmarkRun = useRef(0);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const scopeRef = useRef<HTMLDivElement>(null);
@@ -186,6 +191,37 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     } catch (cause) { if (run === reloadRun.current) setError(String(cause)); }
     finally { if (run === reloadRun.current) setLoading(false); }
   }, [api, filter]);
+
+  const reloadBookmarks = useCallback(async () => {
+    const run = ++bookmarkRun.current;
+    const next = await api.listBookmarks("", queryDefaults);
+    if (run === bookmarkRun.current) setBookmarks(next);
+  }, [api]);
+  useEffect(() => {
+    if (!isActive) return;
+    let cancelled = false;
+    void reloadBookmarks().catch(cause => { if (!cancelled) setError(String(cause)); });
+    return () => { cancelled = true; bookmarkRun.current++; };
+  }, [isActive, revision, reloadBookmarks]);
+  const bookmarkByMessage = useMemo(() => new Map(bookmarks.map(view => [`${view.bookmark.session_key}:${view.bookmark.seq}`, view])), [bookmarks]);
+  const visibleBookmarks = bookmarks.filter(({bookmark, session}) => {
+    if (agent && (session?.agent ?? bookmark.agent) !== agent) return false;
+    if (project && (session?.project_path ?? bookmark.project_path) !== project) return false;
+    const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
+    return search.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term => text.includes(term));
+  });
+  const projectOptions = useMemo(() => {
+    if (!bookmarksOnly) return projects;
+    const known = new Set(projects.map(project => project.path));
+    const extra: ProjectInfo[] = [];
+    for (const {bookmark} of bookmarks) {
+      if (bookmark.project_path && !known.has(bookmark.project_path)) {
+        known.add(bookmark.project_path);
+        extra.push({path:bookmark.project_path, session_count:0, updated_at:bookmark.updated_at});
+      }
+    }
+    return [...projects, ...extra];
+  }, [projects, bookmarks, bookmarksOnly]);
 
   useLibraryRefresh(() => { void reload(); return () => { reloadRun.current++; }; }, [reload], isActive, 400, api.onLibraryChanged);
   useEffect(() => {
@@ -245,7 +281,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
   useEffect(() => {
     if (!isActive) return;
-    if (!search.trim()) { setHits([]); setSearching(false); return; }
+    if (bookmarksOnly || !search.trim()) { setHits([]); setSearching(false); return; }
     let cancelled = false;
     setSearching(true);
     const timer = window.setTimeout(() => {
@@ -263,7 +299,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       }).catch(cause => { if (!cancelled) { setError(String(cause)); setSearching(false); } });
     }, 120);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [api, filter, search, searchSort, searchOffset, revision, isActive]);
+  }, [api, filter, search, searchSort, searchOffset, revision, isActive, bookmarksOnly]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -276,7 +312,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   }, []);
 
   useEffect(() => { if (isActive && searchFocusToken) searchRef.current?.focus(); }, [isActive, searchFocusToken]);
-  useEffect(() => { if (homeToken) { setSelectedKey(null); setMobileDetail(false); } }, [homeToken]);
+  useEffect(() => { if (homeToken) { setSelectedKey(null); setMobileDetail(false); setBookmarksOnly(false); } }, [homeToken]);
   useEffect(() => {
     if (!openRequest) return;
     let cancelled = false;
@@ -315,7 +351,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   }, [onActiveSessionChange, selected?.key, selected?.title, selected?.project_path]);
   const visible = search.trim() ? hits.map(group => ({ session: group.session, group }))
     : sessions.map(session => ({ session, group: null as SearchGroup | null }));
-  const agents = useMemo(() => Array.from(new Set(sessions.map(s => s.agent))).sort(), [sessions]);
+  const agents = useMemo(() => Array.from(new Set(bookmarksOnly ? bookmarks.map(view => view.session?.agent ?? view.bookmark.agent) : sessions.map(s => s.agent))).sort(), [sessions, bookmarks, bookmarksOnly]);
 
   const choose = (session: SessionMeta, seq?: number) => {
     setOpened(session);
@@ -402,7 +438,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     catch (cause) { setError(String(cause)); }
   };
 
-  const heading = search.trim() ? t.searchResults : project ? basename(project) : starredOnly ? t.favorites : agent ? agentNames[agent] : t.recent;
+  const heading = bookmarksOnly ? "Bookmarks" : search.trim() ? t.searchResults : project ? basename(project) : starredOnly ? t.favorites : agent ? agentNames[agent] : t.recent;
   const navClass = (active: boolean) => cn("flex min-h-8 w-full items-center px-2.5 text-left text-[15px] tracking-[0.02em] whitespace-nowrap transition-colors",
     "[&>div:last-child]:flex [&>div:last-child]:w-full [&>div:last-child]:min-w-0 [&>div:last-child]:items-center [&>div:last-child]:gap-2.5",
     active ? "bg-chip text-foreground" : "text-foreground/60 hover:text-foreground");
@@ -414,22 +450,25 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         sidebarOpen ? "w-[240px] px-2 pt-2 pb-3 opacity-100 max-[1100px]:w-[200px]" : "invisible w-0 border-r-0 p-0 opacity-0")}>
       <div className={sectionHeading}>{t.library}</div>
       <SharedLayoutBg inset={0} className="gap-px" pillClassName="rounded-none bg-chip/70">
-        <button key="all" className={navClass(!project && !starredOnly && !agent)} type="button"
-          onClick={() => { setProject(null); setAgent(null); setStarredOnly(false); }}>
+        <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !agent)} type="button"
+          onClick={() => { setProject(null); setAgent(null); setStarredOnly(false); setBookmarksOnly(false); }}>
           <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />{t.all}<span className="label-mono ml-auto text-muted-foreground">{sessions.length}</span>
         </button>
-        <button key="starred" className={navClass(starredOnly)} type="button"
-          onClick={() => { setProject(null); setAgent(null); setStarredOnly(true); }}>
+        <button key="starred" className={navClass(!bookmarksOnly && starredOnly)} type="button"
+          onClick={() => { setProject(null); setAgent(null); setStarredOnly(true); setBookmarksOnly(false); }}>
           <HugeiconsIcon icon={StarIcon} size={16} strokeWidth={1.8} />{t.favorites}
         </button>
-        <button key="archived" className={navClass(includeArchived)} type="button"
+        <button key="bookmarks" className={navClass(bookmarksOnly)} type="button" onClick={() => {
+          setBookmarksOnly(true); setProject(null); setAgent(null); setStarredOnly(false);
+        }}><HugeiconsIcon icon={Bookmark01Icon} size={16} />Bookmarks<span className="label-mono ml-auto text-muted-foreground">{bookmarks.length}</span></button>
+        {!bookmarksOnly && <button key="archived" className={navClass(includeArchived)} type="button"
           aria-pressed={includeArchived} onClick={() => setIncludeArchived(value => !value)}>
           <HugeiconsIcon icon={Archive01Icon} size={16} strokeWidth={1.8} />{t.includeArchived}
-        </button>
+        </button>}
       </SharedLayoutBg>
       <div className={sectionHeading}>{t.projects}</div>
       <div className="max-h-[31vh] overflow-y-auto">
-        {projects.map(item => <button className={navClass(project === item.path)}
+        {projectOptions.map(item => <button className={navClass(project === item.path)}
           title={item.path} key={item.path} type="button" onClick={() => { setProject(item.path); setStarredOnly(false); setAgent(null); }}>
           <div className="flex w-full min-w-0 items-center gap-2.5">
             <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} className="flex-none" /><span className="min-w-0 truncate">{basename(item.path)}</span>
@@ -450,7 +489,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       </div>
     </aside>
 
-    <section aria-label={t.recent}
+    <section aria-label={bookmarksOnly ? "Bookmarks" : t.recent}
       className="session-pane flex min-h-0 w-[340px] flex-none flex-col border-r border-border bg-paper max-[1100px]:w-[300px]">
       <div className="flex-none border-b border-border px-4 pt-5 pb-3.5">
         <div className="label-mono text-[12px] lowercase text-muted-foreground">{t.browse}</div>
@@ -463,14 +502,14 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </AnimatePresence>
           <span className={scanning ? "[&_svg]:animate-spin" : undefined}><IconButton icon={ReloadIcon} title={t.refresh} onClick={() => void refresh()} disabled={scanning} /></span>
         </div>
-        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{scanning ? t.refreshing : search.trim() ? `${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `${visible.length} ${t.sessions}`}</p>
+        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{scanning ? t.refreshing : bookmarksOnly ? `${visibleBookmarks.length} saved messages` : search.trim() ? `${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `${visible.length} ${t.sessions}`}</p>
         <label className="glass flex h-9 items-center gap-2 px-2.5 text-muted-foreground transition-shadow focus-within:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--foreground)]">
           <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={2} />
           <input ref={searchRef} type="search" value={search} onChange={event => setSearch(event.target.value)}
-            placeholder={t.search} aria-label={t.search}
+            placeholder={bookmarksOnly ? "Search notes and saved excerpts" : t.search} aria-label={bookmarksOnly ? "Search bookmarks" : t.search}
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
-        {search.trim() && <label className="label-mono mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+        {!bookmarksOnly && search.trim() && <label className="label-mono mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           Sort results
           <select aria-label="Sort search results" value={searchSort} className="min-w-0 bg-paper p-1 text-foreground"
             onChange={event => setSearchSort(event.target.value as SearchSort)}>
@@ -480,13 +519,25 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       </div>
       <div className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || searching || scanning}
         onKeyDown={event => {
+          if (event.target instanceof HTMLElement && event.target.closest("textarea,input,[contenteditable='true']")) return;
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           const cards = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".session-card"));
           const index = cards.indexOf(document.activeElement as HTMLButtonElement);
           const next = cards[index + (event.key === "ArrowDown" ? 1 : -1)];
           if (next) { event.preventDefault(); next.focus(); }
         }}>
-        {loading && visible.length === 0 ? <div className="session-skeletons grid gap-1 p-1" role="status" aria-label={t.loading}>
+        {bookmarksOnly ? <>
+          {visibleBookmarks.length === 0 && <p className="m-5 text-muted-foreground">No matching bookmarks. Save a message from a transcript to keep its excerpt and add a note.</p>}
+          {visibleBookmarks.map(view => <div key={`${view.bookmark.session_key}:${view.bookmark.seq}`} className="border-b border-border p-3">
+            <button className="session-card w-full text-left" type="button" disabled={!view.session || view.status === "unavailable"}
+              onClick={() => { if (view.session) choose(view.session, view.bookmark.seq); }}>
+              <strong className="font-normal"><SearchHighlight text={view.session?.title ?? view.bookmark.title} query={search} /></strong>
+              <p className="mt-1 text-[12px] text-muted-foreground">Message #{view.bookmark.seq} · {agentNames[view.bookmark.agent]} · {timeLabel(view.bookmark.updated_at)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-[13px]"><SearchHighlight text={view.bookmark.excerpt} query={search} /></p>
+            </button>
+            <BookmarkControl api={api} sessionKey={view.bookmark.session_key} seq={view.bookmark.seq} view={view} changed={reloadBookmarks} />
+          </div>)}
+        </> : loading && visible.length === 0 ? <div className="session-skeletons grid gap-1 p-1" role="status" aria-label={t.loading}>
           {[0, 1, 2, 3, 4].map(index => <div className="grid gap-2.5 px-2.5 py-3.5" key={index}>
             <i className="skeleton h-2 w-2/5" /><i className="skeleton h-3 w-4/5" /><i className="skeleton h-2 w-1/3" /></div>)}
         </div> : visible.length === 0 ? <div className="mx-5 mt-[18vh] flex flex-col items-center gap-3 text-center text-muted-foreground">
@@ -518,7 +569,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             key={`${session.key}-${searchContext.query}-${searchContext.revision}-${JSON.stringify(searchContext.filter)}`}
             api={api} group={group} query={searchContext.query} filter={searchContext.filter}
             choose={seq => choose(session, seq)} />}</div>)}
-        {search.trim() && searchTotals.sessions > 50 && <nav aria-label="Search result pages" className="flex items-center justify-between gap-2 p-2 text-[13px]">
+        {!bookmarksOnly && search.trim() && searchTotals.sessions > 50 && <nav aria-label="Search result pages" className="flex items-center justify-between gap-2 p-2 text-[13px]">
           <button type="button" disabled={searching || searchOffset === 0} onClick={() => setSearchOffset(value => Math.max(0, value - 50))}>Previous sessions</button>
           <span>{searchOffset + 1}–{Math.min(searchOffset + 50, searchTotals.sessions)} of {searchTotals.sessions}</span>
           <button type="button" disabled={searching || searchOffset + 50 >= searchTotals.sessions} onClick={() => setSearchOffset(value => value + 50)}>Next sessions</button>
@@ -575,7 +626,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
           </div> : messages.length ? <div className="transcript-messages mx-auto max-w-[780px] px-10 pt-6 pb-24 max-[1100px]:px-6">
-            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} />)}</div>
+            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10}>
+              <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)} changed={reloadBookmarks} />
+            </Message>)}</div>
             : <div className="flex h-full flex-col items-center justify-center gap-4 text-[13px] text-muted-foreground">
               <PixelField cols={6} rows={3} cell={12} seed={11} className="w-[72px]" /><p className="m-0">{t.noTranscript}</p></div>}
         </div>

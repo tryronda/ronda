@@ -8,7 +8,7 @@ MotionGlobalConfig.skipAnimations = true;
 // happy-dom rejects cancelled native animations; use Motion’s JS renderer in this test environment.
 Reflect.deleteProperty(Element.prototype, "animate");
 import { Workbench } from "./Workbench";
-import { backend, type SessionMeta, type TranscriptMessage, type WorkbenchBackend } from "./api";
+import { backend, type BookmarkView, type SessionMeta, type TranscriptMessage, type WorkbenchBackend } from "./api";
 
 const session: SessionMeta = {
   key: "codex:one", native_id: "one", agent: "codex", host: null, parent_key: null,
@@ -19,6 +19,44 @@ const session: SessionMeta = {
 };
 
 afterEach(() => { document.body.innerHTML = ""; });
+
+test("bookmarks search saved notes, filter missing projects, and open messages outside prompts-only view", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const available: BookmarkView = {session,status:"current",bookmark:{session_key:session.key,seq:1,note:"Retain search decision",excerpt:"Assistant decision",text_hash:"a".repeat(64),created_at:1,updated_at:2,title:session.title,agent:session.agent,project_path:session.project_path}};
+  const missing: BookmarkView = {session:null,status:"unavailable",bookmark:{...available.bookmark,session_key:"claude-code:gone",agent:"claude-code",project_path:"/projects/removed",title:"Removed session",note:"Retain missing source",updated_at:3}};
+  const api: WorkbenchBackend = {...backend,listBookmarks:async()=>[missing,available],listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
+    getTranscript:async()=>[{seq:1,role:"assistant",kind:"text",text:"Assistant decision",timestamp:null,model:null,thinking:null,tool_calls:[],images:[]}],
+    onLibraryChanged:async()=>()=>{},searchGrouped:async()=>({groups:[],total_sessions:0,total_message_matches:0})};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const button=(text:string)=>Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button=>button.textContent?.trim()===text)!;
+  const click=async(text:string)=>{await act(async()=>button(text).click());};
+  const search=async(value:string)=>{await act(async()=>{
+    const input=host.querySelector<HTMLInputElement>('input[aria-label="Search bookmarks"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,value);
+    input.dispatchEvent(new Event("input",{bubbles:true}));
+  });};
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await click("Bookmarks2");
+    const pane=host.querySelector('[aria-label="Bookmarks"]')!;
+    expect(pane.textContent).toContain("2 saved messages");
+    expect(host.querySelector<HTMLButtonElement>('.session-card')!.disabled).toBe(true);
+    await click("removed0");expect(pane.textContent).toContain("1 saved messages");
+    expect(pane.textContent).not.toContain("Retain search decision");
+    await click("Bookmarks2");await search("search decision");
+    expect(pane.textContent).toContain("1 saved messages");
+    await act(async()=>pane.querySelector<HTMLButtonElement>('.session-card')!.click());
+    const prompts=Array.from(host.querySelectorAll("label")).find(label=>label.textContent?.includes("Prompts only"))!.querySelector<HTMLInputElement>("input")!;
+    await act(async()=>prompts.click());expect(host.querySelector('#message-1')).toBeNull();
+    await act(async()=>pane.querySelector<HTMLButtonElement>('.session-card')!.click());
+    expect(prompts.checked).toBe(false);expect(host.querySelector('#message-1')).not.toBeNull();
+    await search("missing source");
+    await click("Edit bookmark note for message 1");
+    const editor=host.querySelector<HTMLTextAreaElement>('textarea')!;
+    await act(async()=>editor.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true})));
+    expect(document.activeElement).toBe(editor);
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
 
 test("opens on the library home, then loads a session, shows its transcript, and stars it through the backend", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
