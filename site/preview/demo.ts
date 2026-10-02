@@ -186,6 +186,14 @@ function reset() {
     transcripts.set(key,[{...text("user","Check the synthetic project tests."),seq:0,timestamp:session.updated_at-60000},
       {...text("assistant","Recorded synthetic failure for project overview.",{tool_calls:[tool("Bash","bun test","Error: SYNTHETIC_PROJECT_CHECK failed",true)]}),seq:1,timestamp:session.updated_at}]);
   }
+  const parent=sessions.find(session=>session.key==="claude-code:demo-0")!;
+  for(const [key,title,child] of [["claude-code:child-search","Synthetic search subagent",true],["claude-code:child-review","",true],["codex:related-search","Synthetic follow-up on the search index",false]] as const){
+    const session=meta(key,title,child ? parent.agent : "codex",projects.ronda,"synthetic-related-model",now-4*HOUR,3000);
+    session.parent_key=child ? parent.key : null;
+    sessions.push(session);
+    transcripts.set(key,[{...text("user","Review the synthetic search index context."),seq:0,timestamp:session.updated_at-60000},
+      {...text("assistant","Synthetic indexed relationship example.",{tool_calls:[tool("Read","crates/ronda-core/src/store.rs","Sample file activity")]}),seq:1,timestamp:session.updated_at}]);
+  }
   bookmarkSeed = (async () => {
     const first = sessions.find(session => session.key === "claude-code:demo-0")!;
     const message = transcripts.get(first.key)![1];
@@ -409,6 +417,27 @@ function projectIntelligence(args: Args): Intelligence {
     time:[],failures:[],recurring,stack:[],outcomes:[],coverage:[...coverage.values()],callouts:["Synthetic project figures are derived from the sample messages and tool calls shown here."]};
 }
 
+function sessionRelationships(key:string){
+  const main=sessions.find(session=>session.key===key);
+  if(!main)throw new Error("Unknown session");
+  const legacy=(session:SessionMeta)=>`${session.agent}:${session.native_id}`;
+  const parent=sessions.find(session=>session.host===main.host && (session.key===main.parent_key || legacy(session)===main.parent_key)) ?? null;
+  const children=sessions.filter(session=>session.key!==key && session.host===main.host && (session.parent_key===key || session.parent_key===legacy(main)))
+    .sort((a,b)=>a.native_id.localeCompare(b.native_id) || a.key.localeCompare(b.key));
+  // Fixed preview tool strings only; production ranks its Rust-derived indexed signatures and lexical file paths.
+  const signals=(session:SessionMeta)=>{
+    const tools=(transcripts.get(session.key) ?? []).flatMap(message=>message.tool_calls);
+    return {errors:new Set(tools.filter(tool=>tool.is_error && tool.output).map(tool=>tool.output!)),
+      files:new Set(tools.filter(tool=>["Read","Edit"].includes(tool.name) && tool.input).map(tool=>tool.input!.replaceAll("\\","/")))};
+  };
+  const own=signals(main);
+  const related=sessions.filter(session=>session.key!==key && !session.parent_key && main.project_path && session.project_path===main.project_path && session.host===main.host)
+    .map(session=>{const other=signals(session),shared_errors=[...own.errors].filter(error=>other.errors.has(error)).length,shared_files=[...own.files].filter(file=>other.files.has(file)).length;
+      return {session,shared_errors,shared_files,explanation:shared_errors ? "Shared error" : shared_files ? "Shared files" : "Same project"};})
+    .sort((a,b)=>b.shared_errors-a.shared_errors || b.shared_files-a.shared_files || b.session.updated_at-a.session.updated_at || a.session.key.localeCompare(b.session.key)).slice(0,5);
+  return {parent,children,related,candidate_limit:512};
+}
+
 function errorHistory(args:Args){
   const input=args.text as string,offset=(args.offset as number) ?? 0;
   if(typeof input!=="string" || !input.trim() || Array.from(input).length>20_000)throw new Error("Enter error text of 1 to 20,000 characters");
@@ -550,6 +579,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "list_projects": return listProjects();
     case "get_project_overview": return projectOverview(args);
     case "find_error_history": return errorHistory(args);
+    case "get_session_relationships": return sessionRelationships(args.key as string);
     case "list_bookmarks": return listBookmarks(args.query as string, args.filter as SessionQuery);
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;

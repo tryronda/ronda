@@ -55,6 +55,9 @@ pub struct Store {
 pub const SCHEMA_VERSION: i64 = 1;
 
 const INTEL_SCHEMA: &str = "\
+    CREATE INDEX IF NOT EXISTS sessions_related_scope ON sessions (\
+        json_extract(meta,'$.project_path'),json_extract(meta,'$.host'),json_extract(meta,'$.parent_key'),updated_at DESC,key\
+    );\
     CREATE TABLE IF NOT EXISTS session_facts (\
         session_key TEXT PRIMARY KEY, parent_key TEXT, agent TEXT NOT NULL, project TEXT, model TEXT,\
         started_at INTEGER NOT NULL, ended_at INTEGER NOT NULL, active_ms INTEGER NOT NULL,\

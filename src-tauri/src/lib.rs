@@ -5,6 +5,7 @@ use ronda_core::bookmarks::{
 use ronda_core::{
     intel::report::{ErrorHistory, Intelligence},
     projects::ProjectOverview,
+    related::SessionRelationships,
     scanner::{Location, ScanReport, Scanner},
     GroupedSearch, Insights, LibraryOptions, ProjectInfo, SearchHit, SearchMatches, SearchSort,
     SessionMeta, SessionPage, SessionQuery, Store, TranscriptMessage,
@@ -261,6 +262,22 @@ async fn get_intelligence(
                 host.as_deref(),
                 local_only.unwrap_or(false),
             )
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn get_session_relationships(
+    state: State<'_, Shared>,
+    key: String,
+) -> CommandResult<SessionRelationships> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .session_relationships(&key)
             .map_err(error)
     })
     .await
@@ -1208,6 +1225,7 @@ pub fn run() {
             get_intelligence,
             get_project_overview,
             find_error_history,
+            get_session_relationships,
             list_locations,
             scan,
             set_session_flags,

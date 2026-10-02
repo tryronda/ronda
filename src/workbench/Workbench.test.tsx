@@ -101,7 +101,8 @@ test("opens on the library home, then loads a session, shows its transcript, and
 test("coalesces library changes, refreshes open content and searches, and defers hidden refreshes", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers();
-  let changed = () => {};
+  const listeners=new Set<()=>void>();
+  const changed=()=>listeners.forEach(callback=>callback());
   let missing = false;
   let fail = false;
   let content: TranscriptMessage[] = [{ seq: 0, role: "user", kind: "text", text: "Original message", timestamp: null,
@@ -115,7 +116,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
     searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
     setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => {},
-    onLibraryChanged: async callback => { changed = callback; return () => { changed = () => {}; }; },
+    onLibraryChanged: async callback => { listeners.add(callback); return () => {listeners.delete(callback);}; },
   };
   api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host = document.createElement("div"); document.body.append(host);
@@ -181,7 +182,8 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
   const first = { ...session, title: "Needle result" };
   const second = { ...session, key: "codex:two", title: "Second result" };
   const excerpt = (seq: number) => ({seq, snippet:`Needle <img src=x onerror=alert(1)> match ${seq}`});
-  let changed = () => {};
+  const listeners=new Set<()=>void>();
+  const changed=()=>listeners.forEach(callback=>callback());
   let totalSessions = 51;
   let finishSlow!: (value: import("./api").GroupedSearch) => void;
   const searchGrouped = vi.fn(async (query: string, _filter: unknown, _sort: unknown, offset: number) => {
@@ -196,7 +198,7 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
   const api: WorkbenchBackend = { ...backend, libraryOptions, listBookmarks: async()=>[],
     listSessions:async()=>[first,second],listProjects:async()=>[],getSession:async()=>first,
     getTranscript:async()=>delayedTranscript,
-    searchGrouped,searchSessionMatches,onLibraryChanged:async callback=>{changed=callback;return ()=>{};},
+    searchGrouped,searchSessionMatches,onLibraryChanged:async callback=>{listeners.add(callback);return ()=>{listeners.delete(callback);};},
   };
   api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);

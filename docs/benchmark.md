@@ -58,3 +58,10 @@ The larger fixture contains 419,436,000 source bytes, 395,686,680 searchable tex
 A streaming/snippet deferral experiment retained all counts but did not establish a reliable latency improvement, so it was removed. The remaining ceiling is the full matching-row scan, metadata/filter work, and ranking before pagination. SQL aggregation and indexed page/facet predicates are the next optimization if a sub-100 ms target must cover this larger profile; this measurement must remain visible when assessing release readiness.
 
 Reproduce the larger profile with `python3 scripts/benchmark.py --cli target/release/ronda-cli --grouped target/release/examples/grouped-search-benchmark --sessions 6000 --mb 400 --searches 40 --keep`. Run the retained fixture's grouped example with `DB ronda_benchmark_needle 40 '{"model":"benchmark-model","local_only":true,"updated_from_ms":0,"updated_before_ms":9223372036854775807}'` for the combined-filter measurement.
+
+
+## 2026-10-02 related-session lookup
+
+On this Apple M3 Pro, the read-only relationship query returned parents, children, and five ranked suggestions from 5,000 synthetic root sessions in one project. Twenty warm debug-build samples measured **29.14 ms p95**, excluding index creation, IPC, and UI paint. The fixture includes shared errors, relative/absolute and Windows-separated file paths, two local children, and a remote parent with the same native identifier. Each query ranks at most 512 project/host candidates.
+
+An initial version exceeded 100 ms under concurrent load. Batched candidate signals and an SQLite index on project/host/root metadata removed repeated per-candidate queries and JSON scope scans. The runnable fixture asserts ranking, host separation, removed sources, and a p95 below 100 ms. Reproduce with `cargo test -p ronda-core --lib related -- --nocapture`; timings vary with machine load and this is not a whole-library similarity or UI latency guarantee.

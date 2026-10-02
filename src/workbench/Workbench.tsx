@@ -23,6 +23,7 @@ import { BookmarkControl } from "./BookmarkControl";
 import { ContextBundle } from "./ContextBundle";
 import { contextEligible, contextId, type ContextSelection } from "./context-bundle";
 import { TranscriptNavigation } from "./TranscriptNavigation";
+import { SessionConnections } from "./SessionConnections";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
@@ -482,7 +483,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const selected = sessions.find(s => s.key === selectedKey) ?? hits.find(h => h.session.key === selectedKey)?.session
     ?? (opened?.key === selectedKey ? opened : null);
   useEffect(() => {
-    onActiveSessionChange?.(selected ? { title: plainTitle(selected.title),
+    onActiveSessionChange?.(selected ? { title: plainTitle(selected.title) || selected.native_id,
       project: selected.project_path ? basename(selected.project_path) : null } : null);
   }, [onActiveSessionChange, selected?.key, selected?.title, selected?.project_path]);
   const visible = search.trim() ? hits.map(group => ({ session: group.session, group }))
@@ -759,7 +760,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <span className={`agent-dot agent-${selected.agent}`} />{agentNames[selected.agent]}
               {selected.archived && <span className="eyebrow-chip px-1.5 pt-0.5 pb-1 text-[11px]">{t.archived}</span>}
             </div>
-            <h2 className="mt-1.5 mb-1 truncate font-serif text-[32px] leading-[1.1] tracking-[-0.01em]">{plainTitle(selected.title)}</h2>
+            <h2 className="mt-1.5 mb-1 truncate font-serif text-[32px] leading-[1.1] tracking-[-0.01em]">{plainTitle(selected.title) || selected.native_id}</h2>
             <div className="label-mono flex min-w-0 items-center gap-2 text-muted-foreground">
               <span className="truncate">{selected.project_path ?? t.unknown}</span>
               {selected.model && <><span className="text-border">/</span><span className="whitespace-nowrap">{selected.model}</span></>}
@@ -784,6 +785,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               className="label-mono ml-2 h-9 gap-2 rounded-none px-3.5 text-[13px] lowercase">{t.resume}<HugeiconsIcon icon={ArrowRight01Icon} size={15} /></Button>}
           </div>
         </header>
+        <SessionConnections api={api} session={selected} active={isActive} onOpen={session=>choose(session,0)} />
         <TranscriptNavigation key={selected.key} container={transcriptRef} scope={scopeRef} embedded={embedded}
           active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnly} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} findRequest={findRequest} />
         {!matchesSession(selected,filter) && <p role="status" className="bg-chip px-5 py-2 text-sm">Outside current filters</p>}

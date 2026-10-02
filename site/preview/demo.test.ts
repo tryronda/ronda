@@ -81,7 +81,7 @@ test("preview groups title and message matches, sorts, pages, and honors filters
 test("library pages count before limits and share date/model/host filters with search and bookmarks", async () => {
   installDemoBackend();
   const filter = {...queryDefaults, limit:1};
-  const all = await backend.listSessions({...filter,limit:null});
+  const all = (await backend.listSessions({...filter,limit:null})).filter(session=>!session.parent_key);
   expect(all.length).toBeGreaterThan(500);
   expect(await backend.listSessions(filter)).toHaveLength(1);
   const keys: string[] = [];
@@ -135,7 +135,7 @@ test("project preview totals and evidence come from scoped sample originals", as
   const sessions=await backend.listSessions({...queryDefaults,project_path:path,local_only:true,limit:null});
   expect(local.total_sessions).toBe(sessions.filter(session=>!session.parent_key).length);
   expect(local.sessions).toHaveLength(10);
-  expect(local.intelligence!.totals.sessions).toBe(sessions.filter(session=>session.updated_at>=local.since).length);
+  expect(local.intelligence!.totals.sessions).toBe(sessions.filter(session=>!session.parent_key && session.updated_at>=local.since).length);
   expect(local.errors).toHaveLength(1);
   expect(local.errors[0].sessions).toBe(14);
   for(const evidence of local.errors[0].evidence){

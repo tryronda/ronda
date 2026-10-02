@@ -4,6 +4,14 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-10-02
+
+### Added
+
+- Navigate directly between indexed parent sessions and subagents, including host-scoped legacy parent references, and return through Back and Forward.
+- Discover up to five related project/host sessions through shared normalized errors, recorded read/edit file paths, and explicit same-project fallback labels.
+- Synthetic parent/child and file-sharing examples in the preview, with documented ancestry and similarity limits.
+
 ## [1.0.8] - 2026-10-02
 
 ### Added

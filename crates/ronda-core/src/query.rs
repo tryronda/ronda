@@ -340,21 +340,7 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
     let main = store
         .get_session(&key)?
         .ok_or_else(|| anyhow!("unknown session `{key}`"))?;
-    let mut children: Vec<_> = store
-        .list_sessions(&SessionQuery {
-            include_archived: true,
-            ..Default::default()
-        })?
-        .into_iter()
-        .filter(|child| {
-            child.host == main.host
-                && child.parent_key.as_deref().is_some_and(|parent| {
-                    parent == main.key
-                        || parent == format!("{}:{}", main.agent.as_str(), main.native_id)
-                })
-        })
-        .collect();
-    children.sort_by(|a, b| a.native_id.cmp(&b.native_id));
+    let children = store.session_children(&main)?;
     if args.subagent.as_deref() == Some("*") {
         let mut out = format!("Subagents of `{}` ({}):\n", main.key, children.len());
         append_child_refs(&mut out, &main, &children, children.len());
