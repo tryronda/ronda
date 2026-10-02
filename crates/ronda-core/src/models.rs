@@ -167,6 +167,41 @@ pub struct SearchHit {
     pub snippet: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchSort {
+    #[default]
+    Relevance,
+    Recent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchExcerpt {
+    pub seq: i64,
+    pub snippet: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchGroup {
+    pub session: SessionMeta,
+    pub title_match: bool,
+    pub message_matches: usize,
+    pub excerpts: Vec<SearchExcerpt>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GroupedSearch {
+    pub groups: Vec<SearchGroup>,
+    pub total_sessions: usize,
+    pub total_message_matches: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SearchMatches {
+    pub matches: Vec<SearchExcerpt>,
+    pub total_matches: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectInfo {
     pub path: String,

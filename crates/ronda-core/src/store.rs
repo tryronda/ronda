@@ -1,6 +1,6 @@
 use crate::{
-    InsightRow, Insights, ParsedSession, ProjectInfo, SearchHit, SessionMeta, SessionQuery,
-    TranscriptMessage,
+    GroupedSearch, InsightRow, Insights, ParsedSession, ProjectInfo, SearchExcerpt, SearchGroup,
+    SearchHit, SearchMatches, SearchSort, SessionMeta, SessionQuery, TranscriptMessage,
 };
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -8,6 +8,28 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
+
+fn search_expression(query: &str) -> (String, bool) {
+    let indexed: Vec<_> = query
+        .split_whitespace()
+        .filter(|term| term.chars().count() >= 3)
+        .collect();
+    if indexed.is_empty() {
+        (
+            query.split_whitespace().next().unwrap_or("").to_string(),
+            false,
+        )
+    } else {
+        (
+            indexed
+                .iter()
+                .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+                .collect::<Vec<_>>()
+                .join(" AND "),
+            true,
+        )
+    }
+}
 
 fn search_snippet(full: &str, first: &str) -> String {
     let folded_start = full.to_lowercase().find(&first.to_lowercase()).unwrap_or(0);
@@ -416,24 +438,12 @@ impl Store {
         }
         let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let first = query.split_whitespace().next().unwrap_or(query);
-        let indexed: Vec<&str> = query
-            .split_whitespace()
-            .filter(|term| term.chars().count() >= 3)
-            .collect();
+        let (match_query, indexed) = search_expression(query);
         let mut results = Vec::new();
-        let mut stmt = if !indexed.is_empty() {
+        let mut stmt = if indexed {
             self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE search_fts MATCH ?1 ORDER BY s.updated_at DESC")?
         } else {
             self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE instr(lower(f.text),lower(?1))>0 ORDER BY s.updated_at DESC")?
-        };
-        let match_query = if !indexed.is_empty() {
-            indexed
-                .iter()
-                .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
-                .collect::<Vec<_>>()
-                .join(" AND ")
-        } else {
-            first.to_string()
         };
         let rows = stmt.query_map([match_query], |r| {
             Ok((
@@ -477,6 +487,181 @@ impl Store {
         }
         results.sort_by_key(|hit| std::cmp::Reverse(hit.session.updated_at));
         Ok(results)
+    }
+
+    /// Shared grouped-search input: join metadata/flags once, then apply Unicode all-term matching.
+    fn matching_search_rows(
+        &self,
+        query: &str,
+        filter: &SessionQuery,
+        session_key: Option<&str>,
+    ) -> Result<Vec<(SearchHit, f64)>> {
+        let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (expression, indexed) = search_expression(query);
+        let (matching, score) = if !indexed {
+            ("?1 IS NOT NULL", "0.0")
+        } else {
+            ("search_fts MATCH ?1", "bm25(search_fts)")
+        };
+        let sql = format!(
+            "SELECT s.meta,COALESCE(u.starred,0),COALESCE(u.pinned,0),f.seq,f.text,{score} AS score \
+             FROM search_fts f JOIN sessions s ON s.key=f.session_key \
+             LEFT JOIN user_data u ON u.session_key=s.key WHERE {matching} \
+             AND (?2 IS NULL OR s.agent=?2) \
+             AND (?3 IS NULL OR json_extract(s.meta,'$.project_path')=?3) \
+             AND (?4 IS NULL OR json_extract(s.meta,'$.host')=?4) \
+             AND (?5=0 OR COALESCE(u.starred,0)=1) \
+             AND (?6=1 OR COALESCE(json_extract(s.meta,'$.archived'),0)=0) \
+             AND (?7 IS NULL OR s.key=?7) \
+             ORDER BY score,s.updated_at DESC,s.key,f.seq"
+        );
+        let mut statement = self.conn.prepare(&sql)?;
+        let rows = statement.query_map(
+            params![
+                expression,
+                filter.agent.map(|a| a.as_str()),
+                filter.project_path,
+                filter.host,
+                filter.starred_only,
+                filter.include_archived,
+                session_key
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, bool>(1)?,
+                    row.get::<_, bool>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, f64>(5)?,
+                ))
+            },
+        )?;
+        let mut metadata = HashMap::<String, SessionMeta>::new();
+        let mut hits = Vec::new();
+        for row in rows {
+            let (json, starred, pinned, seq, text, score) = row?;
+            let folded = text.to_lowercase();
+            if !terms.iter().all(|term| folded.contains(term)) {
+                continue;
+            }
+            let session = if let Some(session) = metadata.get(&json) {
+                session.clone()
+            } else {
+                let mut session: SessionMeta = serde_json::from_str(&json)?;
+                session.starred = starred;
+                session.pinned = pinned;
+                metadata.insert(json, session.clone());
+                session
+            };
+            hits.push((
+                SearchHit {
+                    session,
+                    seq,
+                    snippet: search_snippet(&text, &terms[0]),
+                },
+                score,
+            ));
+        }
+        Ok(hits)
+    }
+
+    pub fn search_grouped(
+        &self,
+        query: &str,
+        filter: &SessionQuery,
+        sort: SearchSort,
+        offset: usize,
+        limit: usize,
+    ) -> Result<GroupedSearch> {
+        // ponytail: collect matching rows for exact Unicode counts; SQL aggregation if measured search exceeds its budget.
+        let rows = self.matching_search_rows(query, filter, None)?;
+        let mut groups = Vec::<(SearchGroup, f64)>::new();
+        let mut positions = HashMap::<String, usize>::new();
+        let mut total_message_matches = 0;
+        for (hit, score) in rows {
+            let index = *positions.entry(hit.session.key.clone()).or_insert_with(|| {
+                groups.push((
+                    SearchGroup {
+                        session: hit.session.clone(),
+                        title_match: false,
+                        message_matches: 0,
+                        excerpts: Vec::new(),
+                    },
+                    score,
+                ));
+                groups.len() - 1
+            });
+            let (group, best_score) = &mut groups[index];
+            *best_score = best_score.min(score);
+            if hit.seq < 0 {
+                group.title_match = true;
+            } else {
+                group.message_matches += 1;
+                total_message_matches += 1;
+                if group.excerpts.len() < 3 {
+                    group.excerpts.push(SearchExcerpt {
+                        seq: hit.seq,
+                        snippet: hit.snippet,
+                    });
+                }
+            }
+        }
+        groups.sort_by(|(a, a_score), (b, b_score)| {
+            let relevance = if sort == SearchSort::Relevance {
+                b.title_match
+                    .cmp(&a.title_match)
+                    .then(a_score.total_cmp(b_score))
+            } else {
+                std::cmp::Ordering::Equal
+            };
+            relevance
+                .then(b.session.updated_at.cmp(&a.session.updated_at))
+                .then(a.session.key.cmp(&b.session.key))
+        });
+        let total_sessions = groups.len();
+        Ok(GroupedSearch {
+            total_sessions,
+            total_message_matches,
+            groups: groups
+                .into_iter()
+                .skip(offset)
+                .take(limit.clamp(1, 100))
+                .map(|(group, _)| group)
+                .collect(),
+        })
+    }
+
+    pub fn search_session_matches(
+        &self,
+        query: &str,
+        filter: &SessionQuery,
+        key: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<SearchMatches> {
+        let mut matches: Vec<_> = self
+            .matching_search_rows(query, filter, Some(key))?
+            .into_iter()
+            .filter(|(hit, _)| hit.seq >= 0)
+            .map(|(hit, _)| SearchExcerpt {
+                seq: hit.seq,
+                snippet: hit.snippet,
+            })
+            .collect();
+        matches.sort_by_key(|hit| hit.seq);
+        let total_matches = matches.len();
+        Ok(SearchMatches {
+            total_matches,
+            matches: matches
+                .into_iter()
+                .skip(offset)
+                .take(limit.clamp(1, 100))
+                .collect(),
+        })
     }
 
     pub fn projects(&self) -> Result<Vec<ProjectInfo>> {
@@ -646,8 +831,8 @@ impl Store {
 }
 
 #[cfg(test)]
-mod search_snippet_tests {
-    use super::search_snippet;
+mod search_tests {
+    use super::*;
 
     #[test]
     fn excerpts_center_case_insensitive_matches_on_unicode_boundaries() {
@@ -660,6 +845,163 @@ mod search_snippet_tests {
             let snippet = search_snippet(&format!("{}{text}", prefix.repeat(400)), query);
             assert!(snippet.contains(text), "{query}: {snippet}");
             assert!(snippet.len() <= 264);
+        }
+    }
+    #[test]
+    fn grouped_search_counts_pages_ranks_and_filters_without_a_hit_cap() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for (key, title, updated, archived, text, count) in [
+            ("old", "Needle title", 1, false, "Unrelated body", 1),
+            (
+                "flood",
+                "Flood",
+                2,
+                false,
+                "needle UseEffect( 你好 ΑΛΦΑ",
+                150,
+            ),
+            (
+                "recent",
+                "Recent",
+                3,
+                false,
+                "needle UseEffect( 你好 ΑΛΦΑ",
+                1,
+            ),
+            ("archived", "Archived", 4, true, "needle", 1),
+        ] {
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+                "title":title,"project_path":"/repo","source_path":"/fixture","created_at":0,
+                "updated_at":updated,"model":null,"source":null,"tokens":null,"archived":archived,
+                "metadata_only":false,"can_delete":true,"starred":false,"pinned":false
+            }))
+            .unwrap();
+            let messages = (0..count)
+                .map(|seq| crate::TranscriptMessage {
+                    seq,
+                    role: crate::Role::Assistant,
+                    kind: crate::MessageKind::Text,
+                    text: text.into(),
+                    timestamp: None,
+                    model: None,
+                    thinking: None,
+                    tool_calls: Vec::new(),
+                    images: Vec::new(),
+                })
+                .collect();
+            store
+                .upsert(&crate::ParsedSession { meta, messages }, "fixture")
+                .unwrap();
+        }
+        let filter = SessionQuery::default();
+        let result = store
+            .search_grouped("needle", &filter, SearchSort::Relevance, 0, 50)
+            .unwrap();
+        assert_eq!(
+            (result.total_sessions, result.total_message_matches),
+            (3, 151)
+        );
+        assert_eq!(result.groups[0].session.key, "old");
+        assert!(result.groups[0].title_match);
+        assert!(result.groups[0].excerpts.is_empty());
+        let flood = result
+            .groups
+            .iter()
+            .find(|g| g.session.key == "flood")
+            .unwrap();
+        assert_eq!(flood.message_matches, 150);
+        assert_eq!(flood.excerpts.len(), 3);
+        let recent = store
+            .search_grouped("needle", &filter, SearchSort::Recent, 0, 1)
+            .unwrap();
+        assert_eq!(recent.groups[0].session.key, "recent");
+        let page = store
+            .search_grouped("needle", &filter, SearchSort::Recent, 1, 1)
+            .unwrap();
+        assert_eq!(page.groups[0].session.key, "flood");
+        assert_eq!(page.total_sessions, 3);
+        let matches = store
+            .search_session_matches("needle", &filter, "flood", 140, 20)
+            .unwrap();
+        assert_eq!(matches.total_matches, 150);
+        assert_eq!(matches.matches.len(), 10);
+        assert_eq!(matches.matches[0].seq, 140);
+        for query in ["useeffect(", "你好", "αλφα", "NEEDLE useEffect("] {
+            assert_eq!(
+                store
+                    .search_grouped(query, &filter, SearchSort::Relevance, 0, 50)
+                    .unwrap()
+                    .total_sessions,
+                2,
+                "{query}"
+            );
+        }
+        assert_eq!(
+            store
+                .search_grouped(
+                    "needle\" OR DROP TABLE sessions --",
+                    &filter,
+                    SearchSort::Recent,
+                    0,
+                    50
+                )
+                .unwrap()
+                .total_sessions,
+            0
+        );
+        assert_eq!(
+            store
+                .search_grouped(
+                    "needle",
+                    &SessionQuery {
+                        include_archived: true,
+                        ..filter.clone()
+                    },
+                    SearchSort::Recent,
+                    0,
+                    50
+                )
+                .unwrap()
+                .total_sessions,
+            4
+        );
+        store.set_flags("flood", true, true).unwrap();
+        let starred = store
+            .search_grouped(
+                "needle",
+                &SessionQuery {
+                    starred_only: true,
+                    ..filter.clone()
+                },
+                SearchSort::Recent,
+                0,
+                50,
+            )
+            .unwrap();
+        assert_eq!(starred.total_sessions, 1);
+        assert!(starred.groups[0].session.starred);
+        for filter in [
+            SessionQuery {
+                project_path: Some("/elsewhere".into()),
+                ..filter.clone()
+            },
+            SessionQuery {
+                agent: Some(crate::AgentId::Codex),
+                ..filter.clone()
+            },
+            SessionQuery {
+                host: Some("remote".into()),
+                ..filter.clone()
+            },
+        ] {
+            assert_eq!(
+                store
+                    .search_grouped("needle", &filter, SearchSort::Recent, 0, 50)
+                    .unwrap()
+                    .total_sessions,
+                0
+            );
         }
     }
 }
