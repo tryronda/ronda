@@ -4,6 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- Message bookmark storage and versioned JSON backups preserve notes across index refreshes and keep conflicting imports for explicit review. The desktop bookmark interface is in progress.
+
 ## [1.0.3] - 2026-10-02
 
 ### Added

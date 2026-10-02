@@ -184,6 +184,7 @@ impl Store {
             CREATE INDEX IF NOT EXISTS messages_session ON messages(session_key);\
         ",
         )?;
+        conn.execute_batch(crate::bookmarks::SCHEMA)?;
         let mut store = Self { conn };
         store.migrate()?;
         Ok(store)

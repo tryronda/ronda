@@ -1,5 +1,6 @@
 pub mod adapter;
 pub mod adapters;
+pub mod bookmarks;
 pub mod intel;
 pub mod models;
 pub mod query;

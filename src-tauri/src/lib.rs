@@ -1,4 +1,7 @@
 use notify::Watcher;
+use ronda_core::bookmarks::{
+    BookmarkBackup, BookmarkImport, BookmarkReplacement, BookmarkView, MessageBookmark,
+};
 use ronda_core::{
     intel::report::Intelligence,
     scanner::{Location, ScanReport, Scanner},
@@ -273,6 +276,154 @@ async fn set_session_flags(
             .map_err(error)
     })
     .await
+}
+
+#[tauri::command]
+async fn list_bookmarks(
+    state: State<'_, Shared>,
+    query: String,
+    filter: SessionQuery,
+) -> CommandResult<Vec<BookmarkView>> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .list_bookmarks(&query, &filter)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn save_bookmark(
+    state: State<'_, Shared>,
+    app: tauri::AppHandle,
+    key: String,
+    seq: i64,
+    note: String,
+    refresh_snapshot: bool,
+    expected_updated_at: Option<i64>,
+) -> CommandResult<MessageBookmark> {
+    let bookmark = off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .save_bookmark(&key, seq, &note, refresh_snapshot, expected_updated_at)
+            .map_err(error)
+    })
+    .await?;
+    app.emit("library-changed", ()).map_err(error)?;
+    Ok(bookmark)
+}
+
+#[tauri::command]
+async fn delete_bookmark(
+    state: State<'_, Shared>,
+    app: tauri::AppHandle,
+    key: String,
+    seq: i64,
+) -> CommandResult<()> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .delete_bookmark(&key, seq)
+            .map_err(error)
+    })
+    .await?;
+    app.emit("library-changed", ()).map_err(error)
+}
+
+#[tauri::command]
+async fn get_bookmark_backup(state: State<'_, Shared>) -> CommandResult<String> {
+    off_main(state, move |state| {
+        serde_json::to_string_pretty(
+            &state
+                .store
+                .lock()
+                .map_err(error)?
+                .export_bookmarks()
+                .map_err(error)?,
+        )
+        .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn export_bookmarks(state: State<'_, Shared>, destination: PathBuf) -> CommandResult<()> {
+    off_main(state, move |state| {
+        use std::io::Write;
+        let backup = serde_json::to_vec_pretty(
+            &state
+                .store
+                .lock()
+                .map_err(error)?
+                .export_bookmarks()
+                .map_err(error)?,
+        )
+        .map_err(error)?;
+        let name = destination
+            .file_name()
+            .ok_or("Choose a backup filename")?
+            .to_string_lossy();
+        let temporary = destination.with_file_name(format!(
+            ".{name}.{}-{}.tmp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(error)?;
+        let result = (|| {
+            file.write_all(&backup)?;
+            file.sync_all()?;
+            drop(file);
+            std::fs::rename(&temporary, &destination)
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        result.map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn read_bookmark_backup(source: PathBuf) -> CommandResult<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let json = std::fs::read_to_string(source).map_err(error)?;
+        BookmarkBackup::parse(&json).map_err(error)?;
+        Ok(json)
+    })
+    .await
+    .map_err(error)?
+}
+
+#[tauri::command]
+async fn import_bookmarks(
+    state: State<'_, Shared>,
+    app: tauri::AppHandle,
+    json: String,
+    replacements: Vec<BookmarkReplacement>,
+) -> CommandResult<BookmarkImport> {
+    let result = off_main(state, move |state| {
+        let backup = BookmarkBackup::parse(&json).map_err(error)?;
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .import_bookmarks(&backup, &replacements)
+            .map_err(error)
+    })
+    .await?;
+    app.emit("library-changed", ()).map_err(error)?;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -955,6 +1106,13 @@ pub fn run() {
             list_locations,
             scan,
             set_session_flags,
+            list_bookmarks,
+            save_bookmark,
+            delete_bookmark,
+            get_bookmark_backup,
+            export_bookmarks,
+            read_bookmark_backup,
+            import_bookmarks,
             export_session,
             trash_session,
             resume_session,
