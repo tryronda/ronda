@@ -1,3 +1,5 @@
+import { ErrorHistory } from "./ErrorHistory";
+import type {ErrorHistoryRequest} from "./api";
 import { ProjectOverview } from "./ProjectOverview";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -87,7 +89,7 @@ function IconButton({ icon, title, onClick, active, disabled }: {
   </motion.button>;
 }
 
-function Message({ message, animate, children }: { message: TranscriptMessage; animate: boolean; children?: ReactNode }) {
+function Message({ message, animate, children, onFindError }: { message: TranscriptMessage; animate: boolean; children?: ReactNode; onFindError:(text:string)=>void }) {
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
@@ -121,9 +123,10 @@ function Message({ message, animate, children }: { message: TranscriptMessage; a
           <strong className="label-mono text-foreground">{tool.name}</strong>
           {tool.is_error && <span className="label-mono ml-2 text-destructive">{t.error}</span>}
           {tool.input && <pre data-transcript-field={`tool-${index}-input`} className="message-pre mt-1.5">{tool.input}</pre>}
-          {tool.output && <pre data-transcript-field={`tool-${index}-output`} className="message-pre mt-1.5 text-muted-foreground">{tool.output}</pre>}
+          {tool.output && <><pre data-transcript-field={`tool-${index}-output`} className="message-pre mt-1.5 text-muted-foreground">{tool.output}</pre><button type="button" className="mt-2 underline" onClick={()=>onFindError(tool.output!)}>Find history for {tool.name} output</button></>}
         </div>)}
       </details>}
+      {message.text && <button type="button" className="mt-2 text-[13px] underline" onClick={()=>onFindError(message.text)}>Find error history from message {message.seq}</button>}
       {children}
     </div>
   </article>;
@@ -143,6 +146,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const navigateDetail=(next:WorkbenchLocation)=>{setLocalLocation(next);onNavigateDetail?.(next);};
   const projectContext:ProjectContext|null=detail.kind==="project" ? {path:detail.path,host:detail.host,local_only:detail.local_only}
     : detail.kind==="session" ? detail.project ?? null : null;
+  const [errorRequest,setErrorRequest]=useState<ErrorHistoryRequest|null>(null);
+  const errorOpener=useRef<HTMLElement|null>(null);
+  const [findRequest,setFindRequest]=useState<{text:string;token:number}|null>(null);
+  const findHistory=(text:string,context:ProjectContext|null=projectContext)=>{
+    errorOpener.current=document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setErrorRequest({text,project:context?.path ?? null,host:context?.host ?? null,local_only:context?.local_only ?? false});
+  };
   const t = copy;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkView[]>([]);
@@ -150,6 +160,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const bookmarkRun = useRef(0);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  useEffect(()=>setFindRequest(null),[selectedKey]);
   const scopeRef = useRef<HTMLDivElement>(null);
   const sessionListRef = useRef<HTMLDivElement>(null);
   const [promptsOnly, setPromptsOnly] = useState(false);
@@ -640,6 +651,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             placeholder={bookmarksOnly ? "Search notes and saved excerpts" : t.search} aria-label={bookmarksOnly ? "Search bookmarks" : t.search}
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
+        <button type="button" className="my-2 text-[13px] underline" onClick={()=>findHistory(search,null)}>Find error history</button>
         <ContextBundle api={api} selection={contextSelection} clear={()=>setContextSelection([])} embedded={embedded} />
         <details className="mt-2 text-[13px]">
           <summary className="cursor-pointer text-muted-foreground">Filters</summary>
@@ -736,7 +748,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       {detail.kind==="project" ? <ProjectOverview api={api} context={{path:detail.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"}} active={isActive}
         onOpen={(key,seq)=>{void api.getSession(key).then(session=>{if(session)choose(session,seq);}).catch(cause=>setError(String(cause)));}}
         onViewAll={showBookmarks=>{clearFilters();setProject(detail.path);setHost(host);setBookmarksOnly(showBookmarks);setSearch("");navigateDetail({kind:"home"});}}
-        onIntelligence={()=>onOpenIntelligence?.({path:detail.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"})} /> : selected ? <motion.div key={selected.key} className="flex min-h-0 flex-1 flex-col"
+        onIntelligence={()=>onOpenIntelligence?.({path:detail.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"})}
+        onFindError={text=>findHistory(text,{path:detail.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"})} /> : selected ? <motion.div key={selected.key} className="flex min-h-0 flex-1 flex-col"
         initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }}>
         <header ref={detailHeaderRef} className="flex min-h-[88px] flex-none items-center justify-between gap-4 border-b border-border px-7 py-4 max-[1100px]:flex-wrap max-[1100px]:px-5">
           <button type="button" className="mobile-back hidden size-8 place-items-center hover:bg-chip"
@@ -772,7 +785,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </div>
         </header>
         <TranscriptNavigation key={selected.key} container={transcriptRef} scope={scopeRef} embedded={embedded}
-          active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnly} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} />
+          active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnly} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} findRequest={findRequest} />
         {!matchesSession(selected,filter) && <p role="status" className="bg-chip px-5 py-2 text-sm">Outside current filters</p>}
         {unavailable && <p role="status" className="bg-chip px-5 py-2 text-sm">Session no longer available. Previously loaded content is kept below.</p>}
         {newMessages && <button type="button" className="bg-chip px-5 py-2 text-sm" onClick={() => {
@@ -785,7 +798,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
           </div> : messages.length ? <div className="transcript-messages mx-auto max-w-[780px] px-10 pt-6 pb-24 max-[1100px]:px-6">
-            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10}>
+            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)}>
               {contextEligible(message) && <label className="mt-3 block text-[13px]"><input type="checkbox" disabled={unavailable} checked={contextSelected.has(contextId({key:selected.key,seq:message.seq}))}
                 onChange={()=>toggleContext({key:selected.key,seq:message.seq})} /> Select message {message.seq} for context</label>}
               <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)} changed={reloadBookmarks} />
@@ -825,6 +838,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         </div>;
       })}
     </main>
+    {errorRequest && <ErrorHistory api={api} request={errorRequest} projects={options.projects.map(item=>item.path)} hosts={options.hosts}
+      onClose={()=>{setErrorRequest(null);errorOpener.current?.focus();}}
+      onOpen={(key,seq)=>{void api.getSession(key).then(session=>{if(session)choose(session,seq);}).catch(cause=>setError(String(cause)));}}
+      onSearchTranscript={selected ? text=>setFindRequest(current=>({text,token:(current?.token ?? 0)+1})) : undefined} />}
     <div className="pointer-events-none fixed right-6 bottom-5 z-20 flex flex-col items-end gap-2">
       <AnimatePresence>
         {error && <motion.div key="error" role="alert" layout

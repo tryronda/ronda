@@ -18,6 +18,7 @@ const browserDefaults: Record<string, unknown> = {
 export function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
   if (inTauri()) return tauriInvoke<T>(command, args);
   const query=args as Record<string,unknown> | undefined;
+  if(command === "find_error_history") return Promise.resolve({canonical:null,hits:[],total:0,offset:query?.offset ?? 0,limit:20,indexed_sessions:0,with_tools:0} as T);
   if (command === "get_project_overview") return Promise.resolve({path:query?.project,host:query?.host ?? null,local_only:query?.localOnly ?? false,
     since:Date.now()-30*86400000,sessions:[],total_sessions:0,bookmarks:[],total_bookmarks:0,errors:[],total_errors:0,intelligence:null,intelligence_error:null} as T);
   if (command in browserDefaults) return Promise.resolve(structuredClone(browserDefaults[command]) as T);

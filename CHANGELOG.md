@@ -4,6 +4,14 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-10-02
+
+### Added
+
+- Find previous recorded error occurrences from search, a project overview, or transcript/tool output, with explicit lookup, project/host scope, exact totals and twenty-session pages.
+- Open original evidence at its message sequence, inspect recorded outcomes and tool-data coverage, or search unrecognized wording in the current transcript.
+- Twenty-eight synthetic error sessions in the preview demonstrate paging and consistent project/host totals.
+
 ## [1.0.7] - 2026-10-02
 
 ### Added

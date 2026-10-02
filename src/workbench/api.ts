@@ -93,6 +93,12 @@ export interface ProjectOverview extends ProjectContext {
   errors:Intelligence["recurring"]; total_errors:number; intelligence:Intelligence|null; intelligence_error:string|null;
 }
 
+export interface ErrorHistory {
+  canonical:string|null; hits:{session:SessionMeta;seq:number;outcome:string}[]; total:number; offset:number; limit:number;
+  indexed_sessions:number; with_tools:number;
+}
+export interface ErrorHistoryRequest {text:string;project:string|null;host:string|null;local_only:boolean}
+
 export interface ScanReport {
   discovered: number;
   indexed: number;
@@ -130,6 +136,7 @@ export interface WorkbenchBackend {
   deleteBookmark(key: string, seq: number): Promise<void>;
   listProjects(): Promise<ProjectInfo[]>;
   projectOverview(project: string, host: string | null, localOnly: boolean): Promise<ProjectOverview>;
+  errorHistory(text:string,project:string|null,host:string|null,localOnly:boolean,offset:number):Promise<ErrorHistory>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
   resumeSession(key: string): Promise<string>;
@@ -154,6 +161,7 @@ export const backend: WorkbenchBackend = {
   deleteBookmark: (key, seq) => invoke("delete_bookmark", {key, seq}),
   listProjects: () => invoke("list_projects"),
   projectOverview: (project,host,localOnly) => invoke("get_project_overview", {project,host,localOnly}),
+  errorHistory:(text,project,host,localOnly,offset)=>invoke("find_error_history",{text,project,host,localOnly,offset}),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
   resumeSession: (key) => invoke("resume_session", { key }),

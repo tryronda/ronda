@@ -3,7 +3,7 @@ use ronda_core::bookmarks::{
     BookmarkBackup, BookmarkImport, BookmarkReplacement, BookmarkView, MessageBookmark,
 };
 use ronda_core::{
-    intel::report::Intelligence,
+    intel::report::{ErrorHistory, Intelligence},
     projects::ProjectOverview,
     scanner::{Location, ScanReport, Scanner},
     GroupedSearch, Insights, LibraryOptions, ProjectInfo, SearchHit, SearchMatches, SearchSort,
@@ -260,6 +260,32 @@ async fn get_intelligence(
                 project.as_deref(),
                 host.as_deref(),
                 local_only.unwrap_or(false),
+            )
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn find_error_history(
+    state: State<'_, Shared>,
+    text: String,
+    project: Option<String>,
+    host: Option<String>,
+    local_only: bool,
+    offset: usize,
+) -> CommandResult<ErrorHistory> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .error_history(
+                &text,
+                project.as_deref(),
+                host.as_deref(),
+                local_only,
+                offset,
             )
             .map_err(error)
     })
@@ -1181,6 +1207,7 @@ pub fn run() {
             get_insights,
             get_intelligence,
             get_project_overview,
+            find_error_history,
             list_locations,
             scan,
             set_session_flags,

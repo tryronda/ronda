@@ -55,7 +55,7 @@ export function Intelligence() {
           </div>
           <p className="mt-3 font-mono text-[12px] tracking-[0.025em] text-muted-foreground">
             Open <b className="font-medium text-foreground">Intelligence</b> in the top bar, or press ⌘3 ·{" "}
-            <a href={`${base}docs/#intelligence`} className="underline decoration-stone underline-offset-2 hover:text-foreground">read the docs</a> · <a href={`${base}docs/#projects`} className="underline decoration-stone underline-offset-2 hover:text-foreground">project overviews</a>
+            <a href={`${base}docs/#intelligence`} className="underline decoration-stone underline-offset-2 hover:text-foreground">read the docs</a> · <a href={`${base}docs/#projects`} className="underline decoration-stone underline-offset-2 hover:text-foreground">project overviews</a> · <a href={`${base}docs/#intelligence`} className="underline decoration-stone underline-offset-2 hover:text-foreground">error history</a>
           </p>
         </div>
       </section>

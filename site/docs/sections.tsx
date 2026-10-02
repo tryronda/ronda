@@ -157,6 +157,9 @@ chmod +x Ronda-linux-x86_64.AppImage
         "**Worth knowing:** short notes, such as recovery time outgrowing tests and setup, or failing sessions running much longer than committed ones.",
       ]} />
       <P>Failure and error rows link to their sessions and open the transcript at the matching message. Everything is derived locally when a session is indexed, with fixed rules and no language model. Agents that don't record tool calls count toward time and sessions, and the view names them.</P>
+      <P>**Find error history** sits below global search, in project overviews, and beside message/tool output. It pre-fills the recorded wording but runs only when you choose **Look up previous occurrences**. Paste a multiline error up to 20,000 Unicode characters, choose a full project path and All hosts, Local sessions or a named remote host. Scope applies before counting and twenty-session paging; repeated events in one session count once. Archived sources are included; removed sources are excluded.</P>
+      <P>The canonical error and each original message link show agent, host, full project path and recorded outcome. **Commit command observed** does not mean a fix was verified. Tool-data coverage names the indexed sessions that can contribute evidence. A no-match result may reflect missing tool output or different wording. Use **Search wording in current transcript** to search literal prose and tool output instead; with no transcript open, open a session and use **Find in transcript**. Missing analytics shows an error without changing your pasted text; submit again to retry.</P>
+      <P>The preview has 28 explicitly synthetic occurrences of `Error: SYNTHETIC_PROJECT_CHECK failed`. Paste that line to load twenty results and then the remaining eight; either Local sessions or buildbox narrows it to fourteen. Preview lookup accepts fixed recorded sample lines; the desktop, CLI and MCP share the existing Rust normalizer for paths, line numbers and volatile values.</P>
       <P>**Insights** (⌘2) covers the rest: a year of activity, and which agents, projects, and models your sessions, prompts, and tokens go to.</P>
     </>,
   },
@@ -185,7 +188,7 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
   {
     id: "mcp", title: "MCP server",
     body: <>
-      <P>`ronda-mcp` is a read-only stdio server that lets an agent search your past sessions. It exposes `ronda_search`, `ronda_list_sessions`, `ronda_get_session`, `ronda_list_projects`, `ronda_insights`, and `ronda_find_error`, which checks whether an error has been seen before and how those sessions ended.</P>
+      <P>`ronda-mcp` is a read-only stdio server that lets an agent search your past sessions. It exposes `ronda_search`, `ronda_list_sessions`, `ronda_get_session`, `ronda_list_projects`, `ronda_insights`, and `ronda_find_error`, which checks whether an error has been seen before and how those sessions ended. Desktop **Find error history** uses the same lookup with optional project/host scope and paged original evidence. Recorded commit commands do not prove a fix.</P>
       <P>**Settings → Connect** shows the installed path and ready-to-copy setup for Claude Code, Codex, and other MCP clients. For Claude Code on macOS:</P>
       <Code>{`claude mcp add --scope user ronda -- '/Applications/Ronda.app/Contents/MacOS/ronda-mcp'`}</Code>
     </>,

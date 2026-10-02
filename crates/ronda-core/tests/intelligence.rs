@@ -476,6 +476,46 @@ fn error_lookup_scopes_before_matching_and_keeps_cli_mcp_parity() {
         }
         store.upsert(&item, &format!("fixture-{i}")).unwrap();
     }
+    let first = store.error_history(LOCKED, None, None, false, 0).unwrap();
+    let second = store.error_history(LOCKED, None, None, false, 20).unwrap();
+    assert_eq!(
+        (
+            first.total,
+            first.hits.len(),
+            second.total,
+            second.hits.len()
+        ),
+        (25, 20, 25, 5)
+    );
+    assert_eq!((first.indexed_sessions, first.with_tools), (25, 25));
+    assert_eq!(first.canonical, second.canonical);
+    assert!(!first
+        .hits
+        .iter()
+        .any(|a| second.hits.iter().any(|b| a.session.key == b.session.key)));
+    assert!(store
+        .error_history(LOCKED, None, None, false, usize::MAX)
+        .unwrap()
+        .hits
+        .is_empty());
+    let no_tools = session(
+        AgentId::Codex,
+        "unsupported-tools",
+        MIN,
+        "No tool recording",
+        &[],
+    );
+    store.upsert(&no_tools, "no-tools-fixture").unwrap();
+    let unknown = store
+        .error_history("Error: never recorded", None, None, false, 0)
+        .unwrap();
+    assert_eq!(
+        (unknown.indexed_sessions, unknown.with_tools, unknown.total),
+        (26, 25, 0)
+    );
+    assert!(store
+        .error_history(&"🙂".repeat(20_000), None, None, false, 0)
+        .is_ok());
     let global = store.find_error(LOCKED).unwrap().unwrap();
     assert_eq!(global.1.len(), 25); // repeated events count each session once, beyond a desktop page
     let partial = store

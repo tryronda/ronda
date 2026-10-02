@@ -137,19 +137,34 @@ test("project preview totals and evidence come from scoped sample originals", as
   expect(local.sessions).toHaveLength(10);
   expect(local.intelligence!.totals.sessions).toBe(sessions.filter(session=>session.updated_at>=local.since).length);
   expect(local.errors).toHaveLength(1);
-  expect(local.errors[0].sessions).toBe(2);
+  expect(local.errors[0].sessions).toBe(14);
   for(const evidence of local.errors[0].evidence){
     expect((await backend.getSession(evidence.session_key))!.host).toBeNull();
     expect((await backend.getTranscript(evidence.session_key)).find(message=>message.seq===evidence.seq)!.tool_calls[0].is_error).toBe(true);
   }
   const remote=await backend.projectOverview(path,"buildbox",false);
-  expect(remote.errors[0].sessions).toBe(2);
+  expect(remote.errors[0].sessions).toBe(14);
   expect(remote.total_bookmarks).toBe(0);
-  expect(remote.intelligence!.totals.sessions).toBe(2);
+  expect(remote.intelligence!.totals.sessions).toBe(14);
   expect(remote.sessions.every(session=>session.host==="buildbox")).toBe(true);
   const empty=await backend.projectOverview("/missing/ronda",null,false);
   expect(empty.total_sessions).toBe(0);expect(empty.total_errors).toBe(0);
   const unavailable=await backend.projectOverview("/Users/you/dev/payments-api",null,false);
   expect(unavailable.bookmarks.some(view=>view.status==="unavailable")).toBe(true);
   await expect(backend.projectOverview(path,"buildbox",true)).rejects.toThrow("either");
+});
+
+
+test("synthetic error history pages distinct originals and scopes coverage before limits",async()=>{
+  installDemoBackend();
+  const text="Error: SYNTHETIC_PROJECT_CHECK failed",path="/Users/you/dev/ronda";
+  const first=await backend.errorHistory(text,null,null,false,0),second=await backend.errorHistory(text,null,null,false,20);
+  expect([first.total,first.hits.length,second.hits.length]).toEqual([28,20,8]);
+  expect(new Set([...first.hits,...second.hits].map(hit=>hit.session.key)).size).toBe(28);
+  for(const hit of [...first.hits,...second.hits])expect((await backend.getTranscript(hit.session.key)).find(message=>message.seq===hit.seq)!.tool_calls[0].output).toBe(text);
+  const remote=await backend.errorHistory(text,path,"buildbox",false,0);
+  expect(remote.total).toBe(14);expect(remote.hits.every(hit=>hit.session.host==="buildbox")).toBe(true);
+  const local=await backend.errorHistory(text,path,null,true,0);expect(local.total).toBe(14);
+  const empty=await backend.errorHistory("Error: unknown sample",path,null,false,0);expect(empty.total).toBe(0);expect(empty.with_tools).toBeLessThan(empty.indexed_sessions);
+  await expect(backend.errorHistory(" ",null,null,false,0)).rejects.toThrow("20,000");
 });

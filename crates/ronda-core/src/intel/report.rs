@@ -1,6 +1,6 @@
 //! Aggregates stored facts into the intelligence report. Reads only the derived tables, never transcripts.
 use super::{patterns::Pattern, Category, Outcome};
-use crate::Store;
+use crate::{SessionMeta, Store};
 use anyhow::{ensure, Context, Result};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -99,6 +99,24 @@ pub struct Intelligence {
 
 /// An error's latest wording and the sessions that hit it, each with how that session ended.
 pub type ErrorMatches = (String, Vec<(Evidence, String)>);
+
+#[derive(Debug, Serialize)]
+pub struct ErrorHistoryHit {
+    pub session: SessionMeta,
+    pub seq: i64,
+    pub outcome: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ErrorHistory {
+    pub canonical: Option<String>,
+    pub hits: Vec<ErrorHistoryHit>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub indexed_sessions: i64,
+    pub with_tools: i64,
+}
 
 struct Fact {
     key: String,
@@ -448,6 +466,49 @@ impl Store {
             outcomes,
             coverage: coverage.into_values().collect(),
             callouts,
+        })
+    }
+
+    /// Bounded desktop result; filtering and deduplication precede the twenty-session page.
+    pub fn error_history(
+        &self,
+        text: &str,
+        project: Option<&str>,
+        host: Option<&str>,
+        local_only: bool,
+        offset: usize,
+    ) -> Result<ErrorHistory> {
+        // ponytail: reuse the existing complete lookup; move counting/paging into SQL if measured history queries exceed their budget.
+        let found = self.find_error_scoped(text, project, host, local_only)?;
+        let (canonical, matches) =
+            found.map_or((None, Vec::new()), |(message, hits)| (Some(message), hits));
+        let total = matches.len();
+        let hits = matches
+            .into_iter()
+            .skip(offset)
+            .take(20)
+            .map(|(e, outcome)| {
+                Ok(ErrorHistoryHit {
+                    session: self
+                        .get_session(&e.session_key)?
+                        .context("Error source is no longer indexed")?,
+                    seq: e.seq,
+                    outcome,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let (indexed_sessions,with_tools) = self.conn().query_row(
+            "SELECT count(*),coalesce(sum(coalesce(f.tool_calls,0)>0),0) FROM sessions s LEFT JOIN session_facts f ON f.session_key=s.key \
+            WHERE (?1 IS NULL OR json_extract(s.meta,'$.project_path')=?1) AND (?2 IS NULL OR json_extract(s.meta,'$.host')=?2) \
+            AND (?3=0 OR json_extract(s.meta,'$.host') IS NULL)", params![project,host,local_only], |r| Ok((r.get(0)?,r.get(1)?)))?;
+        Ok(ErrorHistory {
+            canonical,
+            hits,
+            total,
+            offset,
+            limit: 20,
+            indexed_sessions,
+            with_tools,
         })
     }
 

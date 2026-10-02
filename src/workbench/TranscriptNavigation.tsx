@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { transcriptMatches, type TranscriptMatch } from "./transcript-find";
 
-export function TranscriptNavigation({ container, scope, active, embedded, promptsOnly, setPromptsOnly, reducedMotion, jumpToken }: {
+export function TranscriptNavigation({ container, scope, active, embedded, promptsOnly, setPromptsOnly, reducedMotion, jumpToken, findRequest }: {
   container: RefObject<HTMLDivElement | null>; scope: RefObject<HTMLDivElement | null>;
-  active: boolean; embedded: boolean; promptsOnly: boolean; setPromptsOnly: (value: boolean) => void; reducedMotion: boolean; jumpToken: number;
+  active: boolean; embedded: boolean; promptsOnly: boolean; setPromptsOnly: (value: boolean) => void; reducedMotion: boolean; jumpToken: number; findRequest?:{text:string;token:number}|null;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -20,6 +20,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
   };
 
   useEffect(() => { setOpen(false); }, [jumpToken]);
+  useEffect(()=>{if(findRequest){setQuery(findRequest.text);setCursor(null);setOpen(true);}},[findRequest]);
   useEffect(() => {
     if (open && active) input.current?.focus();
   }, [open, active]);

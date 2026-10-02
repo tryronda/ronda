@@ -179,9 +179,9 @@ function reset() {
     transcripts.set(key,[{...text("assistant","Library browsing sample. Synthetic data with illustrative model names."),seq:0,timestamp:null}]);
   }
 
-  for(let index=0;index<4;index++){
+  for(let index=0;index<28;index++){
     const key=`codex:overview-${index}`,session=meta(key,`Project overview synthetic error ${index+1}`,index%2 ? "claude-code" : "codex",projects.ronda,"illustrative-overview-model",now-(index+3)*HOUR,2000+index);
-    session.host=index>=2 ? "buildbox" : null;
+    session.host=index%4>=2 ? "buildbox" : null;
     sessions.push(session);
     transcripts.set(key,[{...text("user","Check the synthetic project tests."),seq:0,timestamp:session.updated_at-60000},
       {...text("assistant","Recorded synthetic failure for project overview.",{tool_calls:[tool("Bash","bun test","Error: SYNTHETIC_PROJECT_CHECK failed",true)]}),seq:1,timestamp:session.updated_at}]);
@@ -409,6 +409,25 @@ function projectIntelligence(args: Args): Intelligence {
     time:[],failures:[],recurring,stack:[],outcomes:[],coverage:[...coverage.values()],callouts:["Synthetic project figures are derived from the sample messages and tool calls shown here."]};
 }
 
+function errorHistory(args:Args){
+  const input=args.text as string,offset=(args.offset as number) ?? 0;
+  if(typeof input!=="string" || !input.trim() || Array.from(input).length>20_000)throw new Error("Enter error text of 1 to 20,000 characters");
+  if(!Number.isSafeInteger(offset) || offset<0)throw new Error("Invalid error history offset");
+  const filter={...queryDefaults,include_archived:true,limit:null,project_path:(args.project as string|null) ?? null,
+    host:(args.host as string|null) ?? null,local_only:args.localOnly===true};
+  const scoped=listSessions(filter).sort((a,b)=>b.updated_at-a.updated_at || a.key.localeCompare(b.key));
+  const occurrences=scoped.flatMap(session=>{
+    const message=(transcripts.get(session.key) ?? []).find(message=>message.tool_calls.some(tool=>tool.is_error && tool.output && input.split("\n").some(line=>line.trim()===tool.output!.trim())));
+    if(!message)return [];
+    const output=message.tool_calls.find(tool=>tool.is_error && tool.output && input.split("\n").some(line=>line.trim()===tool.output!.trim()))!.output!;
+    return [{session,seq:message.seq,outcome:"failed",output}];
+  });
+  // Fixed synthetic lines only: production uses the shared Rust normalizer, not a browser implementation.
+  const canonical=occurrences[0]?.output ?? null,hits=occurrences.filter(hit=>hit.output===canonical).map(({output,...hit})=>hit);
+  return {canonical,hits:hits.slice(offset,offset+20),total:hits.length,offset,limit:20,indexed_sessions:scoped.length,
+    with_tools:scoped.filter(session=>(transcripts.get(session.key) ?? []).some(message=>message.tool_calls.length)).length};
+}
+
 async function projectOverview(args: Args){
   const path=args.project as string;
   if(typeof path!=="string" || !path.trim() || Array.from(path).length>4096)throw new Error("Choose a valid project path");
@@ -530,6 +549,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "session_page": return sessionPage(args.query as SessionQuery, args.offset as number, args.limit as number);
     case "list_projects": return listProjects();
     case "get_project_overview": return projectOverview(args);
+    case "find_error_history": return errorHistory(args);
     case "list_bookmarks": return listBookmarks(args.query as string, args.filter as SessionQuery);
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
