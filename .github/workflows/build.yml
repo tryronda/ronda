@@ -112,7 +112,7 @@ jobs:
             echo "$name=${!name}" >> "$GITHUB_ENV"
           done
       - name: Build installer
-        run: bunx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci
+        run: bunx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci --verbose
       - name: Verify DMG contains both sidecars
         if: runner.os == 'macOS'
         shell: bash
