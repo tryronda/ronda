@@ -47,6 +47,7 @@ test("opens on the library home, then loads a session, shows its transcript, and
   await act(async () => { finishTranscript([{ seq: 0, role: "user", kind: "text", text: "Search for naïve ünicode",
     timestamp: null, model: null, thinking: null, tool_calls: [], images: [] }]); });
   expect(host.textContent).toContain("Search for naïve ünicode");
+  expect(host.querySelector('[data-transcript-field="text"]')?.textContent).toContain("Search for naïve ünicode");
   const star = host.querySelector<HTMLButtonElement>('button[aria-label="Star"]');
   expect(star).not.toBeNull();
   await act(async () => { star!.click(); });
@@ -172,6 +173,15 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
     expect(host.querySelector("img")).toBeNull();
     expect(searchGrouped.mock.calls.at(-1)?.[1]).toMatchObject({include_archived:false});
     await click("Open message 2");expect(scroll).toHaveBeenCalled();
+    await click("Find in transcript");
+    // Toggle by label so this check covers the actual shared UI.
+    const prompts = Array.from(host.querySelectorAll("label")).find(label=>label.textContent?.includes("Prompts only"))!.querySelector<HTMLInputElement>("input")!;
+    if (!prompts.checked) await act(async()=>prompts.click());
+    expect(host.querySelectorAll("article")).toHaveLength(0);
+    await click("Open message 2");
+    expect(prompts.checked).toBe(false);
+    expect(host.querySelectorAll("article")).toHaveLength(3);
+    expect(host.querySelector('input[aria-label="Find in transcript"]')).toBeNull();
     await click("Show all 150 matches");
     expect(searchSessionMatches.mock.calls.at(-1)?.slice(2)).toEqual([first.key,0,20]);
     expect(host.querySelectorAll('button[aria-label^="Open message"]')).toHaveLength(20);

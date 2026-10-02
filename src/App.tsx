@@ -151,7 +151,7 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
     </header>
     <div className="relative min-h-0 min-w-0 flex-1">
       <div className="workspace-view page-layer" {...layer(page === "workbench")}>
-        <Workbench sidebarOpen={sidebarOpen} isActive={page === "workbench"}
+        <Workbench embedded={embedded} sidebarOpen={sidebarOpen} isActive={page === "workbench"}
           searchFocusToken={searchFocusToken} homeToken={homeToken} openRequest={openRequest} />
       </div>
       {mounted.insights && <PageView hidden={page !== "insights"}><InsightsView active={page === "insights"} /></PageView>}

@@ -21,10 +21,12 @@ const downloads: [string, string][] = [
 const shortcuts: [string, string][] = [
   ["⌘1 / ⌘2 / ⌘3 / ⌘4", "Sessions, Insights, Intelligence, Settings"],
   ["⌘K", "Search the library"],
+  ["⌘F", "Find in the active transcript"],
+  ["Enter / Shift+Enter", "Next / previous match in transcript find"],
   ["⌘B", "Toggle the library sidebar"],
   ["Alt ← / Alt →", "Back and forward through views"],
   ["↑ / ↓", "Move through the session list"],
-  ["Esc", "Clear and leave search"],
+  ["Esc", "Close transcript find, or clear and leave library search"],
 ];
 
 export const docs: DocSection[] = [
@@ -81,6 +83,15 @@ chmod +x Ronda-linux-x86_64.AppImage
       <P>**Relevance** puts title matches first, then ranks sessions by their best matching excerpt. **Recent** sorts by the last update. Search pages contain fifty sessions, so a conversation with hundreds of matches cannot hide the rest of your library. The **Include archived** checkbox controls archived results; leave it off to search active sessions only.</P>
       <P>Search uses SQLite FTS5 with a trigram tokenizer, so it matches code fragments like `useEffect(` and prose in any language without a word segmenter. Queries shorter than three characters fall back to substring matching. Matching is case-insensitive and every whitespace-separated query term must occur in the same title or indexed message. Tool names and inputs are searchable; thinking and tool output are not part of the global index.</P>
       <P>On the September 17, 2026 synthetic 800 MiB / 300-session fixture, raw CLI search measured 23 ms p50 and 26 ms p95 on an Apple M3 Pro, including startup. The October 2 rerun measured 32.16 ms p95 for raw CLI search and 14.70 ms p95 for grouped queries on a warm read-only connection. The grouped query counted 300 sessions and 1,800 matching messages; neither result measures UI paint.</P>
+    </>,
+  },
+  {
+    id: "transcript-navigation", title: "Transcript navigation",
+    body: <>
+      <P>Open a session and choose **Find in transcript** or press **⌘F**. Find searches the literal phrase, ignoring case, in the visible message text and textual tool input/output. It preserves punctuation and spaces; it does not split the query into terms. **Include thinking** also searches recorded reasoning. Images are not searched.</P>
+      <P>Use **Next match**, **Previous match**, Enter, or Shift+Enter to cycle through matches. Navigation opens the matching disclosure and highlights its text. Escape closes find. **First message** and **Last message** jump to the ends of the visible transcript.</P>
+      <P>**Prompts only** shows user messages of kind text. Find counts reflect that view. Opening an excerpt from library search restores the full transcript and closes find before jumping to the requested message. Find survives refresh of the same session and resets when you open another one.</P>
+      <P>Transcript shortcuts leave terminal and editable-field input alone. In the browser preview, focus must be inside the preview before ⌘F opens transcript find; the containing page retains its browser shortcuts elsewhere.</P>
     </>,
   },
   {

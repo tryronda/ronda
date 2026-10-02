@@ -37,6 +37,8 @@ const scripts: Script[] = [
           tool("Edit", "crates/ronda-core/src/store.rs", "Replaced tokenizer and added short-query fallback"),
           tool("Bash", "cargo test -p ronda-core search", "test result: ok. 14 passed; 0 failed"),
         ] }),
+      text("user", "Show a longer navigation example with repeated text and tool output."),
+      text("assistant", "Navigation marker appears here.\n\nNavigation **marker** also crosses Markdown formatting.\n\n```text\nnavigation marker in a code block\n```", { tool_calls: [tool("Read", "navigation sample", "Navigation marker in textual tool output\nAnother navigation marker")], thinking: "Navigation marker in optional recorded reasoning" }),
       text("user", "How much bigger is the index?"),
       text("assistant", "On the 800 MiB benchmark fixture the index is **263 MiB**, and search stays at **23 ms p50 / 26 ms p95** including process startup. That is well inside the 100 ms target.", { model: "claude-opus-5" }),
     ],

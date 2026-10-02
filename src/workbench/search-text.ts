@@ -1,5 +1,5 @@
 /** Literal, case-insensitive ranges in the original text, including expanding lowercase characters. */
-export function searchRanges(text: string, query: string) {
+export function searchRanges(text: string, query: string, literal = false) {
   let folded = "";
   const starts: number[] = [], ends: number[] = [];
   let offset = 0;
@@ -10,12 +10,14 @@ export function searchRanges(text: string, query: string) {
     offset += character.length;
   }
   const ranges: { start: number; end: number }[] = [];
-  for (const term of query.trim().toLowerCase().split(/\s+/).filter(Boolean)) {
+  const terms = literal ? (query ? [query.toLowerCase()] : []) : query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  for (const term of terms) {
     for (let at = folded.indexOf(term); at >= 0; at = folded.indexOf(term, at + 1)) {
       ranges.push({ start: starts[at], end: ends[at + term.length - 1] });
     }
   }
   ranges.sort((a, b) => a.start - b.start || a.end - b.end);
+  if (literal) return ranges;
   const merged: typeof ranges = [];
   for (const range of ranges) {
     const previous = merged.at(-1);

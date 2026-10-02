@@ -4,6 +4,12 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-10-02
+
+### Added
+
+- Find within transcripts with literal, case-insensitive matching, next/previous matches, optional thinking, prompts-only reading, and first/last-message navigation.
+
 ## [1.0.2] - 2026-10-02
 
 ### Added

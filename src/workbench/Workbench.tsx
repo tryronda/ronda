@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { LibraryHome } from "./LibraryHome";
+import { TranscriptNavigation } from "./TranscriptNavigation";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
@@ -99,8 +100,8 @@ function Message({ message, animate }: { message: TranscriptMessage; animate: bo
         <span>#{message.seq}</span>{message.timestamp && <time className="normal-case">{timeLabel(message.timestamp)}</time>}
         {message.model && <span className="ml-auto normal-case">{message.model}</span>}
       </div>
-      {message.text && <Suspense fallback={<p className="markdown mt-1 whitespace-pre-wrap">{message.text}</p>}>
-        <Streamdown mode="static" dir="auto" className="markdown mt-1">{message.text}</Streamdown></Suspense>}
+      {message.text && <div data-transcript-field="text"><Suspense fallback={<p className="markdown mt-1 whitespace-pre-wrap">{message.text}</p>}>
+        <Streamdown mode="static" dir="auto" className="markdown mt-1">{message.text}</Streamdown></Suspense></div>}
       {message.images.length > 0 && <div className="my-3 flex flex-wrap gap-2.5">
         {message.images.map((image, index) => <img key={index} className="max-h-[300px] max-w-[min(100%,420px)] object-contain shadow-lift"
           src={`data:${image.media_type};base64,${image.data_base64}`}
@@ -108,23 +109,23 @@ function Message({ message, animate }: { message: TranscriptMessage; animate: bo
       </div>}
       {message.thinking && <details className="group mt-3 bg-canvas px-3 py-2 shadow-lift">
         <summary className="label-mono cursor-pointer text-[12px] lowercase text-muted-foreground">{t.thinking}</summary>
-        <pre className="message-pre mt-2 border-0 bg-transparent p-0">{message.thinking}</pre></details>}
+        <pre data-transcript-field="thinking" className="message-pre mt-2 border-0 bg-transparent p-0">{message.thinking}</pre></details>}
       {message.tool_calls.length > 0 && <details className="mt-3 bg-canvas px-3 py-2 shadow-lift">
         <summary className="label-mono cursor-pointer text-[12px] lowercase text-muted-foreground">{message.tool_calls.length} {t.tools}</summary>
         {message.tool_calls.map((tool, index) => <div className="mt-2 border-t border-border pt-2.5 text-[11px]" key={`${tool.id}-${index}`}>
           <strong className="label-mono text-foreground">{tool.name}</strong>
           {tool.is_error && <span className="label-mono ml-2 text-destructive">{t.error}</span>}
-          {tool.input && <pre className="message-pre mt-1.5">{tool.input}</pre>}
-          {tool.output && <pre className="message-pre mt-1.5 text-muted-foreground">{tool.output}</pre>}
+          {tool.input && <pre data-transcript-field={`tool-${index}-input`} className="message-pre mt-1.5">{tool.input}</pre>}
+          {tool.output && <pre data-transcript-field={`tool-${index}-output`} className="message-pre mt-1.5 text-muted-foreground">{tool.output}</pre>}
         </div>)}
       </details>}
     </div>
   </article>;
 }
 
-export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive = true,
+export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive = true, embedded = false,
   searchFocusToken = 0, homeToken = 0, openRequest = null, onActiveSessionChange }: {
-  api?: WorkbenchBackend; sidebarOpen?: boolean; isActive?: boolean;
+  api?: WorkbenchBackend; sidebarOpen?: boolean; isActive?: boolean; embedded?: boolean;
   searchFocusToken?: number; homeToken?: number;
   /** Opens a session at a message from elsewhere in the app; a new token repeats the request. */
   openRequest?: { key: string; seq: number; token: number } | null;
@@ -134,6 +135,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const scopeRef = useRef<HTMLDivElement>(null);
+  const [promptsOnly, setPromptsOnly] = useState(false);
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [project, setProject] = useState<string | null>(null);
@@ -155,6 +158,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [transcriptJumpToken, setTranscriptJumpToken] = useState(0);
   const [jumpTo, setJumpTo] = useState<number | null>(null);
   const [opened, setOpened] = useState<SessionMeta | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
@@ -195,6 +199,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     const firstLoad = loadedKey.current !== selectedKey;
     loadedKey.current = selectedKey;
     if (firstLoad) {
+      setPromptsOnly(false);
       setMessages([]); setTranscriptLoading(true); setUnavailable(false); setNewMessages(false);
       scrollRestore.current = null;
     }
@@ -280,6 +285,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       if (cancelled || !meta) return;
       setOpened(meta);
       setSelectedKey(meta.key);
+      setPromptsOnly(false);
+      setTranscriptJumpToken(value => value + 1);
       setJumpTo(openRequest.seq);
       setMobileDetail(true);
     }).catch(cause => { if (!cancelled) setError(String(cause)); });
@@ -290,9 +297,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
   useEffect(() => {
     if (jumpTo === null || !messages.some(m => m.seq === jumpTo)) return;
-    document.getElementById(`message-${jumpTo}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    document.getElementById(`message-${jumpTo}`)?.scrollIntoView({ block: "center", behavior: reduce ? "instant" : "smooth" });
     setJumpTo(null);
-  }, [jumpTo, messages]);
+  }, [jumpTo, messages, reduce, promptsOnly]);
 
   useEffect(() => {
     if (!notice) return;
@@ -313,6 +320,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const choose = (session: SessionMeta, seq?: number) => {
     setOpened(session);
     setSelectedKey(session.key);
+    if (seq !== undefined) { setPromptsOnly(false); setTranscriptJumpToken(value => value + 1); }
     setJumpTo(seq ?? null);
     setMobileDetail(true);
   };
@@ -400,7 +408,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     active ? "bg-chip text-foreground" : "text-foreground/60 hover:text-foreground");
   const sectionHeading = "label-mono mx-2.5 mt-6 mb-2 text-[12px] lowercase text-muted-foreground";
 
-  return <div className={cn("workbench-layout relative flex h-full min-h-0 min-w-0", mobileDetail && "detail-open")}>
+  return <div ref={scopeRef} className={cn("workbench-layout relative flex h-full min-h-0 min-w-0", mobileDetail && "detail-open")}>
     <aside aria-label={t.library} aria-hidden={!sidebarOpen} inert={!sidebarOpen}
       className={cn("flex min-h-0 flex-none flex-col overflow-hidden border-r border-border bg-paper transition-[width,opacity] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
         sidebarOpen ? "w-[240px] px-2 pt-2 pb-3 opacity-100 max-[1100px]:w-[200px]" : "invisible w-0 border-r-0 p-0 opacity-0")}>
@@ -554,18 +562,20 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               className="label-mono ml-2 h-9 gap-2 rounded-none px-3.5 text-[13px] lowercase">{t.resume}<HugeiconsIcon icon={ArrowRight01Icon} size={15} /></Button>}
           </div>
         </header>
+        <TranscriptNavigation key={selected.key} container={transcriptRef} scope={scopeRef} embedded={embedded}
+          active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnly} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} />
         {unavailable && <p role="status" className="bg-chip px-5 py-2 text-sm">Session no longer available. Previously loaded content is kept below.</p>}
         {newMessages && <button type="button" className="bg-chip px-5 py-2 text-sm" onClick={() => {
           const container = transcriptRef.current;
           if (container) container.scrollTop = container.scrollHeight;
           setNewMessages(false);
         }}>New messages ↓</button>}
-        <div ref={transcriptRef} className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto" aria-busy={transcriptLoading}>
+        <div ref={transcriptRef} inert={!!terminalShown[selected.key]} aria-hidden={!!terminalShown[selected.key]} className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto" aria-busy={transcriptLoading}>
           {transcriptLoading ? <div className="transcript-skeleton mx-auto max-w-[780px] px-10 py-9" role="status" aria-label={t.loading}>
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
           </div> : messages.length ? <div className="transcript-messages mx-auto max-w-[780px] px-10 pt-6 pb-24 max-[1100px]:px-6">
-            {messages.map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} />)}</div>
+            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} />)}</div>
             : <div className="flex h-full flex-col items-center justify-center gap-4 text-[13px] text-muted-foreground">
               <PixelField cols={6} rows={3} cell={12} seed={11} className="w-[72px]" /><p className="m-0">{t.noTranscript}</p></div>}
         </div>
