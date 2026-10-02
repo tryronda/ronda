@@ -14,6 +14,7 @@ All notable changes to Ronda are recorded here.
 ### Fixed
 
 - Embedded, restarted, and external resumes share directory and executable checks in the launch environment; incomplete checks stay unknown and remote environments remain unchecked.
+- Windows executable inspection allows up to five seconds for PowerShell startup while retaining bounded, read-only checks.
 
 ## [1.0.9] - 2026-10-02
 

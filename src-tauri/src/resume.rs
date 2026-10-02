@@ -149,7 +149,8 @@ fn executable(program: &str, directory: &str) -> Option<bool> {
         command.args(["-NoLogo", "-NonInteractive", "-Command", &format!(
             "if (Get-Command -Name {} -CommandType Application -ErrorAction SilentlyContinue) {{ exit 0 }}; exit 10", crate::powershell_quote(program))]);
         command.current_dir(directory);
-        lookup(command, Duration::from_secs(2))
+        // Cold Windows PowerShell startup exceeded two seconds in the native runner.
+        lookup(command, Duration::from_secs(5))
     }
 }
 
