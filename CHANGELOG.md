@@ -4,6 +4,12 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Added
+
+- Read-only project overview queries combine recent sessions, bookmarks, recurring errors, and 30-day Intelligence with consistent project and host scope.
+
 ## [1.0.6] - 2026-10-02
 
 ### Added

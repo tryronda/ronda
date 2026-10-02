@@ -127,12 +127,17 @@ pub fn hours(ms: i64) -> String {
 }
 
 impl Store {
-    fn facts(&self, project: Option<&str>) -> Result<Vec<Fact>> {
+    fn facts(
+        &self,
+        project: Option<&str>,
+        host: Option<&str>,
+        local_only: bool,
+    ) -> Result<Vec<Fact>> {
         let mut stmt = self.conn().prepare(
-            "SELECT session_key,parent_key,agent,project,started_at,ended_at,active_ms,recovery_ms,tool_calls,tool_errors,category,outcome \
-             FROM session_facts WHERE ?1 IS NULL OR project=?1",
+            "SELECT f.session_key,f.parent_key,f.agent,f.project,f.started_at,f.ended_at,f.active_ms,f.recovery_ms,f.tool_calls,f.tool_errors,f.category,f.outcome \
+             FROM session_facts f JOIN sessions s ON s.key=f.session_key WHERE (?1 IS NULL OR project=?1) AND (?2 IS NULL OR json_extract(s.meta,'$.host')=?2) AND (?3=0 OR json_extract(s.meta,'$.host') IS NULL)",
         ).context("intelligence tables are missing; open Ronda to rebuild the index")?;
-        let rows = stmt.query_map([project], |r| {
+        let rows = stmt.query_map(params![project, host, local_only], |r| {
             let key: String = r.get(0)?;
             let parent: Option<String> = r.get(1)?;
             Ok(Fact {
@@ -164,7 +169,22 @@ impl Store {
 
     /// The intelligence report for sessions active since `since` (all time when `None`), optionally for one project path.
     pub fn intelligence(&self, since: Option<i64>, project: Option<&str>) -> Result<Intelligence> {
-        let all = self.facts(project)?;
+        self.intelligence_scoped(since, project, None, false)
+    }
+
+    /// Project/host-scoped facts share the same derivation and aggregation as CLI/MCP reports.
+    pub fn intelligence_scoped(
+        &self,
+        since: Option<i64>,
+        project: Option<&str>,
+        host: Option<&str>,
+        local_only: bool,
+    ) -> Result<Intelligence> {
+        anyhow::ensure!(
+            !local_only || host.is_none(),
+            "Choose either local sessions or a remote host"
+        );
+        let all = self.facts(project, host, local_only)?;
         let by_key: HashMap<&str, &Fact> = all.iter().map(|f| (f.key.as_str(), f)).collect();
         let in_range = |f: &Fact| since.is_none_or(|t| f.ended_at >= t);
         let top: Vec<&Fact> = all

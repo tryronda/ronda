@@ -4,6 +4,7 @@ use ronda_core::bookmarks::{
 };
 use ronda_core::{
     intel::report::Intelligence,
+    projects::ProjectOverview,
     scanner::{Location, ScanReport, Scanner},
     GroupedSearch, Insights, LibraryOptions, ProjectInfo, SearchHit, SearchMatches, SearchSort,
     SessionMeta, SessionPage, SessionQuery, Store, TranscriptMessage,
@@ -253,6 +254,28 @@ async fn get_intelligence(
             .lock()
             .map_err(error)?
             .intelligence(since, project.as_deref())
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn get_project_overview(
+    state: State<'_, Shared>,
+    project: String,
+    host: Option<String>,
+    local_only: bool,
+) -> CommandResult<ProjectOverview> {
+    off_main(state, move |state| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(error)?
+            .as_millis() as i64;
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .project_overview(&project, host.as_deref(), local_only, now)
             .map_err(error)
     })
     .await
@@ -1150,6 +1173,7 @@ pub fn run() {
             list_projects,
             get_insights,
             get_intelligence,
+            get_project_overview,
             list_locations,
             scan,
             set_session_flags,

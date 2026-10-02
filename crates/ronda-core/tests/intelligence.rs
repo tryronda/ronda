@@ -308,3 +308,116 @@ fn insights_and_find_error_match_across_cli_and_mcp() {
     assert!(found.starts_with("Seen in 2 sessions"), "{found}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn project_overview_scopes_every_section_and_keeps_library_on_missing_facts() {
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("ronda-overview-{}-{n}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir.join("overview.db")).unwrap();
+    for i in 0..24 {
+        let mut item = session(
+            AgentId::ClaudeCode,
+            &format!("overview-{i}"),
+            1000 + i * MIN,
+            "Synthetic overview",
+            &[("Bash", "test", LOCKED, true)],
+        );
+        item.meta.project_path = Some(if i == 23 { "/other/repo" } else { "/repo" }.into());
+        if i % 2 == 1 {
+            item.meta.host = Some("local".into());
+        }
+        store.upsert(&item, &format!("fixture-{i}")).unwrap();
+    }
+    store
+        .save_bookmark("claude-code:overview-0", 0, "Local decision", false, None)
+        .unwrap();
+    store
+        .save_bookmark("claude-code:overview-1", 0, "Remote decision", false, None)
+        .unwrap();
+    let all = store
+        .project_overview("/repo", None, false, 25 * MIN)
+        .unwrap();
+    assert_eq!(all.total_sessions, 23);
+    assert_eq!(all.sessions.len(), 10);
+    assert_eq!(all.total_bookmarks, 2);
+    assert!(all
+        .sessions
+        .windows(2)
+        .all(|p| p[0].updated_at >= p[1].updated_at));
+    let local = store
+        .project_overview("/repo", None, true, 25 * MIN)
+        .unwrap();
+    assert_eq!(local.total_sessions, 12);
+    assert_eq!(local.total_bookmarks, 1);
+    assert_eq!(local.bookmarks[0].bookmark.note, "Local decision");
+    assert_eq!(local.intelligence.as_ref().unwrap().totals.sessions, 12);
+    assert_eq!(local.errors[0].sessions, 12);
+    assert!(local.errors[0].evidence.iter().all(|e| store
+        .get_session(&e.session_key)
+        .unwrap()
+        .unwrap()
+        .host
+        .is_none()));
+    let remote = store
+        .project_overview("/repo", Some("local"), false, 25 * MIN)
+        .unwrap();
+    assert_eq!(remote.total_sessions, 11);
+    assert_eq!(remote.total_bookmarks, 1);
+    assert_eq!(remote.bookmarks[0].bookmark.note, "Remote decision");
+    assert_eq!(remote.intelligence.as_ref().unwrap().totals.sessions, 11);
+    assert_eq!(remote.errors[0].sessions, 11);
+    assert!(remote
+        .sessions
+        .iter()
+        .all(|s| s.host.as_deref() == Some("local")));
+    assert_eq!(
+        store
+            .project_overview("/other/repo", None, false, 25 * MIN)
+            .unwrap()
+            .total_sessions,
+        1
+    );
+    assert_eq!(
+        store
+            .project_overview("/missing/repo", None, false, 25 * MIN)
+            .unwrap()
+            .total_sessions,
+        0
+    );
+    assert!(store.project_overview("", None, false, 25 * MIN).is_err());
+    assert!(store
+        .project_overview("/repo", Some("local"), true, 25 * MIN)
+        .is_err());
+    store.tombstone("claude-code:overview-0").unwrap();
+    let unavailable = store
+        .project_overview("/repo", None, false, 25 * MIN)
+        .unwrap();
+    assert_eq!(unavailable.total_bookmarks, 2);
+    assert!(unavailable
+        .bookmarks
+        .iter()
+        .any(|b| b.status == ronda_core::bookmarks::BookmarkStatus::Unavailable));
+    assert_eq!(
+        store
+            .project_overview("/repo", None, true, 25 * MIN)
+            .unwrap()
+            .total_bookmarks,
+        0
+    );
+    Connection::open(dir.join("overview.db"))
+        .unwrap()
+        .execute("DROP TABLE session_facts", [])
+        .unwrap();
+    let without = store
+        .project_overview("/repo", None, true, 25 * MIN)
+        .unwrap();
+    assert_eq!(without.total_sessions, 11);
+    assert!(without.intelligence.is_none());
+    assert!(without.intelligence_error.is_some());
+    drop(store);
+    std::fs::remove_dir_all(dir).unwrap();
+}
