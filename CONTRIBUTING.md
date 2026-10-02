@@ -50,6 +50,15 @@ cargo test --workspace
 
 `docs/benchmark.md` describes the search and indexing benchmark (`scripts/benchmark.py`). Run it when a change touches the scanner or the index.
 
+### Installed-app resume checks
+
+For changes to resume inspection or launching, test the packaged app on macOS, Windows, and Linux with an isolated `RONDA_HOME` and `RONDA_DB` and a synthetic agent that records its working directory and arguments. Record the source commit, operating system, installer, and results in the implementation PR. Packaging and Rust fixture checks do not replace these checks.
+
+1. Selecting a session and checking readiness must not invoke an agent or SSH. Verify missing executables, unknown or missing folders, unsupported agents, and child-session restrictions.
+2. Recover a moved local project with the native folder picker. Use spaces, quotes, Unicode, and shell metacharacters in the folder and session ID. Verify the recorded working directory and literal arguments after explicit Resume, then confirm the mapping survives app restart.
+3. Verify Restart and external terminal use the same mapping. Remove the synthetic executable or mapped directory between inspection and launch; both paths must refuse the launch. Confirm shell-profile-only PATH entries are found and incomplete or timed-out checks are reported as unknown.
+4. Remove the mapping in Settings and confirm it persists and readiness returns to the original folder. Verify local mappings do not change remote paths; remote environment checks must remain explicitly unchecked.
+
 ## Adding an agent
 
 Adapters live in `crates/ronda-core/src/adapters/`. A new adapter should:

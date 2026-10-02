@@ -383,6 +383,22 @@ mod tests {
         }
         #[cfg(windows)]
         {
+            let windows_paths = BTreeMap::from([
+                (
+                    r"C:\moved ' ü ; project".to_string(),
+                    root.to_str().unwrap().to_string(),
+                ),
+                (
+                    r"\\server\share\moved ' ü ; project".to_string(),
+                    root.to_str().unwrap().to_string(),
+                ),
+            ]);
+            assert_eq!(
+                mappings(Some(serde_json::to_string(&windows_paths).unwrap())).unwrap(),
+                windows_paths
+            );
+            assert!(!valid_path(r"C:relative"));
+            assert!(!valid_path(r"\rooted-without-drive"));
             assert_eq!(
                 executable("powershell.exe", root.to_str().unwrap()),
                 Some(true)
@@ -463,7 +479,13 @@ mod tests {
         let quoted = shell_quote(&meta.native_id);
         #[cfg(target_os = "windows")]
         let quoted = crate::powershell_quote(&meta.native_id);
-        assert!(mapped.command.unwrap().contains(&quoted));
+        #[cfg(not(target_os = "windows"))]
+        let quoted_directory = shell_quote(root.to_str().unwrap());
+        #[cfg(target_os = "windows")]
+        let quoted_directory = crate::powershell_quote(root.to_str().unwrap());
+        let command = mapped.command.unwrap();
+        assert!(command.contains(&quoted));
+        assert!(command.contains(&quoted_directory));
         meta.host = Some("box".into());
         insert(&meta);
         let remote = read();
