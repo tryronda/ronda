@@ -254,6 +254,14 @@ pub struct SearchMatches {
     pub total_matches: usize,
 }
 
+#[derive(Debug, Serialize)]
+pub struct LibraryOptions {
+    pub agents: Vec<AgentId>,
+    pub models: Vec<String>,
+    pub hosts: Vec<String>,
+    pub projects: Vec<ProjectInfo>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectInfo {
     pub path: String,

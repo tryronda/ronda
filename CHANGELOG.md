@@ -6,7 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Added
 
-- Shared date, model, and host filtering with a paginated library backend. Desktop filter controls are in progress.
+- Date, model, and host controls with combined filters, full-library choices, local calendar boundaries, and preserved hidden selections. Complete browsing and preference restoration remain in progress.
 
 ## [1.0.4] - 2026-10-02
 

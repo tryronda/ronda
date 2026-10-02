@@ -58,6 +58,7 @@ export interface SessionQuery {
   local_only?: boolean;
 }
 
+export interface LibraryOptions { agents: AgentId[]; models: string[]; hosts: string[]; projects: ProjectInfo[] }
 export interface SessionPage { items: SessionMeta[]; total: number; offset: number; limit: number }
 
 export interface SearchHit {
@@ -106,6 +107,7 @@ export interface BookmarkImport { imported: number; unchanged: number; conflicts
 
 export interface WorkbenchBackend {
   listSessions(query: SessionQuery): Promise<SessionMeta[]>;
+  libraryOptions(): Promise<LibraryOptions>;
   sessionPage(query: SessionQuery, offset: number, limit: number): Promise<SessionPage>;
   getSession(key: string): Promise<SessionMeta | null>;
   getTranscript(key: string): Promise<TranscriptMessage[]>;
@@ -126,6 +128,7 @@ export interface WorkbenchBackend {
 
 export const backend: WorkbenchBackend = {
   listSessions: (query) => invoke("list_sessions", { query }),
+  libraryOptions: () => invoke("library_options"),
   sessionPage: (query, offset, limit) => invoke("session_page", {query, offset, limit}),
   getSession: (key) => invoke("get_session", { key }),
   getTranscript: (key) => invoke("get_transcript", { key }),

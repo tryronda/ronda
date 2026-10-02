@@ -18,13 +18,16 @@ const session: SessionMeta = {
   starred: false, pinned: false,
 };
 
+const libraryOptions = async () => ({agents:["codex" as const,"claude-code" as const],models:["gpt-5"],hosts:[],
+  projects:[{path:session.project_path!,session_count:1,updated_at:session.updated_at}]});
+
 afterEach(() => { document.body.innerHTML = ""; });
 
 test("bookmarks search saved notes, filter missing projects, and open messages outside prompts-only view", async () => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
   const available: BookmarkView = {session,status:"current",bookmark:{session_key:session.key,seq:1,note:"Retain search decision",excerpt:"Assistant decision",text_hash:"a".repeat(64),created_at:1,updated_at:2,title:session.title,agent:session.agent,project_path:session.project_path}};
   const missing: BookmarkView = {session:null,status:"unavailable",bookmark:{...available.bookmark,session_key:"claude-code:gone",agent:"claude-code",project_path:"/projects/removed",title:"Removed session",note:"Retain missing source",updated_at:3}};
-  const api: WorkbenchBackend = {...backend,listBookmarks:async()=>[missing,available],listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
+  const api: WorkbenchBackend = {...backend, libraryOptions,listBookmarks:async()=>[missing,available],listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
     getTranscript:async()=>[{seq:1,role:"assistant",kind:"text",text:"Assistant decision",timestamp:null,model:null,thinking:null,tool_calls:[],images:[]}],
     onLibraryChanged:async()=>()=>{},searchGrouped:async()=>({groups:[],total_sessions:0,total_message_matches:0})};
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
@@ -63,7 +66,7 @@ test("opens on the library home, then loads a session, shows its transcript, and
   const setFlags = vi.fn(async () => {});
   let finishTranscript!: (messages: TranscriptMessage[]) => void;
   const transcript = new Promise<TranscriptMessage[]>(resolve => { finishTranscript = resolve; });
-  const api: WorkbenchBackend = { ...backend, listBookmarks: async()=>[],
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listBookmarks: async()=>[],
     listSessions: async () => [session],
     getSession: async () => session,
     getTranscript: async () => transcript,
@@ -104,7 +107,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
   const listSessions = vi.fn(async () => [session]);
   const getTranscript = vi.fn(async () => { if (fail) throw new Error("Temporary read failure"); return structuredClone(content); });
   const searchGrouped = vi.fn(async () => ({groups:[],total_sessions:0,total_message_matches:0}));
-  const api: WorkbenchBackend = { ...backend, listBookmarks: async()=>[],
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listBookmarks: async()=>[],
     listSessions, getSession: async () => missing ? null : session,
     getTranscript, searchSessions: async () => [], searchGrouped,
     searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [],
@@ -185,7 +188,7 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
   const searchSessionMatches = vi.fn(async (_query: string, _filter: unknown, _key: string, offset: number) => ({
     matches:Array.from({length:20},(_,i)=>excerpt(offset+i)),total_matches:150,
   }));
-  const api: WorkbenchBackend = { ...backend, listBookmarks: async()=>[],
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listBookmarks: async()=>[],
     listSessions:async()=>[first,second],listProjects:async()=>[],getSession:async()=>first,
     getTranscript:async()=>[0,1,2].map(seq=>({seq,role:"assistant",kind:"text",text:`body ${seq}`,timestamp:null,model:null,thinking:null,tool_calls:[],images:[]})),
     searchGrouped,searchSessionMatches,onLibraryChanged:async callback=>{changed=callback;return ()=>{};},
@@ -248,4 +251,40 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
     expect(host.querySelectorAll(".session-card")).toHaveLength(1);
     expect(host.textContent).toContain("Needle result");
   } finally {await act(async()=>root.unmount());vi.useRealTimers();}
+});
+
+test("full-library choices combine filters, preserve hidden selection, and reject inverted local dates", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const {matchesSession} = await import("./library-filters");
+  const list = vi.fn(async (query: import("./api").SessionQuery)=>matchesSession(session,query) ? [session] : []);
+  const api: WorkbenchBackend = {...backend,listSessions:list,libraryOptions:async()=>({...await libraryOptions(),models:["gpt-5","off-page-model"],hosts:["local"]}),
+    listBookmarks:async()=>[],getSession:async()=>session,getTranscript:async()=>[],onLibraryChanged:async()=>()=>{}};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const change=async(label:string,value:string)=>{await act(async()=>{
+    const input=host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
+    Object.getOwnPropertyDescriptor(input.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype,"value")!.set!.call(input,value);
+    input.dispatchEvent(new Event(input.tagName === "SELECT" ? "change" : "input",{bubbles:true}));
+  });};
+  const clear=async()=>{await act(async()=>Array.from(host.querySelectorAll("button")).find(button=>button.textContent === "Clear filters")!.click());};
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>host.querySelector<HTMLButtonElement>('.session-card')!.click());
+    await change("Filter by model","off-page-model");
+    expect(list.mock.calls.at(-1)?.[0].model).toBe("off-page-model");
+    expect(host.textContent).toContain("Outside current filters");
+    expect(host.querySelector<HTMLHeadingElement>('h2')?.textContent).toBe(session.title);
+    expect(host.querySelector('option[value="remote:local"]')).not.toBeNull();
+    await change("Filter by host","remote:local");
+    expect(list.mock.calls.at(-1)?.[0]).toMatchObject({host:"local",local_only:false,model:"off-page-model"});
+    await change("Filter by host","local");
+    expect(list.mock.calls.at(-1)?.[0]).toMatchObject({host:null,local_only:true});
+    await clear();expect(host.textContent).not.toContain("Outside current filters");
+    await change("Updated from","2030-01-01");
+    const calls=list.mock.calls.length;
+    await change("Updated through","2020-01-01");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("End date");
+    expect(list).toHaveBeenCalledTimes(calls);
+    await clear();expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(list.mock.calls.at(-1)?.[0]).toMatchObject({updated_from_ms:null,updated_before_ms:null,model:null,host:null,local_only:false});
+  } finally {await act(async()=>root.unmount());host.remove();}
 });

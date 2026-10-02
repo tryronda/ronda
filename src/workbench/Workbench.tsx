@@ -14,6 +14,7 @@ import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
+import { calendarRange, matchesSession } from "./library-filters";
 import { LibraryHome } from "./LibraryHome";
 import { BookmarkControl } from "./BookmarkControl";
 import { TranscriptNavigation } from "./TranscriptNavigation";
@@ -21,7 +22,7 @@ import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
   type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
-  type WorkbenchBackend, type BookmarkView,
+  type WorkbenchBackend, type BookmarkView, type LibraryOptions,
 } from "./api";
 
 const copy = {
@@ -148,6 +149,19 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [agent, setAgent] = useState<AgentId | null>(null);
   const [starredOnly, setStarredOnly] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateThrough, setDateThrough] = useState("");
+  const [model, setModel] = useState("");
+  const [host, setHost] = useState("");
+  const [options, setOptions] = useState<LibraryOptions>({agents:[],models:[],hosts:[],projects:[]});
+  const dates = useMemo(() => {
+    try { return {range:calendarRange(dateFrom,dateThrough),error:null}; }
+    catch (cause) { return {range:{},error:cause instanceof Error ? cause.message : String(cause)}; }
+  }, [dateFrom,dateThrough]);
+  const clearFilters = () => {
+    setProject(null); setAgent(null); setStarredOnly(false); setIncludeArchived(false);
+    setDateFrom(""); setDateThrough(""); setModel(""); setHost("");
+  };
   const [search, setSearch] = useState("");
   const [terminals, setTerminals] = useState<Record<string, TerminalEntry>>({});
   const [terminalShown, setTerminalShown] = useState<Record<string, boolean>>({});
@@ -177,20 +191,24 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const scrollRestore = useRef<{ bottom: boolean; seq: string | null; offset: number; top: number } | null>(null);
 
   const filter = useMemo<SessionQuery>(() => ({ ...queryDefaults, agent,
-    project_path: project, starred_only: starredOnly, include_archived: includeArchived }), [agent, project, starredOnly, includeArchived]);
+    project_path: project, starred_only: starredOnly, include_archived: includeArchived,
+    ...dates.range, model:model || null, host:host.startsWith("remote:") ? host.slice(7) : null, local_only:host === "local" }),
+    [agent, project, starredOnly, includeArchived, dates, model, host]);
 
   const reload = useCallback(async () => {
     const run = ++reloadRun.current;
+    if (dates.error) { setLoading(false); return; }
     try {
-      const [nextSessions, nextProjects] = await Promise.all([api.listSessions(filter), api.listProjects()]);
+      const [nextSessions, nextOptions] = await Promise.all([api.listSessions(filter), api.libraryOptions()]);
       if (run !== reloadRun.current) return;
       setSessions(nextSessions);
-      setProjects(nextProjects);
+      setProjects(nextOptions.projects);
+      setOptions(nextOptions);
       setRevision(value => value + 1);
       setError(null);
     } catch (cause) { if (run === reloadRun.current) setError(String(cause)); }
     finally { if (run === reloadRun.current) setLoading(false); }
-  }, [api, filter]);
+  }, [api, filter, dates.error]);
 
   const reloadBookmarks = useCallback(async () => {
     const run = ++bookmarkRun.current;
@@ -207,6 +225,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const visibleBookmarks = bookmarks.filter(({bookmark, session}) => {
     if (agent && (session?.agent ?? bookmark.agent) !== agent) return false;
     if (project && (session?.project_path ?? bookmark.project_path) !== project) return false;
+    const metadataFilter = {...filter,agent:null,project_path:null,include_archived:true,starred_only:false};
+    if ((host || model || dateFrom || dateThrough) && (!session || !matchesSession(session,metadataFilter))) return false;
     const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
     return search.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term => text.includes(term));
   });
@@ -281,7 +301,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
   useEffect(() => {
     if (!isActive) return;
-    if (bookmarksOnly || !search.trim()) { setHits([]); setSearching(false); return; }
+    if (dates.error || bookmarksOnly || !search.trim()) { setHits([]); setSearching(false); return; }
     let cancelled = false;
     setSearching(true);
     const timer = window.setTimeout(() => {
@@ -299,7 +319,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       }).catch(cause => { if (!cancelled) { setError(String(cause)); setSearching(false); } });
     }, 120);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [api, filter, search, searchSort, searchOffset, revision, isActive, bookmarksOnly]);
+  }, [api, filter, search, searchSort, searchOffset, revision, isActive, bookmarksOnly, dates.error]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -351,7 +371,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   }, [onActiveSessionChange, selected?.key, selected?.title, selected?.project_path]);
   const visible = search.trim() ? hits.map(group => ({ session: group.session, group }))
     : sessions.map(session => ({ session, group: null as SearchGroup | null }));
-  const agents = useMemo(() => Array.from(new Set(bookmarksOnly ? bookmarks.map(view => view.session?.agent ?? view.bookmark.agent) : sessions.map(s => s.agent))).sort(), [sessions, bookmarks, bookmarksOnly]);
+  const agents = useMemo(() => Array.from(new Set(bookmarksOnly ? bookmarks.map(view => view.session?.agent ?? view.bookmark.agent) : options.agents)).sort(), [options, bookmarks, bookmarksOnly]);
 
   const choose = (session: SessionMeta, seq?: number) => {
     setOpened(session);
@@ -450,12 +470,12 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         sidebarOpen ? "w-[240px] px-2 pt-2 pb-3 opacity-100 max-[1100px]:w-[200px]" : "invisible w-0 border-r-0 p-0 opacity-0")}>
       <div className={sectionHeading}>{t.library}</div>
       <SharedLayoutBg inset={0} className="gap-px" pillClassName="rounded-none bg-chip/70">
-        <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !agent)} type="button"
-          onClick={() => { setProject(null); setAgent(null); setStarredOnly(false); setBookmarksOnly(false); }}>
+        <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !agent && !host && !model && !dateFrom && !dateThrough && !includeArchived)} type="button"
+          onClick={() => { clearFilters(); setBookmarksOnly(false); }}>
           <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />{t.all}<span className="label-mono ml-auto text-muted-foreground">{sessions.length}</span>
         </button>
         <button key="starred" className={navClass(!bookmarksOnly && starredOnly)} type="button"
-          onClick={() => { setProject(null); setAgent(null); setStarredOnly(true); setBookmarksOnly(false); }}>
+          onClick={() => { setStarredOnly(value=>!value); setBookmarksOnly(false); }}>
           <HugeiconsIcon icon={StarIcon} size={16} strokeWidth={1.8} />{t.favorites}
         </button>
         <button key="bookmarks" className={navClass(bookmarksOnly)} type="button" onClick={() => {
@@ -469,7 +489,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       <div className={sectionHeading}>{t.projects}</div>
       <div className="max-h-[31vh] overflow-y-auto">
         {projectOptions.map(item => <button className={navClass(project === item.path)}
-          title={item.path} key={item.path} type="button" onClick={() => { setProject(item.path); setStarredOnly(false); setAgent(null); }}>
+          title={item.path} key={item.path} type="button" onClick={() => setProject(value=>value === item.path ? null : item.path)}>
           <div className="flex w-full min-w-0 items-center gap-2.5">
             <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} className="flex-none" /><span className="min-w-0 truncate">{basename(item.path)}</span>
             <span className="label-mono ml-auto text-muted-foreground">{item.session_count}</span>
@@ -478,7 +498,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       </div>
       {agents.length > 0 && <><div className={sectionHeading}>{t.agents}</div><div className="min-h-0 overflow-y-auto">
         {agents.map(item => <button className={navClass(agent === item)} key={item} type="button"
-          onClick={() => { setAgent(item); setProject(null); setStarredOnly(false); }}>
+          onClick={() => setAgent(value=>value === item ? null : item)}>
           <div className="flex w-full min-w-0 items-center gap-2.5"><span className={`agent-dot agent-${item}`} />{agentNames[item]}</div></button>)}
       </div></>}
       <div className="mt-auto px-2.5 pt-5">
@@ -502,13 +522,32 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </AnimatePresence>
           <span className={scanning ? "[&_svg]:animate-spin" : undefined}><IconButton icon={ReloadIcon} title={t.refresh} onClick={() => void refresh()} disabled={scanning} /></span>
         </div>
-        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{scanning ? t.refreshing : bookmarksOnly ? `${visibleBookmarks.length} saved messages` : search.trim() ? `${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `${visible.length} ${t.sessions}`}</p>
+        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{dates.error ? "Choose a valid date range" : scanning ? t.refreshing : bookmarksOnly ? `${visibleBookmarks.length} saved messages` : search.trim() ? `${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `${visible.length} ${t.sessions}`}</p>
         <label className="glass flex h-9 items-center gap-2 px-2.5 text-muted-foreground transition-shadow focus-within:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--foreground)]">
           <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={2} />
           <input ref={searchRef} type="search" value={search} onChange={event => setSearch(event.target.value)}
             placeholder={bookmarksOnly ? "Search notes and saved excerpts" : t.search} aria-label={bookmarksOnly ? "Search bookmarks" : t.search}
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
+        <details className="mt-2 text-[13px]">
+          <summary className="cursor-pointer text-muted-foreground">Filters</summary>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <label>Updated from<input aria-label="Updated from" type="date" value={dateFrom}
+              onInput={event=>setDateFrom(event.currentTarget.value)} className="mt-1 w-full min-w-0 bg-chip p-1" /></label>
+            <label>Updated through<input aria-label="Updated through" type="date" value={dateThrough}
+              onInput={event=>setDateThrough(event.currentTarget.value)} className="mt-1 w-full min-w-0 bg-chip p-1" /></label>
+            <label>Model<select aria-label="Filter by model" value={model} onChange={event=>setModel(event.target.value)} className="mt-1 w-full min-w-0 bg-chip p-1">
+              <option value="">All models</option>{[...new Set([...options.models,...(model ? [model] : [])])].map(value=><option key={value}>{value}</option>)}
+            </select></label>
+            <label>Host<select aria-label="Filter by host" value={host} onChange={event=>setHost(event.target.value)} className="mt-1 w-full min-w-0 bg-chip p-1">
+              <option value="">All hosts</option><option value="local">Local sessions</option>
+              {[...new Set([...options.hosts,...(host.startsWith("remote:") ? [host.slice(7)] : [])])].map(value=><option value={`remote:${value}`} key={value}>{value}</option>)}
+            </select></label>
+            <button type="button" className="text-left underline" onClick={clearFilters}>Clear filters</button>
+          </div>
+          <p className="mt-2 text-muted-foreground">Dates use session update time in your local time zone, including the entire end day.</p>
+        </details>
+        {dates.error && <p role="alert" className="mt-2 text-destructive">{dates.error}</p>}
         {!bookmarksOnly && search.trim() && <label className="label-mono mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           Sort results
           <select aria-label="Sort search results" value={searchSort} className="min-w-0 bg-paper p-1 text-foreground"
@@ -615,6 +654,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         </header>
         <TranscriptNavigation key={selected.key} container={transcriptRef} scope={scopeRef} embedded={embedded}
           active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnly} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} />
+        {!matchesSession(selected,filter) && <p role="status" className="bg-chip px-5 py-2 text-sm">Outside current filters</p>}
         {unavailable && <p role="status" className="bg-chip px-5 py-2 text-sm">Session no longer available. Previously loaded content is kept below.</p>}
         {newMessages && <button type="button" className="bg-chip px-5 py-2 text-sm" onClick={() => {
           const container = transcriptRef.current;

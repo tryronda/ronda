@@ -1,6 +1,8 @@
+import { matchesSession } from "@/workbench/library-filters";
 import { searchSnippet } from "@/workbench/search-text";
 import { agentIds, type BookmarkBackup, type BookmarkView, type MessageBookmark, type BookmarkReplacement, type BookmarkImport, backend } from "@/workbench/api";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import { queryDefaults } from "@/workbench/api";
 import type { AgentId, ProjectInfo, GroupedSearch, SearchExcerpt, SearchGroup, SearchHit, SearchSort, SessionMeta, SessionQuery, TranscriptMessage } from "@/workbench/api";
 
 /*
@@ -182,21 +184,10 @@ function validateFilter(query: SessionQuery) {
     throw new Error("Date range must end after its start");
 }
 
-function matchesFilter(session: SessionMeta, query: SessionQuery) {
-  return (!query.agent || session.agent === query.agent)
-    && (!query.project_path || session.project_path === query.project_path)
-    && (!query.host || session.host === query.host)
-    && (!query.local_only || session.host === null)
-    && (!query.model || session.model === query.model)
-    && (query.updated_from_ms == null || session.updated_at >= query.updated_from_ms)
-    && (query.updated_before_ms == null || session.updated_at < query.updated_before_ms)
-    && (!query.starred_only || session.starred)
-    && (query.include_archived || !session.archived);
-}
 
 function listSessions(query: SessionQuery) {
   validateFilter(query);
-  const matched = sessions.filter(session => matchesFilter(session, query))
+  const matched = sessions.filter(session => matchesSession(session, query))
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at - a.updated_at || a.key.localeCompare(b.key));
   return query.limit == null ? matched : matched.slice(0, query.limit);
 }
@@ -210,7 +201,8 @@ function sessionPage(query: SessionQuery, offset: number, limit: number) {
 function listProjects(): ProjectInfo[] {
   const grouped = new Map<string, ProjectInfo>();
   for (const session of sessions) {
-    const path = session.project_path!;
+    if (session.parent_key || !session.project_path) continue;
+    const path = session.project_path;
     const current = grouped.get(path) ?? { path, session_count: 0, updated_at: 0 };
     grouped.set(path, { path, session_count: current.session_count + 1, updated_at: Math.max(current.updated_at, session.updated_at) });
   }
@@ -386,7 +378,7 @@ async function listBookmarks(query: string, filter: SessionQuery): Promise<Bookm
     if ((filter.agent && filter.agent !== (session?.agent ?? bookmark.agent)) || (filter.project_path && filter.project_path !== (session?.project_path ?? bookmark.project_path))) continue;
     const metadataFilter = {...filter, agent:null, project_path:null, include_archived:true, starred_only:false};
     const needsMetadata = filter.host || filter.local_only || filter.model || filter.updated_from_ms != null || filter.updated_before_ms != null;
-    if (needsMetadata && (!session || !matchesFilter(session, metadataFilter))) continue;
+    if (needsMetadata && (!session || !matchesSession(session, metadataFilter))) continue;
     const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
     if (!query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term=>text.includes(term))) continue;
     const message = transcripts.get(bookmark.session_key)?.find(message=>message.seq===bookmark.seq);
@@ -453,6 +445,12 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "get_pref": return prefs.get(args.key as string) ?? null;
     case "set_pref": prefs.set(args.key as string, args.value as string); return null;
     case "list_sessions": return listSessions(args.query as SessionQuery);
+    case "library_options": {
+      const roots = listSessions({...queryDefaults,include_archived:true,limit:null}).filter(session=>!session.parent_key);
+      return {agents:[...new Set(roots.map(session=>session.agent))].sort(),
+        models:[...new Set(roots.flatMap(session=>session.model ? [session.model] : []))].sort(),
+        hosts:[...new Set(roots.flatMap(session=>session.host ? [session.host] : []))].sort(),projects:listProjects()};
+    }
     case "session_page": return sessionPage(args.query as SessionQuery, args.offset as number, args.limit as number);
     case "list_projects": return listProjects();
     case "list_bookmarks": return listBookmarks(args.query as string, args.filter as SessionQuery);

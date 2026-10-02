@@ -1,6 +1,6 @@
 use crate::{
-    GroupedSearch, InsightRow, Insights, ParsedSession, ProjectInfo, SearchExcerpt, SearchGroup,
-    SearchHit, SearchMatches, SearchSort, SessionMeta, SessionPage, SessionQuery,
+    GroupedSearch, InsightRow, Insights, LibraryOptions, ParsedSession, ProjectInfo, SearchExcerpt,
+    SearchGroup, SearchHit, SearchMatches, SearchSort, SessionMeta, SessionPage, SessionQuery,
     TranscriptMessage,
 };
 use anyhow::{Context, Result};
@@ -677,6 +677,57 @@ impl Store {
         })
     }
 
+    pub fn library_options(&self) -> Result<LibraryOptions> {
+        // ponytail: one full metadata scan per refresh; use SQL facets if measured scan time exceeds the library budget.
+        let sessions = self.list_sessions(&SessionQuery {
+            include_archived: true,
+            ..Default::default()
+        })?;
+        let mut agents = HashSet::new();
+        let mut models = HashSet::new();
+        let mut hosts = HashSet::new();
+        let mut projects = HashMap::<String, ProjectInfo>::new();
+        for session in sessions
+            .into_iter()
+            .filter(|session| session.parent_key.is_none())
+        {
+            agents.insert(session.agent);
+            if let Some(model) = session.model {
+                models.insert(model);
+            }
+            if let Some(host) = session.host {
+                hosts.insert(host);
+            }
+            if let Some(path) = session.project_path {
+                let project = projects.entry(path.clone()).or_insert(ProjectInfo {
+                    path,
+                    session_count: 0,
+                    updated_at: 0,
+                });
+                project.session_count += 1;
+                project.updated_at = project.updated_at.max(session.updated_at);
+            }
+        }
+        let mut agents: Vec<_> = agents.into_iter().collect();
+        agents.sort_by_key(|agent| agent.as_str());
+        let mut models: Vec<_> = models.into_iter().collect();
+        models.sort();
+        let mut hosts: Vec<_> = hosts.into_iter().collect();
+        hosts.sort();
+        let mut projects: Vec<_> = projects.into_values().collect();
+        projects.sort_by(|a, b| {
+            b.updated_at
+                .cmp(&a.updated_at)
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        Ok(LibraryOptions {
+            agents,
+            models,
+            hosts,
+            projects,
+        })
+    }
+
     pub fn projects(&self) -> Result<Vec<ProjectInfo>> {
         let mut map: HashMap<String, ProjectInfo> = HashMap::new();
         for session in self.list_sessions(&SessionQuery::default())? {
@@ -892,6 +943,11 @@ mod search_tests {
         }
         store.set_flags("session-001", true, true).unwrap();
         store.set_flags("session-599", true, true).unwrap();
+        let options = store.library_options().unwrap();
+        assert_eq!(options.agents, vec![crate::AgentId::ClaudeCode]);
+        assert_eq!(options.models, vec!["model-a", "model-b"]);
+        assert_eq!(options.hosts, vec!["build"]);
+        assert_eq!(options.projects[0].session_count, 600);
         let old: SessionQuery = serde_json::from_str(r#"{"agent":null,"project_path":null,"host":null,"starred_only":false,"include_archived":false,"limit":1}"#).unwrap();
         assert_eq!(store.list_sessions(&old).unwrap().len(), 1);
         let first = store.session_page(&old, 0, 100).unwrap();
