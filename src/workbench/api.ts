@@ -90,6 +90,15 @@ export const queryDefaults: SessionQuery = {
   include_archived: false, limit: 500,
 };
 
+export interface MessageBookmark {
+  session_key: string; seq: number; note: string; excerpt: string; text_hash: string;
+  created_at: number; updated_at: number; title: string; agent: AgentId; project_path: string | null;
+}
+export interface BookmarkView { bookmark: MessageBookmark; session: SessionMeta | null; status: "current" | "changed" | "unavailable"; }
+export interface BookmarkBackup { version: number; bookmarks: MessageBookmark[]; }
+export interface BookmarkReplacement { session_key: string; seq: number; expected_updated_at: number; }
+export interface BookmarkImport { imported: number; unchanged: number; conflicts: {existing: MessageBookmark; incoming: MessageBookmark}[]; }
+
 export interface WorkbenchBackend {
   listSessions(query: SessionQuery): Promise<SessionMeta[]>;
   getSession(key: string): Promise<SessionMeta | null>;
@@ -97,6 +106,9 @@ export interface WorkbenchBackend {
   searchSessions(query: string, filter: SessionQuery, limit: number): Promise<SearchHit[]>;
   searchGrouped(query: string, filter: SessionQuery, sort: SearchSort, offset: number, limit: number): Promise<GroupedSearch>;
   searchSessionMatches(query: string, filter: SessionQuery, key: string, offset: number, limit: number): Promise<SearchMatches>;
+  listBookmarks(query: string, filter: SessionQuery): Promise<BookmarkView[]>;
+  saveBookmark(key: string, seq: number, note: string, refreshSnapshot: boolean, expectedUpdatedAt: number | null): Promise<MessageBookmark>;
+  deleteBookmark(key: string, seq: number): Promise<void>;
   listProjects(): Promise<ProjectInfo[]>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
@@ -113,6 +125,9 @@ export const backend: WorkbenchBackend = {
   searchSessions: (query, filter, limit) => invoke("search_sessions", { query, filter, limit }),
   searchGrouped: (query, filter, sort, offset, limit) => invoke("search_grouped", { query, filter, sort, offset, limit }),
   searchSessionMatches: (query, filter, key, offset, limit) => invoke("search_session_matches", { query, filter, key, offset, limit }),
+  listBookmarks: (query, filter) => invoke("list_bookmarks", {query, filter}),
+  saveBookmark: (key, seq, note, refreshSnapshot, expectedUpdatedAt) => invoke("save_bookmark", {key, seq, note, refreshSnapshot, expectedUpdatedAt}),
+  deleteBookmark: (key, seq) => invoke("delete_bookmark", {key, seq}),
   listProjects: () => invoke("list_projects"),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),

@@ -8,7 +8,7 @@ MotionGlobalConfig.skipAnimations = true;
 // happy-dom rejects cancelled native animations; use Motion’s JS renderer in this test environment.
 Reflect.deleteProperty(Element.prototype, "animate");
 import { Workbench } from "./Workbench";
-import type { SessionMeta, TranscriptMessage, WorkbenchBackend } from "./api";
+import { backend, type SessionMeta, type TranscriptMessage, type WorkbenchBackend } from "./api";
 
 const session: SessionMeta = {
   key: "codex:one", native_id: "one", agent: "codex", host: null, parent_key: null,
@@ -25,7 +25,7 @@ test("opens on the library home, then loads a session, shows its transcript, and
   const setFlags = vi.fn(async () => {});
   let finishTranscript!: (messages: TranscriptMessage[]) => void;
   const transcript = new Promise<TranscriptMessage[]>(resolve => { finishTranscript = resolve; });
-  const api: WorkbenchBackend = {
+  const api: WorkbenchBackend = { ...backend, listBookmarks: async()=>[],
     listSessions: async () => [session],
     getSession: async () => session,
     getTranscript: async () => transcript,
@@ -66,7 +66,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
   const listSessions = vi.fn(async () => [session]);
   const getTranscript = vi.fn(async () => { if (fail) throw new Error("Temporary read failure"); return structuredClone(content); });
   const searchGrouped = vi.fn(async () => ({groups:[],total_sessions:0,total_message_matches:0}));
-  const api: WorkbenchBackend = {
+  const api: WorkbenchBackend = { ...backend, listBookmarks: async()=>[],
     listSessions, getSession: async () => missing ? null : session,
     getTranscript, searchSessions: async () => [], searchGrouped,
     searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [],
@@ -147,7 +147,7 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
   const searchSessionMatches = vi.fn(async (_query: string, _filter: unknown, _key: string, offset: number) => ({
     matches:Array.from({length:20},(_,i)=>excerpt(offset+i)),total_matches:150,
   }));
-  const api: WorkbenchBackend = { ...backend,
+  const api: WorkbenchBackend = { ...backend, listBookmarks: async()=>[],
     listSessions:async()=>[first,second],listProjects:async()=>[],getSession:async()=>first,
     getTranscript:async()=>[0,1,2].map(seq=>({seq,role:"assistant",kind:"text",text:`body ${seq}`,timestamp:null,model:null,thinking:null,tool_calls:[],images:[]})),
     searchGrouped,searchSessionMatches,onLibraryChanged:async callback=>{changed=callback;return ()=>{};},
