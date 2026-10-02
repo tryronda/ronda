@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 
 ASSETS = {
     'Ronda-macos-arm64.dmg', 'Ronda-macos-x64.dmg', 'Ronda-windows-x64-setup.exe',
@@ -34,6 +35,18 @@ def gh(*args):
     return subprocess.run(['gh', *map(str, args)], check=True, capture_output=True, text=True).stdout
 
 
+def download(tag, directory):
+    # Only local verification copies are replaced; remote published assets remain untouched.
+    for attempt in range(3):
+        try:
+            gh('release', 'download', tag, '--dir', directory, '--clobber')
+            return
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            time.sleep(attempt + 1)
+
+
 def publish(tag, directory, notes, sha):
     verify(directory)
     marker = f'Source commit: `{sha}`'
@@ -48,7 +61,7 @@ def publish(tag, directory, notes, sha):
     assert marker in release['body'], 'Existing release belongs to a different source commit'
     if not release['isDraft']:
         with tempfile.TemporaryDirectory() as temporary:
-            gh('release', 'download', tag, '--dir', temporary)
+            download(tag, temporary)
             verify(temporary)
         print(f'{tag} already published and verified; existing assets preserved')
         return
@@ -56,11 +69,15 @@ def publish(tag, directory, notes, sha):
     gh('release', 'upload', tag, *sorted(Path(directory).iterdir()), '--clobber')
     # Validate the uploaded files before making them publicly downloadable.
     with tempfile.TemporaryDirectory() as temporary:
-        gh('release', 'download', tag, '--dir', temporary)
+        download(tag, temporary)
         verify(temporary)
     gh('release', 'edit', tag, '--draft=false', '--latest')
     print(f'Published and verified {tag}')
 
 
 if __name__ == '__main__':
-    publish(*sys.argv[1:])
+    try:
+        publish(*sys.argv[1:])
+    except subprocess.CalledProcessError as error:
+        print(error.stderr, file=sys.stderr)
+        raise

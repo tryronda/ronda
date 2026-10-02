@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import json
+import subprocess
 
 
 def load(name):
@@ -52,6 +53,41 @@ class ReleaseChecks(unittest.TestCase):
                 release.publish('v1.0.1', assets, notes, 'abc')
             self.assertIn('--draft=false', calls[-1])
             self.assertEqual(calls[-2][:2], ('release', 'download'))
+
+    def test_download_retries_partial_files_and_never_publishes_on_exhaustion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); assets = root / 'assets'; assets.mkdir(); self.fixture(assets)
+            notes = root / 'notes.md'; notes.write_text('Source commit: `abc`')
+            calls = []; attempts = 0
+            def gh(*args):
+                nonlocal attempts
+                calls.append(args)
+                if args[:2] == ('release', 'view'):
+                    return json.dumps({'isDraft': True, 'body': notes.read_text()})
+                if args[:2] == ('release', 'download'):
+                    attempts += 1
+                    directory = Path(args[args.index('--dir') + 1])
+                    if attempts == 1:
+                        (directory / 'Ronda-macos-arm64.dmg').write_bytes(b'partial')
+                        raise subprocess.CalledProcessError(1, ['gh'], stderr='temporary download failure')
+                    self.assertIn('--clobber', args)
+                    self.fixture(directory)
+                return ''
+            with patch.object(release, 'gh', gh), patch.object(release.time, 'sleep'):
+                release.publish('v1.0.1', assets, notes, 'abc')
+            self.assertEqual(attempts, 2)
+            self.assertIn('--clobber', calls[-2])
+            self.assertIn('--draft=false', calls[-1])
+            calls.clear()
+            def unavailable(*args):
+                if args[:2] == ('release', 'download'):
+                    calls.append(args)
+                    raise subprocess.CalledProcessError(1, ['gh'], stderr='temporary download failure')
+                return gh(*args)
+            with patch.object(release, 'gh', unavailable), patch.object(release.time, 'sleep'), self.assertRaises(subprocess.CalledProcessError):
+                release.publish('v1.0.1', assets, notes, 'abc')
+            self.assertEqual(sum(args[:2] == ('release', 'download') for args in calls), 3)
+            self.assertFalse(any('--draft=false' in args for args in calls))
 
     def test_published_retry_is_read_only_and_mismatched_sha_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
