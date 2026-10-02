@@ -16,6 +16,10 @@ All notable changes to Ronda are recorded here.
 
 - Find within transcripts with literal, case-insensitive matching, next/previous matches, optional thinking, prompts-only reading, and first/last-message navigation.
 
+### Changed
+
+- Release verification retries asset downloads before publishing and preserves download diagnostics when retries fail.
+
 ## [1.0.2] - 2026-10-02
 
 ### Added
