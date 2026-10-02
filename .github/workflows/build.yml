@@ -232,14 +232,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/publish-release.py "$GITHUB_REF_NAME" release notes.md "$(git rev-parse HEAD)"
-
-  deploy-site:
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml
-    with:
-      ref: ${{ github.ref_name }}
+      # Repository dispatch runs the site workflow on main, the ref permitted by
+      # the github-pages environment. That workflow checks out the published tag.
+      - name: Request published site deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/dispatches" -f event_type=publish-release-site -f "client_payload[ref]=$GITHUB_REF_NAME"
