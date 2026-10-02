@@ -64,8 +64,8 @@ def fixture(root):
 
 
 class Driver:
-    def __init__(self, app):
-        self.app, self.session = str(app), None
+    def __init__(self, app, environment):
+        self.app, self.environment, self.session, self.process = str(app), environment, None, None
 
     def request(self, method, path, data=None):
         request = urllib.request.Request("http://127.0.0.1:4444" + path, method=method,
@@ -81,8 +81,15 @@ class Driver:
         return value
 
     def start(self):
+        if os.name == "nt":
+            self.process = subprocess.Popen([self.app], env=self.environment)
+            def endpoint():
+                assert self.process.poll() is None, "Installed app exited before WebView startup"
+                with urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=2) as response:
+                    return json.load(response)
+            wait(endpoint, "installed WebView debug endpoint")
         capabilities = ({"browserName": "webview2", "ms:edgeChromium": True,
-                         "ms:edgeOptions": {"binary": self.app, "args": []}} if os.name == "nt" else
+                         "ms:edgeOptions": {"debuggerAddress": "127.0.0.1:9222"}} if os.name == "nt" else
                         {"tauri:options": {"application": self.app}})
         self.session = self.request("POST", "/session", {"capabilities": {"alwaysMatch": capabilities}})["sessionId"]
         self.command("POST", "/timeouts", {"implicit": 0, "script": 30000, "pageLoad": 60000})
@@ -111,9 +118,15 @@ class Driver:
         path.write_bytes(base64.b64decode(self.command("GET", "/screenshot")))
 
     def close(self):
-        if self.session:
-            self.command("DELETE", "")
-            self.session = None
+        try:
+            if self.session:
+                self.command("DELETE", "")
+                self.session = None
+        finally:
+            if self.process:
+                self.process.terminate()
+                self.process.wait(timeout=10)
+                self.process = None
 
 
 def button(text):
@@ -132,6 +145,8 @@ def choose_folder(project):
         # GTK's folder chooser uses Select as its default acceptance action.
         time.sleep(.5)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "alt+s"], check=True)
+        print("Picker windows after Select:", subprocess.run(["xdotool", "search", "--onlyvisible",
+              "--name", "^Choose project folder$"], capture_output=True, text=True).stdout.strip(), flush=True)
         return
     # Inspect the native IFileDialog controls; fail with the tree rather than guessing coordinates.
     quoted = "'" + str(project).replace("'", "''") + "'"
@@ -175,10 +190,22 @@ def smoke(app, output, self_check=False):
         assert not (project / "injected").exists()
         print("Fixture self-check passed")
         return
-    profile = previous_profile = server = None
-    driver = Driver(app)
+    profile = previous_profile = server = policy = previous_policy = None
+    driver = Driver(app, environment)
     try:
         if os.name == "nt":
+            assert os.environ.get("GITHUB_ACTIONS") == "true", "Windows native smoke requires an isolated CI runner"
+            import winreg
+            # WebView2 150+ ignores environment debug switches in elevated runners.
+            # https://github.com/MicrosoftEdge/WebView2Feedback/issues/5645
+            # Scope the temporary HKLM policy to the installed app, and restore it below.
+            policy = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE,
+                r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments")
+            try:
+                previous_policy = winreg.QueryValueEx(policy, "ronda.exe")
+            except FileNotFoundError:
+                pass
+            winreg.SetValueEx(policy, "ronda.exe", 0, winreg.REG_SZ, "--remote-debugging-port=9222")
             profile = Path(subprocess.check_output(["powershell.exe", "-NoProfile", "-NonInteractive",
                           "-Command", "$PROFILE"], text=True).strip())
             previous_profile = profile.read_bytes() if profile.exists() else None
@@ -255,18 +282,27 @@ def smoke(app, output, self_check=False):
                 (output / "final-dom.txt").write_text(driver.text(), encoding="utf-8")
                 driver.close()
         finally:
-            if server:
-                server.terminate()
-                try:
-                    server.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    server.kill()
-                    server.wait()
-            if profile:
-                if previous_profile is None:
-                    profile.unlink(missing_ok=True)
-                else:
-                    profile.write_bytes(previous_profile)
+            try:
+                driver.close()
+            finally:
+                if server:
+                    server.terminate()
+                    try:
+                        server.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        server.kill()
+                        server.wait()
+                if policy:
+                    if previous_policy is None:
+                        winreg.DeleteValue(policy, "ronda.exe")
+                    else:
+                        winreg.SetValueEx(policy, "ronda.exe", 0, previous_policy[1], previous_policy[0])
+                    policy.Close()
+                if profile:
+                    if previous_profile is None:
+                        profile.unlink(missing_ok=True)
+                    else:
+                        profile.write_bytes(previous_profile)
 
 
 if __name__ == "__main__":
