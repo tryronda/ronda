@@ -34,6 +34,10 @@ All notable changes to Ronda are recorded here.
 
 - Release verification retries asset downloads before publishing and preserves download diagnostics when retries fail.
 
+### Fixed
+
+- Search excerpt navigation waits for the transcript to finish loading before scrolling to its message.
+
 ## [1.0.2] - 2026-10-02
 
 ### Added
