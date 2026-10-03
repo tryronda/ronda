@@ -133,7 +133,7 @@ def button(text):
     return f"//button[normalize-space(.)='{text}']"
 
 
-def choose_folder(project):
+def choose_folder(project, output):
     if os.name != "nt":
         window = wait(lambda: subprocess.run(["xdotool", "search", "--onlyvisible", "--name",
                         "^Choose project folder$"], capture_output=True, text=True).stdout.strip(), "GTK folder picker")
@@ -142,11 +142,15 @@ def choose_folder(project):
         subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+l"], check=True)
         subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", str(project)], check=True)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=True)
-        # GTK's folder chooser uses Select as its default acceptance action.
         time.sleep(.5)
-        subprocess.run(["xdotool", "key", "--clearmodifiers", "alt+s"], check=True)
-        print("Picker windows after Select:", subprocess.run(["xdotool", "search", "--onlyvisible",
-              "--name", "^Choose project folder$"], capture_output=True, text=True).stdout.strip(), flush=True)
+        subprocess.run(["scrot", "-o", str(output / "picker-entry.png")], check=True)
+        remaining = subprocess.run(["xdotool", "search", "--onlyvisible", "--name",
+                        "^Choose project folder$"], capture_output=True, text=True).stdout.splitlines()
+        # Portal dialogs use Open, while GTK-native dialogs use Select: invoke the default action.
+        if window in remaining:
+            subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=True)
+        time.sleep(.5)
+        subprocess.run(["scrot", "-o", str(output / "picker-accepted.png")], check=True)
         return
     # Inspect the native IFileDialog controls; fail with the tree rather than guessing coordinates.
     quoted = "'" + str(project).replace("'", "''") + "'"
@@ -154,10 +158,20 @@ def choose_folder(project):
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 $root = [System.Windows.Automation.AutomationElement]::RootElement
-$condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Choose project folder')
+$name = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Choose project folder')
+$type = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)
+$condition = [System.Windows.Automation.AndCondition]::new($name, $type)
 $deadline = [DateTime]::UtcNow.AddSeconds(45)
-do { $window = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $condition); if (!$window) { Start-Sleep -Milliseconds 200 } } while (!$window -and [DateTime]::UtcNow -lt $deadline)
-if (!$window) { throw 'Native folder picker was not found' }
+do { $window = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition); if (!$window) { Start-Sleep -Milliseconds 200 } } while (!$window -and [DateTime]::UtcNow -lt $deadline)
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+$bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
+$bitmap.Save(SCREENSHOT_LITERAL, [System.Drawing.Imaging.ImageFormat]::Png)
+$graphics.Dispose(); $bitmap.Dispose()
+if (!$window) { $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { Write-Host $_.Current.Name $_.Current.ProcessId $_.Current.ControlType.ProgrammaticName }; throw 'Native folder picker was not found' }
 $controls = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 $edits = @($controls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and $_.Current.Name -match '^Folder( name)?:$' })
 if ($edits.Count -ne 1) { $controls | ForEach-Object { Write-Host $_.Current.Name $_.Current.AutomationId $_.Current.ControlType.ProgrammaticName }; throw 'Expected one folder entry' }
@@ -166,9 +180,13 @@ $value.SetValue(PROJECT_LITERAL)
 $buttons = @($controls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $_.Current.Name.Replace('&','') -match '^(Select Folder|Open)$' })
 if ($buttons.Count -ne 1) { throw 'Expected one folder acceptance button' }
 $buttons[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-""".replace("PROJECT_LITERAL", quoted)
-    subprocess.run(["powershell.exe", "-NoProfile", "-EncodedCommand",
-                    base64.b64encode(script.encode("utf-16le")).decode()], check=True)
+""".replace("PROJECT_LITERAL", quoted).replace("SCREENSHOT_LITERAL",
+            "'" + str((output / "native-picker.png").resolve()).replace("'", "''") + "'")
+    result = subprocess.run(["powershell.exe", "-NoProfile", "-EncodedCommand",
+                    base64.b64encode(script.encode("utf-16le")).decode()], capture_output=True,
+                    encoding="utf-8", errors="replace")
+    if result.returncode:
+        raise RuntimeError(result.stdout + result.stderr)
 
 
 def smoke(app, output, self_check=False):
@@ -221,7 +239,7 @@ def smoke(app, output, self_check=False):
             driver.contains("Project folder is missing or unavailable.")
             assert not logs(), "Readiness invoked the synthetic agent"
             driver.click(button("Choose project folder"))
-            choose_folder(project)
+            choose_folder(project, output)
             wait(lambda: driver.elements(button("Resume")), "recovered Resume")
             assert not logs(), "Folder recovery invoked the synthetic agent"
             with sqlite3.connect(root / "index.db") as db:

@@ -202,7 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y webkit2gtk-driver xvfb xterm xdotool openbox dbus-x11
+          sudo apt-get install -y webkit2gtk-driver xvfb xterm xdotool openbox dbus-x11 scrot
           packages=(smoke-installers/deb/*.deb)
           test "${#packages[@]}" -eq 1
           sudo apt-get install -y "./${packages[0]}"
