@@ -21,6 +21,7 @@ test("shows and downloads the same allowlisted synthetic JSON, keeping the previ
     await new Promise(resolve=>setTimeout(resolve,0));
   });
   try {
+    await invoke("set_pref", { key: "saved_searches_v1", value: "private-query-and-project-path-canary" });
     const expected=await invoke("get_diagnostics_report");
     await act(async()=>root.render(<DiagnosticsExport embedded/>));
     await clickButton("Preview diagnostics report");
@@ -29,6 +30,7 @@ test("shows and downloads the same allowlisted synthetic JSON, keeping the previ
     expect(report).toEqual(expected);
     expect(Object.keys(report)).toEqual(["format_version","app_version","schema_version","generated_at","index_available","session_count","sources"]);
     expect(JSON.stringify(report)).not.toMatch(/\/Users\/|secret|transcript|buildbox|token|project/iu);
+    expect(JSON.stringify(report)).not.toContain("private-query-and-project-path-canary");
     URL.createObjectURL=()=>{throw new Error("synthetic save failure");};
     await clickButton("Save JSON report");
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("synthetic save failure");

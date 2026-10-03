@@ -35,6 +35,10 @@ import {
   captureReadingPosition, mergeReadingPosition, readReadingPositions,
   READING_POSITION_PREF, resolveReadingPosition, type ReadingPositionRecord,
 } from "./reading-position";
+import {
+  parseSavedSearches, savedSearchIdentity, SAVED_SEARCH_LIMIT, SAVED_SEARCHES_KEY,
+  serializeSavedSearches, validateSavedSearchInput, type SavedSearch, type SavedSearchFilters,
+} from "./saved-searches";
 
 const copy = {
   library: "Library", workbench: "Workbench", insights: "Insights", settings: "Settings",
@@ -56,6 +60,7 @@ const copy = {
   you: "You", assistant: "Assistant", note: "Note", localPrivate: "Local and private", error: "Error",
   continueReading: "Continue reading", readingStale: "Saved place no longer matches this transcript",
   readingAmbiguous: "Saved place matches more than one message",
+  saveSearch: "Save current search", savedSearches: "Saved searches", savedSearchName: "Name this search",
 };
 
 const agentNames: Record<AgentId, string> = {
@@ -216,6 +221,19 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setDateFrom(""); setDateThrough(""); setModel(""); setHost("");
   };
   const [search, setSearch] = useState("");
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const savedSearchesRef = useRef(savedSearches);
+  savedSearchesRef.current = savedSearches;
+  const [savedSearchStatus, setSavedSearchStatus] = useState<"loading" | "ready" | "invalid" | "unavailable">("loading");
+  const [savedSearchFeedback, setSavedSearchFeedback] = useState("");
+  const [savedSearchWriteStatus, setSavedSearchWriteStatus] = useState<"clean" | "pending" | "failed">("clean");
+  const savedSearchWriteRevision = useRef(0);
+  const [showSaveSearch, setShowSaveSearch] = useState(false);
+  const [newSavedSearchName, setNewSavedSearchName] = useState("");
+  const [editingSavedSearch, setEditingSavedSearch] = useState<string | null>(null);
+  const [editedSavedSearchName, setEditedSavedSearchName] = useState("");
+  const [hasReplayedSavedSearch, setHasReplayedSavedSearch] = useState(false);
+  const savedSearchWrite = useRef(Promise.resolve());
   const [terminals, setTerminals] = useState<Record<string, TerminalEntry>>({});
   const [terminalShown, setTerminalShown] = useState<Record<string, boolean>>({});
   const detailHeaderRef = useRef<HTMLElement>(null);
@@ -250,6 +268,47 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     preferenceWrite.current=preferenceWrite.current.catch(()=>{}).then(()=>api.setPref("library_filters",value))
       .catch(cause=>setError(`Could not save filters: ${String(cause)}`));
   },[api,preferencesLoaded,project,agent,starredOnly,includeArchived,dateFrom,dateThrough,model,host,searchSort,dates.error]);
+  const savedSearchReadRun = useRef(0);
+  const restoreSavedSearches = useCallback(async () => {
+    const run = ++savedSearchReadRun.current;
+    setSavedSearchStatus("loading"); setSavedSearchFeedback("");
+    try {
+      const parsed = parseSavedSearches(await api.getPref(SAVED_SEARCHES_KEY));
+      if (run !== savedSearchReadRun.current) return;
+      if (!parsed.ok) { setSavedSearchStatus("invalid"); return; }
+      savedSearchesRef.current = parsed.document.items;
+      setSavedSearches(parsed.document.items); setSavedSearchStatus("ready");
+    } catch {
+      if (run === savedSearchReadRun.current) setSavedSearchStatus("unavailable");
+    }
+  }, [api]);
+  useEffect(() => { void restoreSavedSearches(); return () => { savedSearchReadRun.current++; }; }, [restoreSavedSearches]);
+  const persistSavedSearches = useCallback((next: SavedSearch[]) => {
+    if (savedSearchStatus !== "ready") return false;
+    const value = serializeSavedSearches(next);
+    if (!value) { setSavedSearchFeedback("Saved searches are full or exceed the storage limit"); return false; }
+    const revision = ++savedSearchWriteRevision.current;
+    savedSearchesRef.current = next; setSavedSearches(next); setSavedSearchFeedback(""); setSavedSearchWriteStatus("pending");
+    savedSearchWrite.current = savedSearchWrite.current.catch(() => {}).then(() => api.setPref(SAVED_SEARCHES_KEY, value))
+      .then(() => {
+        if (revision === savedSearchWriteRevision.current) {
+          setSavedSearchWriteStatus("clean"); setSavedSearchFeedback("Saved searches updated");
+        }
+      })
+      .catch(() => {
+        if (revision === savedSearchWriteRevision.current) setSavedSearchWriteStatus("failed");
+      });
+    return true;
+  }, [api, savedSearchStatus]);
+  const resetSavedSearches = async () => {
+    try {
+      const empty = JSON.stringify({ version: 1, items: [] });
+      await savedSearchWrite.current.catch(() => {});
+      await api.setPref(SAVED_SEARCHES_KEY, empty);
+      savedSearchesRef.current = []; setSavedSearches([]); setSavedSearchStatus("ready");
+      setSavedSearchWriteStatus("clean"); setSavedSearchFeedback("Saved searches cleared");
+    } catch { setSavedSearchFeedback("Could not clear saved searches"); }
+  };
   const [sessionTotal, setSessionTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const browseOffset = useRef(0);
@@ -639,6 +698,58 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setJumpTo(readingPositionResolution.seq);
     setNotice("Continued from saved position");
   };
+  const currentSavedSearchFilters = (): SavedSearchFilters => ({ project, agent, starredOnly, includeArchived,
+    dateFrom, dateThrough, model, host });
+  const saveCurrentSearch = () => {
+    const validation = validateSavedSearchInput(newSavedSearchName, search);
+    if (validation) { setSavedSearchFeedback(validation); return; }
+    if (savedSearchStatus !== "ready") return;
+    const query = search.trim();
+    const filters = currentSavedSearchFilters();
+    const item: SavedSearch = { id: crypto.randomUUID(), name: newSavedSearchName, query, filters, sort: searchSort };
+    if (savedSearchesRef.current.some(saved => savedSearchIdentity(saved) === savedSearchIdentity(item))) {
+      setSavedSearchFeedback("That saved search already exists"); return;
+    }
+    if (savedSearchesRef.current.length >= SAVED_SEARCH_LIMIT) {
+      setSavedSearchFeedback("Saved searches are full. Remove one before adding another."); return;
+    }
+    if (persistSavedSearches([...savedSearchesRef.current, item])) {
+      setShowSaveSearch(false); setNewSavedSearchName("");
+    }
+  };
+  const replaySavedSearch = (item: SavedSearch) => {
+    setSearch(item.query); setProject(item.filters.project); setAgent(item.filters.agent);
+    setStarredOnly(item.filters.starredOnly); setIncludeArchived(item.filters.includeArchived);
+    setDateFrom(item.filters.dateFrom); setDateThrough(item.filters.dateThrough);
+    setModel(item.filters.model); setHost(item.filters.host); setSearchSort(item.sort);
+    setBookmarksOnly(false); setSavedSearchFeedback(""); setShowSaveSearch(false);
+    setHasReplayedSavedSearch(true);
+    if (detail.kind !== "home") navigateDetail({ kind: "home" });
+  };
+  const renameSavedSearch = (item: SavedSearch) => {
+    const validation = validateSavedSearchInput(editedSavedSearchName, item.query);
+    if (validation) { setSavedSearchFeedback(validation); return; }
+    const nextItem = { ...item, name: editedSavedSearchName };
+    const next = savedSearchesRef.current.map(saved => saved.id === item.id ? nextItem : saved);
+    if (next.some(saved => saved.id !== item.id && savedSearchIdentity(saved) === savedSearchIdentity(nextItem))) {
+      setSavedSearchFeedback("That saved search already exists"); return;
+    }
+    if (persistSavedSearches(next)) { setEditingSavedSearch(null); setEditedSavedSearchName(""); }
+  };
+  const removeSavedSearch = (id: string) => {
+    persistSavedSearches(savedSearchesRef.current.filter(item => item.id !== id));
+  };
+  const clearUnavailableScopes = () => {
+    const projectMissing = !!project && !options.projects.some(option => option.path === project);
+    const modelMissing = !!model && !options.models.includes(model);
+    const remoteHost = host.startsWith("remote:") ? host.slice(7) : "";
+    const hostMissing = !!remoteHost && !options.hosts.includes(remoteHost);
+    if (projectMissing) setProject(null);
+    if (modelMissing) setModel("");
+    if (hostMissing) setHost("");
+    setHasReplayedSavedSearch(false);
+    setSavedSearchFeedback("Unavailable filters cleared from this search");
+  };
   useEffect(() => {
     onActiveSessionChange?.(selected ? { title: plainTitle(selected.title) || selected.native_id,
       project: selected.project_path ? basename(selected.project_path) : null } : null);
@@ -755,6 +866,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     "[&>div:last-child]:flex [&>div:last-child]:w-full [&>div:last-child]:min-w-0 [&>div:last-child]:items-center [&>div:last-child]:gap-2.5",
     active ? "bg-chip text-foreground" : "text-foreground/60 hover:text-foreground");
   const sectionHeading = "label-mono mx-2.5 mt-6 mb-2 text-[12px] lowercase text-muted-foreground";
+  const remoteHost = host.startsWith("remote:") ? host.slice(7) : "";
+  const savedScopeIssue = hasReplayedSavedSearch ? {
+    project: project && !options.projects.some(option => option.path === project) ? project : null,
+    model: model && !options.models.includes(model) ? model : "",
+    host: remoteHost && !options.hosts.includes(remoteHost) ? remoteHost : "",
+  } : null;
+  const hasUnavailableSavedScope = !!savedScopeIssue && !!(savedScopeIssue.project || savedScopeIssue.model || savedScopeIssue.host);
 
   return <div ref={scopeRef} onChangeCapture={()=>{preferenceTouched.current=true;}} onClickCapture={()=>{preferenceTouched.current=true;}} className={cn("workbench-layout relative flex h-full min-h-0 min-w-0", mobileDetail && "detail-open")}>
     <aside aria-label={t.library} aria-hidden={!sidebarOpen} inert={!sidebarOpen}
@@ -854,6 +972,59 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             <option value="relevance">Relevance</option><option value="recent">Recent</option>
           </select>
         </label>}
+        {!bookmarksOnly && search.trim() && <div className="mt-2">
+          <button type="button" className="text-[13px] underline disabled:opacity-50" disabled={savedSearchStatus !== "ready" || !!dates.error}
+            onClick={() => { setShowSaveSearch(value => !value); setSavedSearchFeedback(""); }} aria-expanded={showSaveSearch}>
+            {showSaveSearch ? "Cancel save" : t.saveSearch}
+          </button>
+          {showSaveSearch && <form className="mt-2 flex gap-1.5" onSubmit={event => { event.preventDefault(); saveCurrentSearch(); }}>
+            <label className="sr-only" htmlFor="saved-search-name">{t.savedSearchName}</label>
+            <input id="saved-search-name" autoFocus value={newSavedSearchName} onChange={event => setNewSavedSearchName(event.target.value)}
+              placeholder={t.savedSearchName} className="min-w-0 flex-1 bg-chip px-2 py-1 text-[13px]" />
+            <button type="submit" className="bg-chip px-2 py-1 text-[13px] hover:bg-foreground hover:text-background">Save</button>
+          </form>}
+        </div>}
+        {savedSearchStatus === "loading" && <p role="status" className="mt-2 text-[12px] text-muted-foreground">Loading saved searches…</p>}
+        {savedSearchStatus === "unavailable" && <p role="status" className="mt-2 text-[12px]">Could not read saved searches.
+          <button type="button" className="ml-1 underline" onClick={() => void restoreSavedSearches()}>Retry</button></p>}
+        {savedSearchStatus === "invalid" && <div role="status" className="mt-2 text-[12px]">
+          <p>Saved searches could not be read. Their stored data is unchanged.</p>
+          <button type="button" className="mt-1 underline" onClick={() => void resetSavedSearches()}>Clear and reset saved searches</button>
+        </div>}
+        {savedSearchStatus === "ready" && savedSearches.length > 0 && <details className="mt-2 text-[13px]">
+          <summary className="cursor-pointer text-muted-foreground">{t.savedSearches} ({savedSearches.length})</summary>
+          <div className="mt-1 max-h-48 overflow-y-auto border-l border-border pl-2">
+            {savedSearches.map(item => <div key={item.id} className="border-b border-border py-2">
+              {editingSavedSearch === item.id ? <form className="flex gap-1" onSubmit={event => { event.preventDefault(); renameSavedSearch(item); }}>
+                <label className="sr-only" htmlFor={`saved-search-rename-${item.id}`}>Rename saved search</label>
+                <input id={`saved-search-rename-${item.id}`} autoFocus value={editedSavedSearchName}
+                  onChange={event => setEditedSavedSearchName(event.target.value)} className="min-w-0 flex-1 bg-chip px-1 py-0.5" />
+                <button type="submit" className="underline">Save</button>
+                <button type="button" className="underline" onClick={() => setEditingSavedSearch(null)}>Cancel</button>
+              </form> : <>
+                <button type="button" className="block max-w-full truncate text-left font-medium underline" onClick={() => replaySavedSearch(item)}>{item.name}</button>
+                <p className="break-all text-[11px] text-muted-foreground">{item.query}</p>
+                <p className="truncate text-[10px] text-muted-foreground">{item.filters.project ? basename(item.filters.project) : "All projects"} · {item.filters.agent ?? "All agents"} · {item.sort}</p>
+                <div className="mt-1 flex gap-3 text-[11px]">
+                  <button type="button" className="underline" onClick={() => { setEditingSavedSearch(item.id); setEditedSavedSearchName(item.name); }}>Rename</button>
+                  <button type="button" className="underline" onClick={() => removeSavedSearch(item.id)} aria-label={`Remove ${item.name}`}>Remove</button>
+                </div>
+              </>}
+            </div>)}
+          </div>
+        </details>}
+        {hasUnavailableSavedScope && savedScopeIssue && <div role="status" className="mt-2 border-l-2 border-olive pl-2 text-[12px]">
+          <p>Some saved filters are unavailable in the current library. This search keeps those exact filters.</p>
+          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-muted-foreground">
+            {savedScopeIssue.project && <span>Project: {basename(savedScopeIssue.project)}</span>}
+            {savedScopeIssue.model && <span>Model: {savedScopeIssue.model}</span>}
+            {savedScopeIssue.host && <span>Host: {savedScopeIssue.host}</span>}
+          </div>
+          <button type="button" className="mt-1 underline" onClick={clearUnavailableScopes}>Clear unavailable filters</button>
+        </div>}
+        {savedSearchWriteStatus === "pending" && <p role="status" className="mt-1 text-[11px] text-muted-foreground">Saving saved searches…</p>}
+        {savedSearchWriteStatus === "failed" && <p role="alert" className="mt-1 text-[11px] text-destructive">Latest saved-search change is not saved. Make another change to retry.</p>}
+        {savedSearchFeedback && <p role="status" className="mt-1 text-[11px] text-muted-foreground">{savedSearchFeedback}</p>}
       </div>
       <div ref={sessionListRef} className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || loadingMore || searching || scanning}
         onKeyDown={event => {

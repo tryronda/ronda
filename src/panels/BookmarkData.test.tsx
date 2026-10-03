@@ -12,8 +12,10 @@ test("backup picker keeps conflicts until explicit replacement and rejects malfo
   installDemoBackend();
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   try {
+    await invoke("set_pref",{key:"saved_searches_v1",value:"private-query-and-project-path-canary"});
     await act(async()=>root.render(<BookmarkData embedded/>));
     const backup=JSON.parse(await invoke<string>("get_bookmark_backup")) as BookmarkBackup;
+    expect(JSON.stringify(backup)).not.toContain("private-query-and-project-path-canary");
     const before=backup.bookmarks[0].note;
     backup.bookmarks[0].note="Imported <b>plain note</b>";
     const picker=host.querySelector<HTMLInputElement>('input[type="file"]')!;
