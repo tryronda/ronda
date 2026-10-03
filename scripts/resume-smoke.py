@@ -142,7 +142,7 @@ def choose_folder(project, output):
         # Recent is a search view; switch to filesystem browsing before entering an absolute path.
         subprocess.run(["xdotool", "key", "--clearmodifiers", "alt+Home"], check=True)
         time.sleep(.5)
-        subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+l"], check=True)
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+l", "ctrl+a"], check=True)
         subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", str(project)], check=True)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=True)
         time.sleep(.5)
