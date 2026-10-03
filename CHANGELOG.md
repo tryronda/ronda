@@ -4,6 +4,13 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-10-03
+
+### Fixed
+
+- Unsaved bookmark notes remain available while browsing sessions, filtering bookmarks, or switching transcript views during the current app session. Cancel or Escape discards the draft; Save stores it.
+- Shared bookmark editors prevent overlapping writes, retain failed drafts, and apply successful writes before refreshing the list so a refresh failure does not restore stale notes or timestamps.
+
 ## [1.0.10] - 2026-10-02
 
 ### Added
