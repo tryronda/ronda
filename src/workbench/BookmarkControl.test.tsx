@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
-import { BookmarkControl } from "./BookmarkControl";
+import { BookmarkControl, emptyBookmarkEditor, type BookmarkEditorState } from "./BookmarkControl";
 import { backend, type BookmarkView } from "./api";
 
 test("note saves stay explicit, keep failed drafts, preserve old snapshots, and restore focus", async () => {
@@ -16,7 +16,9 @@ test("note saves stay explicit, keep failed drafts, preserve old snapshots, and 
     return view.bookmark;
   });
   const api={...backend,saveBookmark:save};
-  const render=()=>{root.render(<BookmarkControl api={api} sessionKey="one" seq={7} view={view} changed={async()=>render()}/>);};
+  let editorState=emptyBookmarkEditor;
+  const updateEditor=(update:(current:BookmarkEditorState)=>BookmarkEditorState)=>{editorState=update(editorState);render();};
+  const render=()=>{root.render(<BookmarkControl api={api} sessionKey="one" seq={7} view={view} editorState={editorState} updateEditor={updateEditor} changed={async()=>render()}/>);};
   const click=async(label:string)=>{await act(async()=>Array.from(host.querySelectorAll("button")).find(button=>button.textContent===label)!.click());};
   try {
     await act(async()=>render());

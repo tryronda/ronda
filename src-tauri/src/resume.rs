@@ -145,13 +145,17 @@ fn executable(program: &str, directory: &str) -> Option<bool> {
     }
     #[cfg(target_os = "windows")]
     {
-        let mut command = Command::new("powershell.exe");
-        command.args(["-NoLogo", "-NonInteractive", "-Command", &format!(
-            "if (Get-Command -Name {} -CommandType Application -ErrorAction SilentlyContinue) {{ exit 0 }}; exit 10", crate::powershell_quote(program))]);
-        command.current_dir(directory);
-        // Cold Windows PowerShell startup exceeded two seconds in the native runner.
-        lookup(command, Duration::from_secs(5))
+        executable_in_powershell(program, directory, Duration::from_secs(5))
     }
+}
+
+#[cfg(target_os = "windows")]
+fn executable_in_powershell(program: &str, directory: &str, timeout: Duration) -> Option<bool> {
+    let mut command = Command::new("powershell.exe");
+    command.args(["-NoLogo", "-NonInteractive", "-Command", &format!(
+        "if (Get-Command -Name {} -CommandType Application -ErrorAction SilentlyContinue) {{ exit 0 }}; exit 10", crate::powershell_quote(program))]);
+    command.current_dir(directory);
+    lookup(command, timeout)
 }
 
 pub fn inspect(state: &AppState, key: &str) -> CommandResult<Readiness> {
@@ -400,12 +404,22 @@ mod tests {
             );
             assert!(!valid_path(r"C:relative"));
             assert!(!valid_path(r"\rooted-without-drive"));
+            // Resolution semantics are separate from the production deadline: cold CI
+            // PowerShell can legitimately exceed five seconds and report unknown.
             assert_eq!(
-                executable("powershell.exe", root.to_str().unwrap()),
+                executable_in_powershell(
+                    "powershell.exe",
+                    root.to_str().unwrap(),
+                    Duration::from_secs(30)
+                ),
                 Some(true)
             );
             assert_eq!(
-                executable("ronda-missing-proof.exe", root.to_str().unwrap()),
+                executable_in_powershell(
+                    "ronda-missing-proof.exe",
+                    root.to_str().unwrap(),
+                    Duration::from_secs(30)
+                ),
                 Some(false)
             );
             let mut sleeping = Command::new("powershell.exe");
