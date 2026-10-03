@@ -83,6 +83,8 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - run: bun install --frozen-lockfile
+      - name: Verify scanner health and pruning on this platform
+        run: cargo test -p ronda-core --test library_flow
       - name: Build release CLI and MCP sidecars
         run: bun run prepare:sidecars:release
       - name: Verify prepared sidecars
