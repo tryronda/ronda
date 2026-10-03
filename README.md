@@ -18,7 +18,7 @@
   <a href="https://github.com/tryronda/ronda/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/tryronda/ronda?label=release&color=171719"></a>
   <a href="https://github.com/tryronda/ronda/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/tryronda/ronda/build.yml?branch=main&label=build"></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-171719"></a>
-  <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-171719">
+  <img alt="macOS" src="https://img.shields.io/badge/platform-macOS-171719">
 </p>
 
 ---
@@ -60,16 +60,8 @@ Ronda brings them into one fast, private library. You can find the conversation 
 | Platform | Download |
 | --- | --- |
 | **macOS**, Apple silicon | [Ronda-macos-arm64.dmg](https://github.com/tryronda/ronda/releases/latest/download/Ronda-macos-arm64.dmg) |
-| **macOS**, Intel | [Ronda-macos-x64.dmg](https://github.com/tryronda/ronda/releases/latest/download/Ronda-macos-x64.dmg) |
-| **Windows** x64 | [Ronda-windows-x64-setup.exe](https://github.com/tryronda/ronda/releases/latest/download/Ronda-windows-x64-setup.exe) |
-| **Debian / Ubuntu** | [amd64 .deb](https://github.com/tryronda/ronda/releases/latest/download/Ronda-linux-amd64.deb) · [arm64 .deb](https://github.com/tryronda/ronda/releases/latest/download/Ronda-linux-arm64.deb) |
-| **Linux AppImage** | [x86_64](https://github.com/tryronda/ronda/releases/latest/download/Ronda-linux-x86_64.AppImage) · [aarch64](https://github.com/tryronda/ronda/releases/latest/download/Ronda-linux-aarch64.AppImage) |
 
-Builds are not notarized or code-signed yet, so the first launch needs one extra step:
-
-- **macOS:** open Ronda once, then click **Open Anyway** in **System Settings → Privacy & Security**. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Ronda.app`.
-- **Windows:** if SmartScreen appears, click **More info → Run anyway**.
-- **Linux:** install the `.deb` with `sudo apt install ./Ronda-linux-amd64.deb`, or `chmod +x` the AppImage and run it.
+Builds are not notarized or code-signed yet, so the first launch needs one extra step: open Ronda once, then click **Open Anyway** in **System Settings → Privacy & Security**. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Ronda.app`.
 
 Each release includes `SHA256SUMS.txt` for checking your download. The full install guide is at **[tryronda.cloud/docs](https://tryronda.cloud/docs/#install)**.
 

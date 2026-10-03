@@ -34,7 +34,7 @@
     "category": "DeveloperTool",
     "shortDescription": "A local library for your coding-agent sessions",
     "longDescription": "Browse, search, and resume sessions from 18 coding agents. Ronda indexes them on your machine and never uploads them.",
-    "targets": "all",
+    "targets": ["dmg"],
     "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "externalBin": ["binaries/ronda-cli", "binaries/ronda-mcp"]
   }

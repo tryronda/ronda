@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Desktop releases and CI now build a macOS Apple silicon DMG only. Windows, Linux, and Intel Mac installers are no longer published.
+
 ## [1.0.17] - 2026-10-03
 
 ### Added
