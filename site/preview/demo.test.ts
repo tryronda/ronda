@@ -2,7 +2,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { backend, queryDefaults, type BookmarkBackup, type BookmarkImport } from "@/workbench/api";
-import { appendDemoMessage, installDemoBackend, uninstallDemoBackend } from "./demo";
+import { appendDemoMessage, changeFirstDemoAssistantReply, installDemoBackend, insertEarlierDemoMessage, uninstallDemoBackend } from "./demo";
+import { captureReadingPosition, resolveReadingPosition } from "@/workbench/reading-position";
 
 afterEach(uninstallDemoBackend);
 
@@ -54,6 +55,39 @@ test("sample messages update the real workbench backend and notify subscribed re
   expect(changed).toHaveBeenCalledTimes(1);
   stop(); appendDemoMessage(); expect(changed).toHaveBeenCalledTimes(1);
   await expect(invoke("unknown_preview_command")).rejects.toThrow("Unsupported preview command");
+});
+
+test("sample reading snapshots use SHA-256 and preferences reset when the preview reloads", async () => {
+  installDemoBackend();
+  const snapshot = await backend.getTranscriptSnapshot("claude-code:demo-0");
+  expect(snapshot.messages.length).toBeGreaterThan(0);
+  expect(snapshot.fingerprints).toHaveLength(snapshot.messages.length);
+  expect(snapshot.session_key_hash).toMatch(/^[0-9a-f]{64}$/);
+  expect(snapshot.fingerprints.every(value => /^[0-9a-f]{64}$/.test(value))).toBe(true);
+  await backend.setPref("reading_positions_v1", "synthetic only");
+  expect(await backend.getPref("reading_positions_v1")).toBe("synthetic only");
+  uninstallDemoBackend();
+  installDemoBackend();
+  expect(await backend.getPref("reading_positions_v1")).toBeNull();
+});
+
+test("synthetic earlier insertion preserves exact saved content and an edited reply becomes stale", async () => {
+  installDemoBackend();
+  const key = "claude-code:demo-0";
+  const original = await backend.getTranscriptSnapshot(key);
+  const saved = captureReadingPosition(original, 1, Date.now(), 1)!;
+  const firstReplyFingerprint = original.fingerprints[1];
+
+  insertEarlierDemoMessage();
+  const inserted = await backend.getTranscriptSnapshot(key);
+  expect(inserted.messages[2].seq).toBe(original.messages[1].seq + 1);
+  expect(inserted.fingerprints[2]).toBe(firstReplyFingerprint);
+  expect(resolveReadingPosition(inserted, saved)).toEqual({ status: "resolved", seq: inserted.messages[2].seq });
+
+  changeFirstDemoAssistantReply();
+  const edited = await backend.getTranscriptSnapshot(key);
+  expect(edited.fingerprints[2]).not.toBe(firstReplyFingerprint);
+  expect(resolveReadingPosition(edited, saved)).toEqual({ status: "stale" });
 });
 
 test("sample project folders require the desktop app", async () => {

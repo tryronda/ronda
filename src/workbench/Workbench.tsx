@@ -31,6 +31,10 @@ import {
   type WorkbenchBackend, type BookmarkView, type LibraryOptions, type WorkbenchLocation, type ProjectContext,
 } from "./api";
 import { scanSummary } from "./scan-summary";
+import {
+  captureReadingPosition, mergeReadingPosition, readReadingPositions,
+  READING_POSITION_PREF, resolveReadingPosition, type ReadingPositionRecord,
+} from "./reading-position";
 
 const copy = {
   library: "Library", workbench: "Workbench", insights: "Insights", settings: "Settings",
@@ -50,6 +54,8 @@ const copy = {
   subagentFolderUnavailable: "Subagent sessions do not have an openable project folder",
   unknownFolderUnavailable: "Project folder is unknown", copyProjectPath: "Copy project path",
   you: "You", assistant: "Assistant", note: "Note", localPrivate: "Local and private", error: "Error",
+  continueReading: "Continue reading", readingStale: "Saved place no longer matches this transcript",
+  readingAmbiguous: "Saved place matches more than one message",
 };
 
 const agentNames: Record<AgentId, string> = {
@@ -177,6 +183,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const sessionListRef = useRef<HTMLDivElement>(null);
   const [promptsOnly, setPromptsOnly] = useState(false);
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [transcriptSnapshot, setTranscriptSnapshot] = useState<{ key: string; snapshot: import("./api").TranscriptSnapshot } | null>(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [project, setProject] = useState<string | null>(null);
   useEffect(()=>{
@@ -216,6 +223,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [hits, setHits] = useState<SearchGroup[]>([]);
   const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [readingPositionRecords, setReadingPositionRecords] = useState<ReadingPositionRecord[]>([]);
+  const readingPositionRecordsRef = useRef(readingPositionRecords);
+  readingPositionRecordsRef.current = readingPositionRecords;
+  const readingPositionsLoaded = useRef(false);
   const preferenceTouched = useRef(false);
   const preferenceWrite = useRef(Promise.resolve());
   useEffect(() => {
@@ -254,6 +265,31 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const enqueueReadingPositionWrite = () => {
+    if (!readingPositionsLoaded.current) return;
+    preferenceWrite.current = preferenceWrite.current.catch(() => {}).then(() => api.setPref(
+      READING_POSITION_PREF,
+      JSON.stringify({ version: 1, records: readingPositionRecordsRef.current }),
+    )).catch(() => setError("Could not save Continue reading position"));
+  };
+  useEffect(() => {
+    let cancelled = false;
+    readingPositionsLoaded.current = false;
+    void api.getPref(READING_POSITION_PREF).then(raw => {
+      if (cancelled) return;
+      let merged = readReadingPositions(raw);
+      for (const pending of pendingRecords.current.values()) merged = mergeReadingPosition(merged, pending);
+      readingPositionRecordsRef.current = merged;
+      setReadingPositionRecords(merged);
+      readingPositionsLoaded.current = true;
+      if (pendingRecords.current.size) enqueueReadingPositionWrite();
+      pendingRecords.current.clear();
+    }).catch(() => {
+      if (cancelled) return;
+      setError("Could not restore Continue reading position");
+    });
+    return () => { cancelled = true; };
+  }, [api]);
   const [transcriptJumpToken, setTranscriptJumpToken] = useState(0);
   const [contextSelection, setContextSelection] = useState<ContextSelection[]>([]);
   const contextSelected = new Set(contextSelection.map(contextId));
@@ -274,6 +310,70 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const loadedKey = useRef<string | null>(null);
   const reloadRun = useRef(0);
   const scrollRestore = useRef<{ bottom: boolean; seq: string | null; offset: number; top: number } | null>(null);
+  const unavailableRef = useRef(unavailable);
+  unavailableRef.current = unavailable;
+  const selectedKeyRef = useRef(selectedKey);
+  selectedKeyRef.current = selectedKey;
+  const transcriptSnapshotRef = useRef(transcriptSnapshot);
+  transcriptSnapshotRef.current = transcriptSnapshot;
+  const pendingReadingIntent = useRef<{ key: string; snapshot: NonNullable<typeof transcriptSnapshot>; savedAt: number } | null>(null);
+  const readingDebounce = useRef<number | null>(null);
+  const gestureExpiry = useRef<number | null>(null);
+  const generationBySession = useRef(new Map<string, number>());
+  const pendingRecords = useRef(new Map<string, ReadingPositionRecord>());
+  const cancelPendingReadingSave = useCallback(() => {
+    if (readingDebounce.current !== null) window.clearTimeout(readingDebounce.current);
+    if (gestureExpiry.current !== null) window.clearTimeout(gestureExpiry.current);
+    readingDebounce.current = null;
+    gestureExpiry.current = null;
+    pendingReadingIntent.current = null;
+  }, []);
+  const noteReadingIntent = useCallback(() => {
+    const current = transcriptSnapshotRef.current;
+    if (!isActive || transcriptLoading || unavailable || !selectedKey || !current || current.key !== selectedKey
+      || terminalShown[selectedKey]) return;
+    if (gestureExpiry.current !== null) window.clearTimeout(gestureExpiry.current);
+    pendingReadingIntent.current = { key: selectedKey, snapshot: current, savedAt: Date.now() };
+    // A wheel/touch at a boundary can produce no scroll. Never let that input authorize a later layout scroll.
+    gestureExpiry.current = window.setTimeout(() => {
+      gestureExpiry.current = null;
+      if (readingDebounce.current === null) pendingReadingIntent.current = null;
+    }, 700);
+  }, [isActive, transcriptLoading, unavailable, selectedKey, terminalShown]);
+  const captureReadingIntentAfterScroll = useCallback(() => {
+    const pending = pendingReadingIntent.current;
+    if (!pending || pending.key !== selectedKeyRef.current || transcriptSnapshotRef.current !== pending.snapshot) return;
+    if (gestureExpiry.current !== null) window.clearTimeout(gestureExpiry.current);
+    gestureExpiry.current = null;
+    if (readingDebounce.current !== null) window.clearTimeout(readingDebounce.current);
+    readingDebounce.current = window.setTimeout(() => {
+      readingDebounce.current = null;
+      if (pendingReadingIntent.current !== pending || selectedKeyRef.current !== pending.key
+        || transcriptSnapshotRef.current !== pending.snapshot || unavailableRef.current
+        || terminalShown[pending.key] || !isActive) return;
+      pendingReadingIntent.current = null;
+      const container = transcriptRef.current;
+      if (!container) return;
+      const bounds = container.getBoundingClientRect();
+      const article = Array.from(container.querySelectorAll<HTMLElement>("article[id^='message-']"))
+        .find(item => { const rect = item.getBoundingClientRect(); return rect.bottom > bounds.top && rect.top < bounds.bottom; });
+      if (!article) return;
+      const seq = Number(article.id.slice("message-".length));
+      const snapshot = pending.snapshot.snapshot;
+      const index = snapshot.messages.findIndex(message => message.seq === seq);
+      const previous = readingPositionRecordsRef.current.find(record => record.session_key_hash === snapshot.session_key_hash);
+      const generation = Math.max(generationBySession.current.get(snapshot.session_key_hash) ?? 0, previous?.generation ?? 0) + 1;
+      generationBySession.current.set(snapshot.session_key_hash, generation);
+      const record = captureReadingPosition(snapshot, index, pending.savedAt, generation);
+      if (!record) return;
+      const next = mergeReadingPosition(readingPositionRecordsRef.current, record);
+      if (!next.some(item => item.session_key_hash === record.session_key_hash && item.generation === record.generation)) return;
+      readingPositionRecordsRef.current = next;
+      setReadingPositionRecords(next);
+      if (!readingPositionsLoaded.current) pendingRecords.current.set(record.session_key_hash, record);
+      else enqueueReadingPositionWrite();
+    }, 240);
+  }, [isActive, terminalShown]);
 
   const filter = useMemo<SessionQuery>(() => ({ ...queryDefaults, agent,
     project_path: project, starred_only: starredOnly, include_archived: includeArchived,
@@ -378,21 +478,30 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     return () => { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle); };
   }, []);
   useEffect(() => {
-    if (!isActive) return;
-    if (!selectedKey) { setMessages([]); setTranscriptLoading(false); loadedKey.current = null; return; }
+    if (!isActive) { cancelPendingReadingSave(); return; }
+    if (!selectedKey) {
+      cancelPendingReadingSave(); setMessages([]); setTranscriptSnapshot(null); setTranscriptLoading(false); loadedKey.current = null; return;
+    }
+    cancelPendingReadingSave();
     let cancelled = false;
     const firstLoad = loadedKey.current !== selectedKey;
     loadedKey.current = selectedKey;
     if (firstLoad) {
       setPromptsOnly(false);
       setMessages([]); setTranscriptLoading(true); setUnavailable(false); setNewMessages(false);
+      setTranscriptSnapshot(null);
       scrollRestore.current = null;
     }
-    void Promise.all([api.getSession(selectedKey), api.getTranscript(selectedKey)]).then(([meta, next]) => {
+    void Promise.all([api.getSession(selectedKey), api.getTranscriptSnapshot(selectedKey)]).then(([meta, snapshot]) => {
       if (cancelled) return;
-      setUnavailable(!meta);
-      if (!meta) return;
+      if (!meta) {
+        cancelPendingReadingSave(); setUnavailable(true); setTranscriptSnapshot(null); return;
+      }
+      setUnavailable(false);
       setOpened(meta);
+      const next = snapshot.messages;
+      cancelPendingReadingSave();
+      setTranscriptSnapshot({ key: selectedKey, snapshot });
       setMessages(current => {
         if (sameJson(current, next)) return current;
         const container = transcriptRef.current;
@@ -407,16 +516,17 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         }
         return next;
       });
-    }).catch(cause => { if (!cancelled) setError(String(cause)); })
+    }).catch(cause => { if (!cancelled) { cancelPendingReadingSave(); setTranscriptSnapshot(null); setError(String(cause)); } })
       .finally(() => { if (!cancelled) setTranscriptLoading(false); });
     return () => { cancelled = true; };
-  }, [api, selectedKey, revision, isActive]);
+  }, [api, selectedKey, revision, isActive, cancelPendingReadingSave]);
 
   useLayoutEffect(() => {
     const container = transcriptRef.current;
     const restore = scrollRestore.current;
     scrollRestore.current = null;
     if (!container || !restore) return;
+    cancelPendingReadingSave();
     if (restore.bottom) { container.scrollTop = container.scrollHeight; setNewMessages(false); }
     else {
       const anchor = restore.seq ? container.querySelector<HTMLElement>(`#${restore.seq}`) : null;
@@ -424,7 +534,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         ? container.scrollTop + anchor.getBoundingClientRect().top - container.getBoundingClientRect().top - restore.offset
         : restore.top;
     }
-  }, [messages]);
+  }, [messages, cancelPendingReadingSave]);
 
   useEffect(() => {
     const run = ++searchRun.current;
@@ -475,6 +585,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   useEffect(() => { if (homeToken) { setSelectedKey(null); setLocalLocation({kind:"home"}); setMobileDetail(false); setBookmarksOnly(false); } }, [homeToken]);
   useEffect(() => {
     if (!openRequest) return;
+    cancelPendingReadingSave();
     let cancelled = false;
     // The session may sit outside the current filters, or be a subagent, so load its details directly.
     void api.getSession(openRequest.key).then(meta => {
@@ -488,7 +599,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       setMobileDetail(true);
     }).catch(cause => { if (!cancelled) setError(String(cause)); });
     return () => { cancelled = true; };
-  }, [api, openRequest]);
+  }, [api, openRequest, cancelPendingReadingSave]);
   const reduce = useReducedMotion();
   const shortcut = navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl+";
 
@@ -496,9 +607,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     if (jumpTo === null || transcriptLoading || !messages.some(m => m.seq === jumpTo)) return;
     const target = transcriptRef.current?.querySelector<HTMLElement>(`#message-${jumpTo}`);
     if (!target) return;
+    cancelPendingReadingSave();
     target.scrollIntoView({ block: "center", behavior: reduce ? "instant" : "smooth" });
     setJumpTo(null);
-  }, [jumpTo, messages, transcriptLoading, reduce, promptsOnly]);
+  }, [jumpTo, messages, transcriptLoading, reduce, promptsOnly, cancelPendingReadingSave]);
 
   useEffect(() => {
     if (!notice) return;
@@ -508,6 +620,25 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
   const selected = sessions.find(s => s.key === selectedKey) ?? hits.find(h => h.session.key === selectedKey)?.session
     ?? (opened?.key === selectedKey ? opened : null);
+  const currentTranscriptSnapshot = transcriptSnapshot?.key === selectedKey && !transcriptLoading && !unavailable
+    ? transcriptSnapshot.snapshot : null;
+  const savedReadingPosition = currentTranscriptSnapshot
+    ? readingPositionRecords.find(record => record.session_key_hash === currentTranscriptSnapshot.session_key_hash) : undefined;
+  const readingPositionResolution = currentTranscriptSnapshot && savedReadingPosition
+    ? resolveReadingPosition(currentTranscriptSnapshot, savedReadingPosition) : null;
+  const setPromptsOnlyForNavigation = (value: boolean) => {
+    cancelPendingReadingSave();
+    setPromptsOnly(value);
+  };
+  const continueReading = () => {
+    if (!readingPositionResolution || readingPositionResolution.status !== "resolved") return;
+    if (terminalShown[selectedKey ?? ""]) return;
+    cancelPendingReadingSave();
+    setPromptsOnly(false);
+    setTranscriptJumpToken(value => value + 1);
+    setJumpTo(readingPositionResolution.seq);
+    setNotice("Continued from saved position");
+  };
   useEffect(() => {
     onActiveSessionChange?.(selected ? { title: plainTitle(selected.title) || selected.native_id,
       project: selected.project_path ? basename(selected.project_path) : null } : null);
@@ -517,6 +648,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const agents = useMemo(() => Array.from(new Set(bookmarksOnly ? bookmarks.map(view => view.session?.agent ?? view.bookmark.agent) : options.agents)).sort(), [options, bookmarks, bookmarksOnly]);
 
   const choose = (session: SessionMeta, seq?: number) => {
+    cancelPendingReadingSave();
     navigateDetail({kind:"session",key:session.key,...(seq!==undefined ? {seq} : {}),...(projectContext ? {project:projectContext} : {})});
     setOpened(session);
     setSelectedKey(session.key);
@@ -553,7 +685,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     return () => observer.disconnect();
   }, [selectedKey]);
 
-  const showTerminal = (key: string, shown: boolean) => setTerminalShown(current => ({ ...current, [key]: shown }));
+  const showTerminal = (key: string, shown: boolean) => {
+    if (shown) cancelPendingReadingSave();
+    setTerminalShown(current => ({ ...current, [key]: shown }));
+  };
 
   const startTerminal = (key: string) => {
     setTerminals(current => {
@@ -819,6 +954,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             <IconButton icon={StarIcon} title={selected.starred ? t.unstar : t.star} active={selected.starred} onClick={() => void flag("starred")} />
             <IconButton icon={PinIcon} title={selected.pinned ? t.unpin : t.pin} active={selected.pinned} onClick={() => void flag("pinned")} />
             <IconButton icon={Download01Icon} title={t.export} onClick={() => void exportMarkdown()} />
+            {readingPositionResolution?.status === "resolved" && !terminalShown[selected.key] && <button type="button" className="label-mono ml-2 bg-chip px-3 py-2 text-[12px] hover:bg-foreground hover:text-background"
+              onClick={continueReading}>{t.continueReading}</button>}
             {selected.can_delete && !selected.host && !selected.parent_key && <IconButton icon={Delete02Icon} title={t.trash} onClick={() => void trash()} />}
             {terminals[selected.key] && <div className="ml-2 flex bg-chip p-0.5" role="tablist" aria-label={t.terminal}>
               {([[false, t.transcript], [true, t.terminal]] as const).map(([shown, label]) =>
@@ -834,16 +971,24 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         </header>
         <ResumeReadiness api={api} session={selected} active={isActive} running={!!terminals[selected.key]?.running} onResume={()=>void resume()} />
         <SessionConnections api={api} session={selected} active={isActive} onOpen={session=>choose(session,0)} />
+        {readingPositionResolution?.status === "stale" && <p role="status" className="bg-chip px-5 py-2 text-sm">{t.readingStale}</p>}
+        {readingPositionResolution?.status === "ambiguous" && <p role="status" className="bg-chip px-5 py-2 text-sm">{t.readingAmbiguous}</p>}
         <TranscriptNavigation key={selected.key} container={transcriptRef} scope={scopeRef} embedded={embedded}
-          active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnly} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} findRequest={findRequest} />
+          active={isActive && !terminalShown[selected.key]} promptsOnly={promptsOnly} setPromptsOnly={setPromptsOnlyForNavigation} reducedMotion={!!reduce} jumpToken={transcriptJumpToken} findRequest={findRequest}
+          onBeforeProgrammaticScroll={cancelPendingReadingSave} />
         {!matchesSession(selected,filter) && <p role="status" className="bg-chip px-5 py-2 text-sm">Outside current filters</p>}
         {unavailable && <p role="status" className="bg-chip px-5 py-2 text-sm">Session no longer available. Previously loaded content is kept below.</p>}
         {newMessages && <button type="button" className="bg-chip px-5 py-2 text-sm" onClick={() => {
+          cancelPendingReadingSave();
           const container = transcriptRef.current;
           if (container) container.scrollTop = container.scrollHeight;
           setNewMessages(false);
         }}>New messages ↓</button>}
-        <div ref={transcriptRef} inert={!!terminalShown[selected.key]} aria-hidden={!!terminalShown[selected.key]} className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto" aria-busy={transcriptLoading}>
+        <div ref={transcriptRef} tabIndex={0} aria-label="Session transcript" onWheel={noteReadingIntent} onTouchMove={noteReadingIntent}
+          onScroll={captureReadingIntentAfterScroll} onKeyDown={event => {
+            if (event.target === event.currentTarget && ["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) noteReadingIntent();
+          }} inert={!!terminalShown[selected.key]} aria-hidden={!!terminalShown[selected.key]}
+          className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto" aria-busy={transcriptLoading}>
           {transcriptLoading ? <div className="transcript-skeleton mx-auto max-w-[780px] px-10 py-9" role="status" aria-label={t.loading}>
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}

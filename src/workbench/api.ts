@@ -46,6 +46,12 @@ export interface TranscriptMessage {
   images: { media_type: string; data_base64: string }[];
 }
 
+export interface TranscriptSnapshot {
+  session_key_hash: string;
+  messages: TranscriptMessage[];
+  fingerprints: string[];
+}
+
 export interface SessionQuery {
   agent: AgentId | null;
   project_path: string | null;
@@ -135,6 +141,7 @@ export interface WorkbenchBackend {
   sessionPage(query: SessionQuery, offset: number, limit: number): Promise<SessionPage>;
   getSession(key: string): Promise<SessionMeta | null>;
   getTranscript(key: string): Promise<TranscriptMessage[]>;
+  getTranscriptSnapshot(key: string): Promise<TranscriptSnapshot>;
   searchSessions(query: string, filter: SessionQuery, limit: number): Promise<SearchHit[]>;
   searchGrouped(query: string, filter: SessionQuery, sort: SearchSort, offset: number, limit: number): Promise<GroupedSearch>;
   searchSessionMatches(query: string, filter: SessionQuery, key: string, offset: number, limit: number): Promise<SearchMatches>;
@@ -164,6 +171,7 @@ export const backend: WorkbenchBackend = {
   sessionPage: (query, offset, limit) => invoke("session_page", {query, offset, limit}),
   getSession: (key) => invoke("get_session", { key }),
   getTranscript: (key) => invoke("get_transcript", { key }),
+  getTranscriptSnapshot: (key) => invoke("get_transcript_snapshot", { key }),
   searchSessions: (query, filter, limit) => invoke("search_sessions", { query, filter, limit }),
   searchGrouped: (query, filter, sort, offset, limit) => invoke("search_grouped", { query, filter, sort, offset, limit }),
   searchSessionMatches: (query, filter, key, offset, limit) => invoke("search_session_matches", { query, filter, key, offset, limit }),

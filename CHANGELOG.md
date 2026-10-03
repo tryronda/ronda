@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-10-03
+
+### Added
+- **Continue reading** returns to a saved reading place in any indexed session when its exact content can still be identified. Positions stay in local preferences and never jump automatically.
+
 ## [1.0.15] - 2026-10-03
 
 ### Added

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { transcriptMatches, type TranscriptMatch } from "./transcript-find";
 
-export function TranscriptNavigation({ container, scope, active, embedded, promptsOnly, setPromptsOnly, reducedMotion, jumpToken, findRequest }: {
+export function TranscriptNavigation({ container, scope, active, embedded, promptsOnly, setPromptsOnly, reducedMotion, jumpToken, findRequest, onBeforeProgrammaticScroll }: {
   container: RefObject<HTMLDivElement | null>; scope: RefObject<HTMLDivElement | null>;
   active: boolean; embedded: boolean; promptsOnly: boolean; setPromptsOnly: (value: boolean) => void; reducedMotion: boolean; jumpToken: number; findRequest?:{text:string;token:number}|null;
+  onBeforeProgrammaticScroll?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -54,16 +55,18 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
       parent = parent.parentElement;
     }
     const target = current.range.startContainer.parentElement;
+    onBeforeProgrammaticScroll?.();
     target?.scrollIntoView({ block: "center", behavior: reducedMotion ? "instant" : "smooth" });
     const selection = window.getSelection();
     selection?.removeAllRanges(); selection?.addRange(current.range);
     return () => {
       if (selection?.rangeCount && selection.getRangeAt(0) === current.range) selection.removeAllRanges();
     };
-  }, [active, open, current, container, reducedMotion]);
+  }, [active, open, current, container, reducedMotion, onBeforeProgrammaticScroll]);
 
   const edge = (last: boolean) => {
     const articles = container.current?.querySelectorAll("article[id^='message-']");
+    onBeforeProgrammaticScroll?.();
     (last ? articles?.[articles.length - 1] : articles?.[0])?.scrollIntoView({ block: last ? "end" : "start", behavior: reducedMotion ? "instant" : "smooth" });
   };
   return <div hidden={!active} className={`${active ? "flex" : "hidden"} flex-none flex-wrap items-center gap-3 border-b border-border px-5 py-2 text-[13px]`} aria-label="Transcript navigation">
