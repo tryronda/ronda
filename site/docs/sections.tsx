@@ -12,10 +12,7 @@ const agents = ["Claude Code", "Codex", "Grok Build", "DeepSeek Harness", "Curso
   "Kimi Code", "Gemini CLI", "Copilot CLI", "Antigravity CLI", "Qoder", "Hermes Agent", "OpenClaw", "CodeBuddy", "WorkBuddy"];
 
 const downloads: [string, string][] = [
-  ["macOS", `[Apple silicon](${ASSETS.macArm}) · [Intel](${ASSETS.macIntel})`],
-  ["Windows", `[x64 installer](${ASSETS.windows})`],
-  ["Debian / Ubuntu", `[amd64 .deb](${ASSETS.debAmd64}) · [arm64 .deb](${ASSETS.debArm64})`],
-  ["Linux AppImage", `[x86_64](${ASSETS.appImageX64}) · [aarch64](${ASSETS.appImageArm64})`],
+  ["macOS, Apple silicon", `[Ronda-macos-arm64.dmg](${ASSETS.macArm})`],
 ];
 
 const shortcuts: [string, string][] = [
@@ -33,22 +30,14 @@ export const docs: DocSection[] = [
   {
     id: "install", title: "Install",
     body: <>
-      <P>{`Every release ships installers for macOS, Windows, and Linux. The links below always point at the [latest release](${RELEASES_URL}).`}</P>
+      <P>{`Every release ships a macOS Apple silicon DMG. The link below always points at the [latest release](${RELEASES_URL}).`}</P>
       <table className="docs-table"><tbody>
         {downloads.map(([platform, links]) => <tr key={platform}><td>{platform}</td><td><Inline>{links}</Inline></td></tr>)}
       </tbody></table>
       <h3>macOS</h3>
-      <P>Open the DMG and drag Ronda into Applications. Pick **Apple silicon** for M-series Macs and **Intel** for older ones.</P>
+      <P>Open the DMG and drag Ronda into Applications. Ronda requires an Apple silicon Mac.</P>
       <P>Builds are not notarized by Apple yet, so macOS blocks the first launch. Open Ronda once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. If macOS instead says the app "is damaged", remove the download quarantine flag and open it again:</P>
       <Code>{`xattr -dr com.apple.quarantine /Applications/Ronda.app`}</Code>
-      <h3>Windows</h3>
-      <P>Run the installer. The installer is not code-signed yet, so SmartScreen may show "Windows protected your PC": click **More info**, then **Run anyway**.</P>
-      <h3>Linux</h3>
-      <P>On Debian or Ubuntu, install the `.deb` with apt so it pulls in WebKitGTK. The AppImage runs on most other distributions and needs FUSE 2 (`libfuse2t64` on Ubuntu 24.04).</P>
-      <Code>{`sudo apt install ./Ronda-linux-amd64.deb
-
-chmod +x Ronda-linux-x86_64.AppImage
-./Ronda-linux-x86_64.AppImage`}</Code>
       <h3>Verify a download</h3>
       <P>{`Each release includes [SHA256SUMS.txt](${ASSETS.checksums}). Put it next to your download and run:`}</P>
       <Code>{`shasum -a 256 --check --ignore-missing SHA256SUMS.txt`}</Code>
@@ -70,7 +59,6 @@ chmod +x Ronda-linux-x86_64.AppImage
   {
     id: "shortcuts", title: "Keyboard shortcuts",
     body: <>
-      <P>On Windows and Linux, use Ctrl in place of ⌘.</P>
       <table className="docs-table"><tbody>
         {shortcuts.map(([keys, action]) => <tr key={keys}><td><kbd>{keys}</kbd></td><td>{action}</td></tr>)}
       </tbody></table>
@@ -143,13 +131,13 @@ chmod +x Ronda-linux-x86_64.AppImage
         "The session header gets a **Transcript / Terminal** switch. The dot next to **Terminal** pulses while the terminal process is open; it does not verify agent startup.",
         "Terminals keep running while you open other sessions or switch to Insights or Settings. Each resumed session has its own terminal.",
         "When the agent exits, the terminal stays open in your login shell in the same folder. **Restart** runs the resume command again.",
-        "**Open in system terminal** hands the session to Terminal on macOS, Windows Terminal or PowerShell on Windows, or `x-terminal-emulator` on Linux.",
+        "**Open in system terminal** hands the session to Terminal on macOS.",
         "**Stop and close terminal** ends the process and returns to the transcript.",
       ]} />
-      <P>The terminal starts your login shell (`$SHELL -l`, or PowerShell on Windows), so the agent finds the same `PATH` it has in your usual terminal. Resume needs a known project folder and is not available for subagent transcripts.</P>
+      <P>The terminal starts your login shell (`$SHELL -l`), so the agent finds the same `PATH` it has in your usual terminal. Resume needs a known project folder and is not available for subagent transcripts.</P>
       <P>For a moved local project, **Choose project folder** opens the native folder picker. The exact original path maps to the selected existing folder for every local session from that project. **Effective folder** shows the mapping; session metadata and agent files stay untouched. Remove it under **Settings → Locations → Recovered project folders**. Remote sessions never use local mappings.</P>
       <P>Use **Open project folder** in a local session's header to open its existing effective folder in the system file manager. This respects recovered-folder mappings. Remote and subagent sessions cannot open a local folder. If the folder has moved or is unavailable, use **Copy project path** and choose a new folder with **Choose project folder** in Resume readiness.</P>
-      <P>Embedded Resume, Restart, and Open in system terminal inspect again immediately before launch. Executable lookup uses the configured login shell on macOS/Linux with a two-second timeout, or PowerShell on Windows with a five-second timeout to allow for shell startup. An incomplete check is **Unknown**, rather than proof the executable is missing. Ronda does not install an agent; DeepSeek’s `npx` resume uses `--no-install` and reports a missing package in terminal output. A spawned terminal does not verify successful startup; terminal errors and output remain visible.</P>
+      <P>Embedded Resume, Restart, and Open in system terminal inspect again immediately before launch. Executable lookup uses the configured login shell with a two-second timeout. An incomplete check is **Unknown**, rather than proof the executable is missing. Ronda does not install an agent; DeepSeek’s `npx` resume uses `--no-install` and reports a missing package in terminal output. A spawned terminal does not verify successful startup; terminal errors and output remain visible.</P>
       <P>The live preview labels readiness as sample data. **Choose sample folder** changes only a synthetic mapping; Resume and Open project folder report **Desktop required**. It never inspects the visitor’s filesystem, opens a folder, or starts an agent. You can scroll a sample transcript and try **Continue reading**; its preference is in memory and resets when the preview reloads.</P>
       <P>Open transcripts refresh as local agent files change. When you are reading earlier messages, **New messages** lets you jump to the latest content without losing your place. Remote transcripts refresh after a successful sync.</P>
       <P>Remote folders and agent availability are explicitly unchecked; only local SSH availability is inspected. Launch can report authentication, connection, or remote-environment errors. Remote sessions resume on their host: the terminal runs `ssh -t` to the host and starts the agent there. **Open in system terminal** copies that SSH command to the clipboard instead.</P>
@@ -230,11 +218,11 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
   {
     id: "source", title: "Build from source",
     body: <>
-      <P>Install Bun 1.4.2 and a current stable Rust toolchain. Linux also needs the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).</P>
+      <P>Install Bun 1.4.2 and a current stable Rust toolchain on an Apple silicon Mac.</P>
       <Code>{`git clone ${REPO_URL}.git && cd ronda
 bun install --frozen-lockfile
 bun run tauri:dev      # run the desktop app
-bun run tauri:build    # create an installer for this platform`}</Code>
+bun run tauri:build    # create a macOS Apple silicon DMG`}</Code>
     </>,
   },
 ];

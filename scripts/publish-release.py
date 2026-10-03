@@ -8,9 +8,7 @@ import tempfile
 import time
 
 ASSETS = {
-    'Ronda-macos-arm64.dmg', 'Ronda-macos-x64.dmg', 'Ronda-windows-x64-setup.exe',
-    'Ronda-linux-amd64.deb', 'Ronda-linux-arm64.deb',
-    'Ronda-linux-x86_64.AppImage', 'Ronda-linux-aarch64.AppImage',
+    'Ronda-macos-arm64.dmg',
 }
 
 

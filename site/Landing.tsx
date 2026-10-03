@@ -52,14 +52,13 @@ export function Landing() {
             <a href={downloads.appleSilicon} className="flex h-10 items-center gap-2 bg-foreground px-4 font-mono text-[14px] font-medium tracking-[0.025em] text-background transition-opacity hover:opacity-90">
               <HugeiconsIcon icon={AppleIcon} size={16} strokeWidth={1.8} />download for mac
             </a>
-            <a href={downloads.intel} className="glass flex h-10 items-center px-3.5 font-mono text-[14px] font-medium tracking-[0.025em] text-foreground/60 hover:text-foreground">intel</a>
             <a href="#preview" className="glass flex h-10 items-center gap-1.5 px-3.5 font-mono text-[14px] font-medium tracking-[0.025em] text-foreground/60 hover:text-foreground">
               try it here<HugeiconsIcon icon={ArrowRight01Icon} size={14} />
             </a>
           </div>
           <p className="mt-3 font-mono text-[12px] tracking-[0.025em] text-muted-foreground">
-            {downloads.published ? "Apple silicon and Intel · " : "Downloads open the GitHub releases page · "}
-            <a href={`${base}docs/#install`} className="underline decoration-stone underline-offset-2 hover:text-foreground">Windows and Linux</a>
+            {downloads.published ? "Apple silicon · " : "Downloads open the GitHub releases page · "}
+            <a href={`${base}docs/#install`} className="underline decoration-stone underline-offset-2 hover:text-foreground">install guide</a>
           </p>
         </motion.div>
       </section>
