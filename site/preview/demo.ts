@@ -584,6 +584,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
     case "get_bookmark_backup": return JSON.stringify({version:1,bookmarks},null,2);
+    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.14",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
     case "import_bookmarks": return importBookmarks(args.json as string, args.replacements as BookmarkReplacement[]);
     case "get_transcript": return transcripts.get(args.key as string) ?? [];
     case "search_sessions": return search(args.query as string, args.filter as SessionQuery, args.limit as number);
