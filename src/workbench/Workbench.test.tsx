@@ -48,6 +48,41 @@ test("opens local project folders and keeps the path copyable on errors", async 
   } finally {await act(async()=>root.unmount());host.remove();}
 });
 
+test("copies only each nonempty user or assistant text message as exact Markdown", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const writeText=vi.fn(async()=>{});
+  Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText}});
+  const original="  ## Café 🙂\n\n```ts\nconst x = 1;\n```\n";
+  const transcript:TranscriptMessage[]=[
+    {seq:1,role:"assistant",kind:"text",text:original,timestamp:null,model:null,thinking:"private thought",tool_calls:[{id:"t",name:"tool",input:"private input",output:"private output",is_error:false}],images:[]},
+    {seq:2,role:"user",kind:"text",text:"Find naïve ünicode",timestamp:null,model:null,thinking:null,tool_calls:[],images:[]},
+    {seq:3,role:"assistant",kind:"text",text:" \n ",timestamp:null,model:null,thinking:null,tool_calls:[],images:[]},
+    {seq:4,role:"system",kind:"text",text:"system text",timestamp:null,model:null,thinking:null,tool_calls:[],images:[]},
+    {seq:5,role:"assistant",kind:"meta",text:"summary text",timestamp:null,model:null,thinking:null,tool_calls:[],images:[]},
+  ];
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
+    getTranscript:async()=>transcript,onLibraryChanged:async()=>()=>{}};
+  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const click=async(seq:number)=>{await act(async()=>{host.querySelector<HTMLButtonElement>(`#message-${seq} button[aria-label="Copy message ${seq}"]`)!.click();await Promise.resolve();});};
+  const notice=()=>Array.from(host.querySelectorAll('[role="status"]')).find(node=>node.textContent?.includes("Message copied"));
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Recent sessions"] .session-card')!.click());
+    expect(host.querySelectorAll('button[aria-label^="Copy message"]')).toHaveLength(2);
+    await click(1);
+    expect(writeText).toHaveBeenLastCalledWith(original);
+    expect(notice()?.textContent).toContain("Message copied");
+    await click(2);
+    expect(writeText).toHaveBeenLastCalledWith("Find naïve ünicode");
+    expect(writeText).toHaveBeenCalledTimes(2);
+    writeText.mockRejectedValueOnce(new Error("Clipboard unavailable"));
+    await click(1);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not copy message: Error: Clipboard unavailable");
+    expect(host.querySelector('#message-1')).not.toBeNull();
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
 test("keeps bookmark drafts across browsing and shared editors, with explicit save and discard", async () => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
   const other={...session,key:"codex:two",native_id:"two",title:"Other session"};

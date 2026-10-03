@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-10-03
+
+### Added
+- Copy the original Markdown from an individual user or assistant transcript message.
+
 ## [1.0.12] - 2026-10-03
 
 ### Added
