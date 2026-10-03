@@ -82,6 +82,8 @@ test("source health preview shows fixed local states and refreshes deterministic
 
 test("sample reading snapshots use SHA-256 and preferences reset when the preview reloads", async () => {
   installDemoBackend();
+  const savedSearches = await backend.getPref("saved_searches_v1");
+  expect(JSON.parse(savedSearches!).items[0]).toMatchObject({ name: "Preference storage", query: "Preferences now live" });
   const snapshot = await backend.getTranscriptSnapshot("claude-code:demo-0");
   expect(snapshot.messages.length).toBeGreaterThan(0);
   expect(snapshot.fingerprints).toHaveLength(snapshot.messages.length);
@@ -89,9 +91,12 @@ test("sample reading snapshots use SHA-256 and preferences reset when the previe
   expect(snapshot.fingerprints.every(value => /^[0-9a-f]{64}$/.test(value))).toBe(true);
   await backend.setPref("reading_positions_v1", "synthetic only");
   expect(await backend.getPref("reading_positions_v1")).toBe("synthetic only");
+  await backend.setPref("saved_searches_v1", JSON.stringify({ version: 1, items: [] }));
+  expect(JSON.parse((await backend.getPref("saved_searches_v1"))!).items).toEqual([]);
   uninstallDemoBackend();
   installDemoBackend();
   expect(await backend.getPref("reading_positions_v1")).toBeNull();
+  expect(await backend.getPref("saved_searches_v1")).toBe(savedSearches);
 });
 
 test("synthetic earlier insertion preserves exact saved content and an edited reply becomes stale", async () => {
