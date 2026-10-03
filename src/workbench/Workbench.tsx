@@ -18,7 +18,7 @@ import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { calendarRange, matchesSession, restoredFilters } from "./library-filters";
 import { LibraryHome } from "./LibraryHome";
-import { BookmarkControl } from "./BookmarkControl";
+import { BookmarkControl, emptyBookmarkEditor, type BookmarkEditorState } from "./BookmarkControl";
 import { ContextBundle } from "./ContextBundle";
 import { contextEligible, contextId, type ContextSelection } from "./context-bundle";
 import { TranscriptNavigation } from "./TranscriptNavigation";
@@ -157,6 +157,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const t = copy;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkView[]>([]);
+  const [bookmarkEditors, setBookmarkEditors] = useState<Record<string, BookmarkEditorState>>({});
+  const updateBookmarkEditor = (key: string, seq: number, update: (current: BookmarkEditorState) => BookmarkEditorState) => {
+    const id = contextId({ key, seq });
+    setBookmarkEditors(current => ({ ...current, [id]: update(current[id] ?? emptyBookmarkEditor) }));
+  };
   const [bookmarksOnly, setBookmarksOnly] = useState(false);
   const bookmarkRun = useRef(0);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
@@ -318,6 +323,17 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     const next = await api.listBookmarks("", queryDefaults);
     if (run === bookmarkRun.current) setBookmarks(next);
   }, [api]);
+  const bookmarkChanged = async (key: string, seq: number, saved: BookmarkView["bookmark"] | null, session: SessionMeta | null, refreshed = false) => {
+    bookmarkRun.current++;
+    // Apply successful writes before fetching, so a failed refresh cannot restore stale notes or timestamps.
+    setBookmarks(current => {
+      const existing = current.find(view => view.bookmark.session_key === key && view.bookmark.seq === seq);
+      const remaining = current.filter(view => view !== existing);
+      return saved ? [...remaining, { bookmark: saved, session: existing?.session ?? session,
+        status: refreshed ? "current" : existing?.status ?? "current" }] : remaining;
+    });
+    await reloadBookmarks();
+  };
   useEffect(() => {
     if (!isActive) return;
     let cancelled = false;
@@ -702,7 +718,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             <label className="my-2 block text-[13px]"><input type="checkbox" disabled={view.status === "unavailable" && !contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))} checked={contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))}
               onChange={()=>toggleContext({key:view.bookmark.session_key,seq:view.bookmark.seq})} /> Select bookmarked message {view.bookmark.seq} for context</label>
             {view.status === "unavailable" && <p className="text-[12px] text-muted-foreground">Original content unavailable; saved excerpts cannot substitute for the original message in context.</p>}
-            <BookmarkControl api={api} sessionKey={view.bookmark.session_key} seq={view.bookmark.seq} view={view} changed={reloadBookmarks} />
+            <BookmarkControl api={api} sessionKey={view.bookmark.session_key} seq={view.bookmark.seq} view={view}
+              editorState={bookmarkEditors[contextId({key:view.bookmark.session_key,seq:view.bookmark.seq})] ?? emptyBookmarkEditor}
+              updateEditor={update=>updateBookmarkEditor(view.bookmark.session_key,view.bookmark.seq,update)}
+              changed={(saved,refreshed)=>bookmarkChanged(view.bookmark.session_key,view.bookmark.seq,saved,view.session,refreshed)} />
           </div>)}
         </> : loading && visible.length === 0 ? <div className="session-skeletons grid gap-1 p-1" role="status" aria-label={t.loading}>
           {[0, 1, 2, 3, 4].map(index => <div className="grid gap-2.5 px-2.5 py-3.5" key={index}>
@@ -803,7 +822,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)}>
               {contextEligible(message) && <label className="mt-3 block text-[13px]"><input type="checkbox" disabled={unavailable} checked={contextSelected.has(contextId({key:selected.key,seq:message.seq}))}
                 onChange={()=>toggleContext({key:selected.key,seq:message.seq})} /> Select message {message.seq} for context</label>}
-              <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)} changed={reloadBookmarks} />
+              <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)}
+                editorState={bookmarkEditors[contextId({key:selected.key,seq:message.seq})] ?? emptyBookmarkEditor}
+                updateEditor={update=>updateBookmarkEditor(selected.key,message.seq,update)}
+                changed={(saved,refreshed)=>bookmarkChanged(selected.key,message.seq,saved,selected,refreshed)} />
             </Message>)}</div>
             : <div className="flex h-full flex-col items-center justify-center gap-4 text-[13px] text-muted-foreground">
               <PixelField cols={6} rows={3} cell={12} seed={11} className="w-[72px]" /><p className="m-0">{t.noTranscript}</p></div>}

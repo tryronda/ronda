@@ -61,6 +61,8 @@ CI installs the built Debian and NSIS packages and runs `scripts/resume-smoke.py
 3. Verify Restart and external terminal use the same mapping. Remove the synthetic executable or mapped directory between inspection and launch; both paths must refuse the launch. Confirm shell-profile-only PATH entries are found and incomplete or timed-out checks are reported as unknown.
 4. Remove the mapping in Settings and confirm it persists and readiness returns to the original folder. Verify local mappings do not change remote paths; remote environment checks must remain explicitly unchecked.
 
+The same installed-app smoke also edits a synthetic bookmark, visits its child transcript and returns, then saves the recovered draft. Restart must retain that explicitly saved note and discard a later unsaved edit. Agent source files must remain unchanged.
+
 ## Adding an agent
 
 Adapters live in `crates/ronda-core/src/adapters/`. A new adapter should:

@@ -263,10 +263,34 @@ def smoke(app, output, self_check=False):
                 mappings = json.loads(db.execute("SELECT value FROM prefs WHERE key='resume_project_mappings'").fetchone()[0])
             assert Path(mappings[str(original)]).resolve() == project.resolve()
             driver.screenshot(output / "recovered.png")
+            # A note draft must survive replacing the transcript, without silently persisting it.
+            saved_note = "Native note draft café ü"
+            driver.click(button("Bookmark message 0"))
+            note_field = driver.element("//label[starts-with(normalize-space(.),'Note for message 0')]/textarea")
+            driver.command("POST", f"/element/{note_field}/value", {"text": saved_note})
+            driver.click("//section[@aria-label='Session connections']//summary")
+            driver.click(button("Subagent: Native installed child proof"))
+            driver.contains("Subagents cannot independently resume.")
+            driver.click(button("Parent: Native installed resume proof"))
+            driver.click(button("Edit bookmark note for message 0"))
+            note_field = driver.element("//label[starts-with(normalize-space(.),'Note for message 0')]/textarea")
+            assert driver.command("GET", f"/element/{note_field}/property/value") == saved_note
+            driver.screenshot(output / "bookmark-draft.png")
+            driver.click(button("Save note"))
+            wait(lambda: not driver.elements("//label[starts-with(normalize-space(.),'Note for message 0')]/textarea"), "saved note closed")
+            driver.click(button("Edit bookmark note for message 0"))
+            note_field = driver.element("//label[starts-with(normalize-space(.),'Note for message 0')]/textarea")
+            driver.command("POST", f"/element/{note_field}/clear", {})
+            driver.command("POST", f"/element/{note_field}/value", {"text": "Unsaved note must not survive restart"})
+            assert not logs(), "Bookmark editing invoked the synthetic agent"
             driver.close()
             driver.start()
             driver.click(f"//section[@aria-label='Recent sessions']//button[contains(normalize-space(.),'{title}')]")
             wait(lambda: driver.elements(button("Resume")), "persisted Resume")
+            driver.click(button("Edit bookmark note for message 0"))
+            note_field = driver.element("//label[starts-with(normalize-space(.),'Note for message 0')]/textarea")
+            assert driver.command("GET", f"/element/{note_field}/property/value") == saved_note
+            driver.click(button("Cancel note"))
             driver.click(button("Resume"))
             wait(lambda: len(logs()) == 1, "embedded agent launch")
             verify_launches(1)
@@ -308,7 +332,7 @@ def smoke(app, output, self_check=False):
                 "platform": os.environ.get("RUNNER_OS"), "installed_app": str(app), "launches": logs(),
                 "checks": ["idle inspection", "native folder picker", "mapping persistence", "embedded resume",
                            "restart", "external launch", "launch revalidation", "Settings removal", "child restriction",
-                           "literal arguments", "unchanged sources"]}, indent=2), encoding="utf-8")
+                           "literal arguments", "unchanged sources", "bookmark draft navigation/save/restart"]}, indent=2), encoding="utf-8")
             print("Installed-app resume smoke passed")
     finally:
         try:

@@ -1,10 +1,10 @@
 # Ronda feature and release plan
 
-Prepared on 2026-10-02. This is a proposed implementation roadmap for the ten improvements identified in the product review. No feature, tag, release, or site deployment has been created by this document.
+Prepared on 2026-10-02. The original ten improvements are now individually released and verified through 1.0.10. Their plans and initial review findings remain below; the execution ledger records delivery evidence. Follow-up work continues as small, separately verified patch releases.
 
-The goal is faster context recovery and reuse for individual developers. Each feature ships as a separately reviewable desktop release, with matching documentation and a working browser demonstration. Version numbers below assume the latest published version remains 1.0.0; check remote tags and releases before allocating each version. Hotfixes can consume patch numbers without changing the feature order.
+The goal is faster context recovery and reuse for individual developers. Each feature ships as a separately reviewable desktop release, with matching documentation and a working browser demonstration. The first cycle shipped patches 1.0.1 through 1.0.10. Check remote tags and releases before allocating each follow-up version; hotfixes can consume patch numbers without changing feature order.
 
-## Findings from the existing product
+## Initial findings at 1.0.0
 
 - The repository and latest published GitHub release are at 1.0.0. Earlier releases used a dated `CHANGELOG.md` section, synchronized app versions, a `vX.Y.Z` tag, and platform installers.
 - `CONTRIBUTING.md` describes release preparation. Versions live in `package.json`, the workspace section of `Cargo.toml`, and `src-tauri/tauri.conf.json`; workspace package versions also appear in `Cargo.lock`. Settings currently displays a hardcoded 1.0.0.
@@ -23,7 +23,7 @@ Reviewed sources: [contribution and release guide](../CONTRIBUTING.md), [build w
 
 The refresh fix ships first because it corrects existing behavior. The remaining releases add capabilities in dependency order.
 
-| Order | Feature | Proposed version and tag | GitHub release title | Branch |
+| Order | Feature | Released version and tag | GitHub release title | Branch |
 | --- | --- | --- | --- | --- |
 | 1 | Reliable live transcripts | 1.0.1 / `v1.0.1` | Ronda 1.0.1 | `ronda/live-transcripts` |
 | 2 | Better search results | 1.0.2 / `v1.0.2` | Ronda 1.0.2 | `ronda/search-results` |
@@ -327,6 +327,27 @@ Keep the first versions local and explicit: no cloud collaboration, automatic su
 
 The existing launch video and brand assets can remain accurate as an introduction to the original product. Update screenshots used as current-interface documentation when affected; refresh promotional media after the bookmarks/context/project releases only if it materially helps explain the new product. Creating new videos is a separate task.
 
+## Follow-up: preserve bookmark note drafts
+
+Research after the ten-release cycle reproduced silent draft loss in the production preview: edit bookmarked message #1, enter unsaved text, switch to All sessions, return to Bookmarks, and reopen the note. The saved note replaced the draft. Individual message/tool copying and per-session reading-position restoration are useful later candidates; draft loss is the smallest demonstrated problem to fix first.
+
+Release: **1.0.11 / `v1.0.11`**, title **Ronda 1.0.11**, branch **`ronda/bookmark-note-drafts`**. Allocate the patch only while the remote tag is available. Continue the bot author/committer/tagger and Ronda App conventions above.
+
+Implementation and boundaries:
+
+1. Keep app-session editor state in the already-mounted Workbench, using the existing JSON session/message identity helper and React record-state pattern. Pass it to both transcript and bookmark-list controls. Retain note text and its original optimistic timestamp through navigation, filters, prompts-only, and source refresh.
+2. Keep editor visibility and focus local. Closing the editor retains a draft; Cancel note and Escape explicitly discard it. Save is the only action that stores the note. Drafts remain memory-only and reset when the app closes or the preview reloads; no database migration, storage layer, new dependency, or backend contract is required.
+3. Share the per-bookmark busy/error state to prevent two displayed controls from editing during the same outstanding write. Capture each operation's session/message identity; completing a save on A must not clear B's draft. Preserve failed drafts and optimistic conflict checks, and refuse automatic recreation after external bookmark removal.
+4. Apply a successful saved/deleted bookmark to the local list before reloading it. Clear only its draft after a successful write. If the list refresh fails after a write, report that the write succeeded and keep the new local timestamp, preventing a false conflict on retry. Snapshot-only updates preserve a retained note draft.
+5. Update the bookmark documentation, README, and preview instructions with retention, deliberate discard, explicit Save, and app-session lifetime. The shared frontend gives the synthetic demo the same behavior without new commands. Prepare a dated Fixed changelog section and synchronized package/Cargo/config/lockfile versions.
+
+Acceptance and delivery:
+
+- A regression must fail against 1.0.10 by restoring the old saved note instead of an unsaved Unicode draft, then pass with this change. Check bookmark/transcript sharing, filters, A→B→A with equal sequences, prompts-only, refresh, Cancel/Escape, failed saves, external changes/removal, and successful write followed by failed refresh. A deferred save must lock duplicate A controls and leave B's draft untouched.
+- Package and check the native app against an isolated synthetic index: edit a draft, browse sessions/Bookmarks/Settings, return and Save, restart, and verify that only the saved note persisted and source bytes are unchanged. No index benchmark is needed because indexing is unchanged.
+- Run the common source, sidecar, release, site, and native checks. Review/merge the exact checked bot-authored commit, annotate its version tag, and let CI build all five targets and run installed resume smoke before publishing seven installers and SHA256SUMS.txt.
+- Independently verify the published source and installer checksums, then verify matching production highlights/changelog/downloads/docs, retained drafts, deliberate discard, saved-note behavior, and console output. Begin the next research iteration only after these release/site gates complete.
+
 ## Implementation status
 
 - 2026-10-02: Live transcripts merged through [PR #1](https://github.com/tryronda/ronda/pull/1). Local checks, installed-app refresh and terminal checks, existing-index compatibility, and all five PR installer builds passed. The main build compiled and signed macOS arm successfully but failed during DMG packaging without the underlying error in its log; verbose installer output is enabled for diagnosis. Publication and production-site verification remain open gates. No feature release has been published yet.
@@ -404,3 +425,7 @@ The existing launch video and brand assets can remain accurate as an introductio
 - 2026-10-02: Error history is fully released as [v1.0.8](https://github.com/tryronda/ronda/releases/tag/v1.0.8) from `3ff24745b9bcf0c77e890b9a279d694af4d51fa0`. [Release CI](https://github.com/tryronda/ronda/actions/runs/37065484376) and [Pages](https://github.com/tryronda/ronda/actions/runs/37066602743) passed. Independent downloads verified the seven installer checksums; production verified 28-result paging, fourteen-result local/buildbox scopes, exact message #1 Bash evidence, raw transcript fallback, docs, changelog, and every installer link.
 - 2026-10-02: Related sessions is fully released as [v1.0.9](https://github.com/tryronda/ronda/releases/tag/v1.0.9) from `75bb4f69c9e1c66b3def1d8881dcec2f3639b048`, merged through [PR #11](https://github.com/tryronda/ronda/pull/11). [Release CI](https://github.com/tryronda/ronda/actions/runs/37066866060) and [Pages](https://github.com/tryronda/ronda/actions/runs/37067679081) passed. Independent downloads verified all seven installer checksums. Exact-head native app/DMG checks covered indexed children, shared-file/error ranking, Parent/Back/Forward, child restrictions, and watcher refresh from two to three children. Production verified the same navigation/ranking, untitled-child fallback, docs, changelog, and download links.
 - 2026-10-02: Resume readiness is implemented on `ronda/resume-readiness`: shared launch inspection/revalidation, structured reasons, exact local folder mappings and removal, consistent platform quoting, explicit sample-only readiness, docs/site/changelog, and 1.0.10 metadata. Local frontend and Rust regression checks pass; the packaging matrix now runs resume checks on each native OS. Browser evidence covers missing-folder recovery, Settings removal/restoration, and Desktop required behavior. Installed-app checks on macOS/Windows/Linux, current-head CI, native packaging, release publication, and production verification remain required gates. No 1.0.10 tag or release exists yet.
+
+- 2026-10-02: Resume readiness is fully released as [v1.0.10](https://github.com/tryronda/ronda/releases/tag/v1.0.10) from `8df378f0ac5770d659dee3870b9c728fa6176169`, merged through [PR #12](https://github.com/tryronda/ronda/pull/12) with the bot author/committer and annotated tagger identity preserved. [Release CI](https://github.com/tryronda/ronda/actions/runs/37085618626) and [Pages](https://github.com/tryronda/ronda/actions/runs/37086654687) passed. The tag's installed Debian and NSIS checks proved native picker recovery, restart persistence, Resume/Restart/external launches into the exact Unicode folder with literal arguments, late launch refusal, Settings removal, child restrictions, no injected file, and unchanged source files. macOS native app/DMG checks proved the same runtime paths. Independent downloads verified all seven installer checksums and the release source marker. Production verified 1.0.10 highlights/changelog, docs and all download links, sample folder recovery, Desktop required, mapping removal restoring the original missing-folder state, and no console errors. A main-only Apple-silicon `hdiutil: Resource busy` error did not recur in the complete successful release build. All ten original feature/release/site cycles are complete.
+
+- 2026-10-02: Follow-up 11 is implemented on `ronda/bookmark-note-drafts`: app-session drafts, shared write state, explicit discard, and successful-write reconciliation. The regression fails on 1.0.10 and passes with the change; 35 frontend tests, 47 Rust tests, TypeScript, Clippy, site generation, release checks, and local macOS app/DMG packaging pass. The installed Windows/Linux smoke now checks draft navigation, explicit save, and restart persistence. Final CI, packaged native UI evidence, publication, and production verification remain open gates.
