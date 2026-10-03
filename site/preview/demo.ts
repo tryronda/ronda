@@ -126,6 +126,17 @@ const transcripts = new Map<string, TranscriptMessage[]>();
 let prefs = new Map<string, string>();
 let hosts: { host: string; enabled: boolean; last_sync_ms: number | null; last_error: string | null }[] = [];
 let scanCount = 0;
+let localSourceHealth = {
+  version: 1,
+  completed_at_ms: Date.now() - 12 * 60 * 1000,
+  roots_truncated: false,
+  roots: [
+    { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", status: "checked", source_records: 18, issues: 0, counts_truncated: false },
+    { id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", status: "unavailable", source_records: 0, issues: 0, counts_truncated: false },
+    { id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "partial", source_records: 7, issues: 1, counts_truncated: false },
+    { id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", status: "checked", source_records: 0, issues: 0, counts_truncated: false },
+  ],
+};
 
 async function sampleSha256(value: Uint8Array | string): Promise<string> {
   const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
@@ -159,6 +170,17 @@ function meta(key: string, title: string, agent: AgentId, project: string, model
 function reset() {
   sessions = [];
   scanCount = 0;
+  localSourceHealth = {
+    version: 1,
+    completed_at_ms: Date.now() - 12 * 60 * 1000,
+    roots_truncated: false,
+    roots: [
+      { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", status: "checked", source_records: 18, issues: 0, counts_truncated: false },
+      { id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", status: "unavailable", source_records: 0, issues: 0, counts_truncated: false },
+      { id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "partial", source_records: 7, issues: 1, counts_truncated: false },
+      { id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", status: "checked", source_records: 0, issues: 0, counts_truncated: false },
+    ],
+  };
   transcripts.clear();
   prefs = new Map();
   hosts = [{ host: "buildbox", enabled: true, last_sync_ms: now - 3 * HOUR, last_error: null }];
@@ -607,7 +629,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
     case "get_bookmark_backup": return JSON.stringify({version:1,bookmarks},null,2);
-    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.16",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
+    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.17",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
     case "import_bookmarks": return importBookmarks(args.json as string, args.replacements as BookmarkReplacement[]);
     case "get_transcript": return transcripts.get(args.key as string) ?? [];
     case "get_transcript_snapshot": return sampleTranscriptSnapshot(args.key as string);
@@ -616,7 +638,18 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "search_session_matches": return searchSessionMatches(args.query as string, args.filter as SessionQuery, args.key as string, args.offset as number, args.limit as number);
     case "scan": {
       const partial = scanCount++ % 2 === 1;
-      return { discovered: 32, indexed: 3, unchanged: 24,
+      localSourceHealth = {
+        version: 1,
+        completed_at_ms: Date.now(),
+        roots_truncated: false,
+        roots: [
+          { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", status: "checked", source_records: 18, issues: 0, counts_truncated: false },
+          { id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", status: "unavailable", source_records: 0, issues: 0, counts_truncated: false },
+          { id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: partial ? "partial" : "checked", source_records: 7, issues: partial ? 1 : 0, counts_truncated: false },
+          { id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", status: "checked", source_records: 0, issues: 0, counts_truncated: false },
+        ],
+      };
+      return { discovered: 25, indexed: 1, unchanged: 24,
         errors: partial ? ["Synthetic sample scan error; details are hidden."] : [] };
     }
     case "set_session_flags":
@@ -649,11 +682,13 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);
     case "get_session": return sessions.find(session => session.key === args.key) ?? null;
     case "list_locations": return [
-      { agent: "claude-code", path: "/Users/you/.claude/projects", enabled: true, custom: false },
-      { agent: "codex", path: "/Users/you/.codex/sessions", enabled: true, custom: false },
-      { agent: "cursor", path: "/Users/you/.cursor/chats", enabled: true, custom: false },
-      { agent: "gemini", path: "/Users/you/.gemini/tmp", enabled: false, custom: false },
+      { agent: "claude-code", path: "/Users/you/.claude/projects", health_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", enabled: true, custom: false },
+      { agent: "codex", path: "/Users/you/.codex/sessions", health_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", enabled: true, custom: false },
+      { agent: "cursor", path: "/Users/you/.cursor/chats", health_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", enabled: true, custom: false },
+      { agent: "qoder", path: "/Users/you/.qoder/sessions", health_id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", enabled: true, custom: false },
+      { agent: "gemini", path: "/Users/you/.gemini/tmp", health_id: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", enabled: false, custom: false },
     ];
+    case "get_local_source_refresh_health": return structuredClone(localSourceHealth);
     case "list_remote_hosts": return hosts;
     case "set_remote_host": {
       const existing = hosts.find(item => item.host === args.host);
