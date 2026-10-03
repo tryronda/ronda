@@ -143,7 +143,9 @@ def choose_folder(project, output):
         subprocess.run(["xdotool", "key", "--clearmodifiers", "alt+Home"], check=True)
         time.sleep(.5)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+l", "ctrl+a"], check=True)
-        subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", str(project)], check=True)
+        # Xvfb's keyboard mapping can drop Unicode keysyms; paste the literal UTF-8 path.
+        subprocess.run(["xclip", "-selection", "clipboard"], input=str(project).encode(), check=True)
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=True)
         time.sleep(.5)
         subprocess.run(["scrot", "-o", str(output / "picker-entry.png")], check=True)

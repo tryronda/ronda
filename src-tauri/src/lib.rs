@@ -953,9 +953,13 @@ async fn resume_session(state: State<'_, Shared>, key: String) -> CommandResult<
         #[cfg(target_os = "windows")]
         {
             let arguments = ["-NoLogo", "-NoExit", "-Command", &command];
+            // Windows Terminal splits semicolons even inside a single argv value.
+            // Its parser removes this extra escaping before passing argv to PowerShell.
+            let wt_directory = directory.replace(';', "\\;");
+            let wt_command = command.replace(';', "\\;");
             if std::process::Command::new("wt.exe")
-                .args(["-d", &directory, "powershell.exe"])
-                .args(arguments)
+                .args(["-d", &wt_directory, "powershell.exe"])
+                .args(["-NoLogo", "-NoExit", "-Command", &wt_command])
                 .spawn()
                 .is_err()
             {
