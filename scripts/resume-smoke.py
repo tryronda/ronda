@@ -263,7 +263,7 @@ def smoke(app, output, self_check=False):
                 mappings = json.loads(db.execute("SELECT value FROM prefs WHERE key='resume_project_mappings'").fetchone()[0])
             assert Path(mappings[str(original)]).resolve() == project.resolve()
             driver.screenshot(output / "recovered.png")
-            driver.click(button("Open project folder"))
+            driver.click("//button[@aria-label='Open project folder']")
             driver.contains("Opened project folder")
             driver.screenshot(output / "project-folder-opened.png")
             # A note draft must survive replacing the transcript, without silently persisting it.
