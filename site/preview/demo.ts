@@ -125,6 +125,7 @@ let sessions: SessionMeta[] = [];
 const transcripts = new Map<string, TranscriptMessage[]>();
 let prefs = new Map<string, string>();
 let hosts: { host: string; enabled: boolean; last_sync_ms: number | null; last_error: string | null }[] = [];
+let scanCount = 0;
 
 function meta(key: string, title: string, agent: AgentId, project: string, model: string, updated: number, index: number): SessionMeta {
   return {
@@ -136,6 +137,7 @@ function meta(key: string, title: string, agent: AgentId, project: string, model
 
 function reset() {
   sessions = [];
+  scanCount = 0;
   transcripts.clear();
   prefs = new Map();
   hosts = [{ host: "buildbox", enabled: true, last_sync_ms: now - 3 * HOUR, last_error: null }];
@@ -584,13 +586,17 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
     case "get_bookmark_backup": return JSON.stringify({version:1,bookmarks},null,2);
-    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.14",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
+    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.15",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
     case "import_bookmarks": return importBookmarks(args.json as string, args.replacements as BookmarkReplacement[]);
     case "get_transcript": return transcripts.get(args.key as string) ?? [];
     case "search_sessions": return search(args.query as string, args.filter as SessionQuery, args.limit as number);
     case "search_grouped": return searchGrouped(args.query as string, args.filter as SessionQuery, args.sort as SearchSort, args.offset as number, args.limit as number);
     case "search_session_matches": return searchSessionMatches(args.query as string, args.filter as SessionQuery, args.key as string, args.offset as number, args.limit as number);
-    case "scan": return { discovered: sessions.length, indexed: 0, unchanged: sessions.length, errors: [] };
+    case "scan": {
+      const partial = scanCount++ % 2 === 1;
+      return { discovered: 32, indexed: 3, unchanged: 24,
+        errors: partial ? ["Synthetic sample scan error; details are hidden."] : [] };
+    }
     case "set_session_flags":
       sessions = sessions.map(session => session.key === args.key ? { ...session, starred: args.starred as boolean, pinned: args.pinned as boolean } : session);
       return null;
