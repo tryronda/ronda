@@ -175,7 +175,7 @@ export function Brand() {
           <dl className="mt-10 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3">
             {[
               ["latest release", latest ? `${releaseTitle(latest)} · ${latest.date}` : "unreleased"],
-              ["platforms", "macOS, Windows, Linux"],
+              ["platforms", "macOS"],
               ["agents", "18 supported"],
               ["search", "26 ms p95"],
               ["built with", "Tauri 2, Rust, React"],
