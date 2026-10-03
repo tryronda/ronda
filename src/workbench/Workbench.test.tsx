@@ -1047,3 +1047,59 @@ test("saved replay keeps stale scopes exact and clearing only removes scopes sti
     expect(searchGrouped).toHaveBeenCalledWith("timeout", expect.objectContaining({ project_path: null, model: "legacy-model", host: "legacy-host" }), "recent", 0, 50);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("saved-search save and replay stay in the session pane when the library sidebar is collapsed", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  let savedPref: string | null = null;
+  const searchGrouped = vi.fn(async () => ({ groups: [], total_sessions: 0, total_message_matches: 0 }));
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getPref: async key => key === "saved_searches_v1" ? savedPref : null,
+    setPref: async (key, value) => { if (key === "saved_searches_v1") savedPref = value; },
+    sessionPage: async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit }),
+    searchGrouped, onLibraryChanged: async () => () => {} };
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const type = async (selector: string, value: string) => act(async () => {
+    const input = host.querySelector<HTMLInputElement>(selector)!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  try {
+    await act(async () => root.render(<Workbench api={api} sidebarOpen={false} />));
+    expect(host.querySelector('[aria-label="Library"]')?.getAttribute("aria-hidden")).toBe("true");
+    await type('[aria-label="Search all conversations"]', "collapsed query");
+    const save = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Save current search");
+    expect(save).toBeDefined();
+    expect(host.querySelector('[aria-label="Recent sessions"]')!.contains(save!)).toBe(true);
+    await act(async () => save!.click());
+    await type("#saved-search-name", "Collapsed");
+    await act(async () => host.querySelector<HTMLFormElement>("#saved-search-name")!.form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(JSON.parse(savedPref!).items[0]).toMatchObject({ name: "Collapsed", query: "collapsed query" });
+    await type('[aria-label="Search all conversations"]', "other");
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Collapsed")!.click());
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Search all conversations"]')?.value).toBe("collapsed query");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("replaying a saved search returns to the library from an open session", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const definition = { version: 1, items: [{ id: "123e4567-e89b-42d3-a456-426614174011", name: "Open session replay",
+    query: "Needles", filters: { project: null, agent: null, starredOnly: false, includeArchived: false,
+      dateFrom: "", dateThrough: "", model: "", host: "" }, sort: "relevance" }] };
+  const searchGrouped = vi.fn(async () => ({ groups: [], total_sessions: 0, total_message_matches: 0 }));
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getPref: async key => key === "saved_searches_v1" ? JSON.stringify(definition) : null,
+    getSession: async () => session, getTranscript: async () => [], searchGrouped,
+    sessionPage: async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit }),
+    onLibraryChanged: async () => () => {} };
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)} />));
+    await act(async () => host.querySelector<HTMLButtonElement>(".session-card")!.click());
+    expect(host.querySelector(".transcript-pane h2")?.textContent).toBe(session.title);
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Open session replay")!.click());
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Search all conversations"]')?.value).toBe("Needles");
+    expect(host.textContent).toContain("All your agent sessions");
+    expect(host.querySelector(".transcript-pane h2")?.textContent).toBe("Pick up where you left off");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
