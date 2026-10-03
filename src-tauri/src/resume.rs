@@ -401,7 +401,7 @@ mod tests {
             host: None,
             parent_key: None,
             title: "Fixture".into(),
-            project_path: Some("/synthetic/original folder".into()),
+            project_path: Some(root.join("original folder").to_string_lossy().into_owned()),
             source_path: "synthetic".into(),
             created_at: 1,
             updated_at: 1,
