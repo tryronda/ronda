@@ -4,7 +4,7 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
-## [1.0.11] - 2026-10-02
+## [1.0.11] - 2026-10-03
 
 ### Fixed
 
