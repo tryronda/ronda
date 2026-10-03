@@ -52,6 +52,7 @@ Ronda brings them into one fast, private library. You can find the conversation 
 - **Return to a project.** Open a folder overview with recent sessions, saved decisions, recurring errors, and the last 30 days of Intelligence. Narrow by host and open original evidence without losing project context.
 - **Copy one message or carry selected context to another agent.** Copy a visible user or assistant message with its Markdown intact, or select messages and bookmarks across sessions, inspect and edit the Markdown draft, then copy it or export a file. Source references let an agent retrieve the original through Ronda MCP. Nothing is sent or resumed automatically.
 - **Keep decisions close to the message.** Bookmark messages, save plain-text notes, and search those notes and excerpts across projects. Unsaved note drafts stay while you browse during the current app session; Save stores them, and Cancel or Escape discards them. Saved annotations survive missing sources; export and import JSON backups in Settings → Data.
+- **Share useful support details safely.** Preview and save a local diagnostics report with app/schema versions, index availability, and aggregate session and local source-directory counts. It contains no paths or transcript content and is never uploaded.
 - **Private by design.** The session index is rebuildable SQLite data on your machine; bookmarks and notes need their own backup. Sessions are never sent to a server. Agent files are only read. The one exception is the explicit **Move to Trash** action.
 
 ## Download

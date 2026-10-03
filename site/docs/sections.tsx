@@ -215,6 +215,7 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
     body: <>
       <List items={[
         "Sessions are indexed into a separate SQLite database on your machine. The session index is rebuildable; your bookmarks and notes require a backup from **Settings → Data**. They are never sent to a Ronda server.",
+        "In **Settings → Data**, preview and save an optional diagnostics JSON containing app/schema versions, index availability, an aggregate session count, and counts of configured, enabled, and existing local source directories. It contains no paths, source names, transcript content, credentials, preferences, or remote sync details; Ronda does not upload it.",
         "Ronda contacts GitHub only when you choose **Check for updates**, and an SSH host only when you configure and sync it.",
         "Agent files are read, not changed. **Move to Trash** is the only action that removes an agent's session file.",
         "Ronda starts an agent only when you click **Resume**, and that terminal runs on your machine or on your own SSH host.",
