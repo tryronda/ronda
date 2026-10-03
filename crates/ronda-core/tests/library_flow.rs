@@ -62,6 +62,7 @@ fn scan_search_refresh_and_flags_keep_sources_untouched() {
     store.tombstone(key).unwrap();
     scanner.scan(&mut store, true).unwrap();
     assert!(store.get_session(key).unwrap().is_none());
+    drop(store);
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -178,6 +179,7 @@ fn source_health_tracks_roots_and_missing_indexed_sources_guard_pruning() {
     scanner.scan(&mut store, true).unwrap();
     assert!(store.get_session("claude-code:session").unwrap().is_some());
     assert!(store.get_session("unrelated").unwrap().is_none());
+    drop(store);
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -223,6 +225,7 @@ fn source_health_marks_reported_discovery_errors_as_partial() {
     assert_eq!(root.status, RootStatus::Partial);
     assert_eq!(root.issues, 1);
     assert_eq!(root.source_records, 0);
+    drop(store);
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -266,6 +269,7 @@ fn source_health_retains_sessions_owned_by_a_missing_database_file_root() {
         .unwrap();
     assert_eq!(root_health.status, RootStatus::Unavailable);
     assert_eq!(root_health.source_records, 0);
+    drop(store);
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -288,6 +292,7 @@ fn remote_host_scans_do_not_read_or_write_local_source_health() {
         store.pref_get(PREF_KEY).unwrap().as_deref(),
         Some("local-snapshot-sentinel")
     );
+    drop(store);
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -333,6 +338,7 @@ fn source_health_counts_duplicate_source_refs_before_session_grouping() {
         assert_eq!(status.source_records, 1);
         assert_eq!(status.status, RootStatus::Checked);
     }
+    drop(store);
     fs::remove_dir_all(temp).unwrap();
 }
 
