@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { Switch } from '@/components/motion/switch';
 import { saveTheme, themes, type ThemePreference } from '@/lib/theme';
 import { PixelStrip } from '@/components/brand/pixel-field';
+import type { ScanReport } from '@/workbench/api';
+import { scanSummary } from '@/workbench/scan-summary';
 import './panels.css';
 
 type Section = 'general' | 'locations' | 'remote' | 'connect' | 'data' | 'updates' | 'about';
@@ -32,11 +34,11 @@ const copy = {
   connectHelp: 'Let an MCP client search and read your indexed sessions.',
   claudeSetup: 'Claude Code', codexSetup: 'Codex', genericSetup: 'Other MCP clients',
   copy: 'Copy', copied: 'Copied', index: 'Index database', refresh: 'Rebuild index',
-  dataHelp: 'Re-read agent files and refresh Ronda’s searchable index.',
+  dataHelp: 'Re-read local agent files and refresh Ronda’s searchable index. The result does not include remote sync health.',
   updateHelp: 'Check the latest release only when you ask.', check: 'Check for updates',
   latest: 'Open latest release', noRelease: 'No public release found.',
   aboutText: 'A local library for coding-agent sessions. Agent files stay on your computer.',
-  version: 'Version', saved: 'Saved', refreshed: 'Index refreshed', synced: 'Host synced',
+  version: 'Version', saved: 'Saved', synced: 'Host synced',
   loading: 'Loading settings…', working: 'Working…',
 } as const;
 
@@ -92,6 +94,13 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   async function act(work: () => Promise<unknown>, success?: string) {
     setBusy(true); setError(''); setNotice('');
     try { await work(); if (success) setNotice(success); }
+    catch (reason) { setError(String(reason)); }
+    finally { setBusy(false); }
+  }
+
+  async function rebuildIndex() {
+    setBusy(true); setError(''); setNotice('');
+    try { setNotice(scanSummary(await invoke<ScanReport>('scan'))); }
     catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
   }
@@ -234,7 +243,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </section>}
         {section === 'data' && <section className="panel-card"><h2>{t.data}</h2><p className="panel-help">{t.dataHelp}</p>
           <div className="settings-field"><div><strong>{t.index}</strong><code className="settings-path">{paths?.[2] ?? '…'}</code></div></div>
-          <button disabled={busy} onClick={() => void act(() => invoke('scan'), t.refreshed)}>{t.refresh}</button>
+          <button disabled={busy} onClick={() => void rebuildIndex()}>{t.refresh}</button>
           <DiagnosticsExport embedded={embedded} />
           <BookmarkData embedded={embedded} />
         </section>}

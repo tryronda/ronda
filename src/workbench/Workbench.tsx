@@ -30,6 +30,7 @@ import {
   type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
   type WorkbenchBackend, type BookmarkView, type LibraryOptions, type WorkbenchLocation, type ProjectContext,
 } from "./api";
+import { scanSummary } from "./scan-summary";
 
 const copy = {
   library: "Library", workbench: "Workbench", insights: "Insights", settings: "Settings",
@@ -42,7 +43,7 @@ const copy = {
   archived: "Archived", copyRemote: "SSH command copied", opened: "Opened in terminal", exported: "Transcript exported",
   deleteConfirm: "Move this session to the system Trash?", deleted: "Session moved to Trash",
   searchResults: "Search results", searching: "Searching…", searchEmpty: "No matching messages", matches: "matches",
-  loading: "Loading library…", refreshing: "Refreshing library…", browse: "Browse sessions", sessions: "sessions", scanDone: "Library refreshed",
+  loading: "Loading library…", refreshing: "Refreshing library…", browse: "Browse sessions", sessions: "sessions",
   transcript: "Transcript", terminal: "Terminal", terminalRunning: "terminal open", terminalExited: "exited",
   restart: "Restart", stop: "Stop and close terminal", openExternal: "Open in system terminal",
   openProjectFolder: "Open project folder", remoteFolderUnavailable: "Remote project folders cannot be opened locally",
@@ -536,9 +537,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   };
 
   const refresh = async () => {
+    setNotice(null); setError(null);
     setScanning(true);
-    try { await api.scan(); await reload(); setNotice(t.scanDone); }
-    catch (cause) { setError(String(cause)); }
+    try { const report = await api.scan(); await reload(); setNotice(scanSummary(report)); }
+    catch (cause) { setError(`Local scan failed: ${String(cause)}`); }
     finally { setScanning(false); }
   };
 
@@ -899,7 +901,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         {error && <motion.div key="error" role="alert" layout
           initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
           className="pointer-events-auto flex max-w-[min(440px,80vw)] items-center gap-3 bg-destructive px-3.5 py-2.5 text-[12px] text-white shadow-lg">
-          <span>{error}</span><button type="button" onClick={() => void reload()} className="underline">Retry refresh</button><button type="button" className="text-[16px] leading-none opacity-80 hover:opacity-100" onClick={() => setError(null)} aria-label="Dismiss">×</button></motion.div>}
+          <span>{error}</span><button type="button" disabled={scanning} onClick={() => void (error.startsWith("Local scan failed:") ? refresh() : reload())} className="underline disabled:opacity-50">{error.startsWith("Local scan failed:") ? "Retry scan" : "Retry refresh"}</button><button type="button" className="text-[16px] leading-none opacity-80 hover:opacity-100" onClick={() => setError(null)} aria-label="Dismiss">×</button></motion.div>}
         {notice && <motion.div key={notice} role="status" layout
           initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
           className="label-mono pointer-events-auto flex items-center gap-2.5 bg-foreground px-3.5 py-2.5 text-[12px] text-background shadow-lg">

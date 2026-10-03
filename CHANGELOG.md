@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-10-03
+
+### Added
+- **Refresh results** show local session sources discovered, sessions indexed or unchanged, and an aggregate scan-error count for partial scans. Error details remain private.
+
 ## [1.0.14] - 2026-10-03
 
 ### Added
