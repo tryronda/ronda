@@ -194,6 +194,13 @@ impl Store {
         Ok(store)
     }
 
+    /// Returns only the number of indexed session records, without loading session metadata.
+    pub fn session_count(&self) -> Result<i64> {
+        self.conn
+            .query_row("SELECT count(*) FROM sessions", [], |row| row.get(0))
+            .map_err(Into::into)
+    }
+
     /// Brings derived tables up to `SCHEMA_VERSION`. Transcripts are kept; derived facts are rebuilt from them.
     fn migrate(&mut self) -> Result<()> {
         let version: i64 = self
@@ -976,6 +983,7 @@ mod search_tests {
             ..Default::default()
         };
         assert_eq!(store.session_page(&all, 0, 100).unwrap().total, 600);
+        assert_eq!(store.session_count().unwrap(), 601);
         for filter in [
             SessionQuery {
                 updated_from_ms: Some(100),

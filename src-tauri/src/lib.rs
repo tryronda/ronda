@@ -10,7 +10,7 @@ use ronda_core::{
     GroupedSearch, Insights, LibraryOptions, ProjectInfo, SearchHit, SearchMatches, SearchSort,
     SessionMeta, SessionPage, SessionQuery, Store, TranscriptMessage,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -33,6 +33,58 @@ struct AppState {
 
 type Shared = Arc<AppState>;
 type CommandResult<T> = Result<T, String>;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticsReport {
+    format_version: u8,
+    app_version: String,
+    schema_version: i64,
+    generated_at: String,
+    index_available: bool,
+    session_count: i64,
+    sources: SourceCounts,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SourceCounts {
+    configured: usize,
+    enabled: usize,
+    available: usize,
+}
+
+#[tauri::command]
+async fn get_diagnostics_report(state: State<'_, Shared>) -> CommandResult<DiagnosticsReport> {
+    off_main(state, |state| {
+        let store = state.store.lock().map_err(error)?;
+        diagnostics_report(&store, &state.scanner)
+    })
+    .await
+}
+
+fn diagnostics_report(store: &Store, scanner: &Scanner) -> CommandResult<DiagnosticsReport> {
+    let session_count = store.session_count().map_err(error)?;
+    let locations = scanner.locations(store).map_err(error)?;
+    let enabled = locations.iter().filter(|location| location.enabled).count();
+    let available = locations
+        .iter()
+        .filter(|location| location.enabled && Path::new(&location.path).is_dir())
+        .count();
+    Ok(DiagnosticsReport {
+        format_version: 1,
+        app_version: env!("CARGO_PKG_VERSION").into(),
+        schema_version: ronda_core::store::SCHEMA_VERSION,
+        generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        index_available: true,
+        session_count,
+        sources: SourceCounts {
+            configured: locations.len(),
+            enabled,
+            available,
+        },
+    })
+}
 
 fn error(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -457,6 +509,25 @@ async fn get_bookmark_backup(state: State<'_, Shared>) -> CommandResult<String> 
         .map_err(error)
     })
     .await
+}
+
+#[tauri::command]
+async fn export_diagnostics(destination: PathBuf, report: DiagnosticsReport) -> CommandResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if report.format_version != 1
+            || report.app_version != env!("CARGO_PKG_VERSION")
+            || report.schema_version != ronda_core::store::SCHEMA_VERSION
+            || chrono::DateTime::parse_from_rfc3339(&report.generated_at).is_err()
+            || report.sources.available > report.sources.enabled
+            || report.sources.enabled > report.sources.configured
+        {
+            return Err("Invalid diagnostics report".into());
+        }
+        let json = serde_json::to_vec_pretty(&report).map_err(error)?;
+        write_export(&destination, &json)
+    })
+    .await
+    .map_err(error)?
 }
 
 fn write_export(destination: &Path, bytes: &[u8]) -> CommandResult<()> {
@@ -1263,6 +1334,8 @@ pub fn run() {
             delete_bookmark,
             get_bookmark_backup,
             export_bookmarks,
+            get_diagnostics_report,
+            export_diagnostics,
             read_bookmark_backup,
             import_bookmarks,
             export_session,
@@ -1293,6 +1366,118 @@ pub fn run() {
 mod tests {
     use super::*;
     use std::{fs, os::unix::fs::PermissionsExt};
+
+    #[test]
+    fn diagnostics_report_aggregates_facts_without_serializing_private_fixture_values() {
+        let root =
+            std::env::temp_dir().join(format!("ronda diagnostic privacy {}", std::process::id()));
+        let source = root.join("user-secret-project-credential");
+        fs::create_dir_all(&source).unwrap();
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        store
+            .pref_set(
+                "custom_roots",
+                &serde_json::json!({"codex":[source]}).to_string(),
+            )
+            .unwrap();
+        store
+            .upsert(
+                &ronda_core::ParsedSession {
+                    meta: SessionMeta {
+                        key: "fixture-key-secret".into(),
+                        native_id: "fixture-id-secret".into(),
+                        agent: ronda_core::AgentId::Codex,
+                        host: Some("host-alias-secret".into()),
+                        parent_key: None,
+                        title: "transcript-title-secret".into(),
+                        project_path: Some("project-path-secret".into()),
+                        source_path: "source-path-secret".into(),
+                        created_at: 1,
+                        updated_at: 2,
+                        model: Some("model-secret".into()),
+                        source: None,
+                        tokens: Some(987654321),
+                        archived: false,
+                        metadata_only: false,
+                        can_delete: true,
+                        starred: false,
+                        pinned: false,
+                    },
+                    messages: vec![ronda_core::TranscriptMessage {
+                        seq: 1,
+                        role: ronda_core::Role::Assistant,
+                        kind: ronda_core::MessageKind::Text,
+                        text: "transcript-body-secret".into(),
+                        timestamp: None,
+                        model: None,
+                        thinking: Some("thinking-secret".into()),
+                        tool_calls: vec![],
+                        images: vec![],
+                    }],
+                },
+                "fixture",
+            )
+            .unwrap();
+        let report = diagnostics_report(&store, &Scanner::new(root.join("home"))).unwrap();
+        assert_eq!(report.session_count, 1);
+        assert!(report.index_available);
+        assert!(report.sources.available <= report.sources.enabled);
+        assert!(report.sources.enabled <= report.sources.configured);
+        let json = serde_json::to_string(&report).unwrap();
+        for secret in [
+            "user-secret-project-credential",
+            "fixture-key-secret",
+            "fixture-id-secret",
+            "host-alias-secret",
+            "transcript-title-secret",
+            "project-path-secret",
+            "source-path-secret",
+            "model-secret",
+            "transcript-body-secret",
+            "thinking-secret",
+            "987654321",
+        ] {
+            assert!(!json.contains(secret), "report leaked {secret}");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn diagnostics_report_export_keeps_the_preview_fields_and_rejects_extra_data() {
+        let report = DiagnosticsReport {
+            format_version: 1,
+            app_version: env!("CARGO_PKG_VERSION").into(),
+            schema_version: ronda_core::store::SCHEMA_VERSION,
+            generated_at: "2026-10-03T12:00:00Z".into(),
+            index_available: true,
+            session_count: 3,
+            sources: SourceCounts {
+                configured: 4,
+                enabled: 3,
+                available: 2,
+            },
+        };
+        let root = std::env::temp_dir().join(format!("ronda diagnostics {}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let destination = root.join("diagnostics.json");
+        tauri::async_runtime::block_on(export_diagnostics(destination.clone(), report.clone()))
+            .unwrap();
+        let saved = fs::read_to_string(&destination).unwrap();
+        assert_eq!(saved, serde_json::to_string_pretty(&report).unwrap());
+        assert!(!saved.contains("path"));
+        assert!(!saved.contains("token"));
+        assert!(serde_json::from_str::<DiagnosticsReport>(
+            r#"{"format_version":1,"app_version":"1.0.14","schema_version":1,"generated_at":"2026-10-03T12:00:00Z","index_available":true,"session_count":3,"sources":{"configured":4,"enabled":3,"available":2},"secret":"fixture-secret"}"#
+        ).is_err());
+        let mut invalid = report;
+        invalid.sources.available = 5;
+        assert!(
+            tauri::async_runtime::block_on(export_diagnostics(destination.clone(), invalid))
+                .is_err()
+        );
+        assert_eq!(fs::read_to_string(&destination).unwrap(), saved);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn context_export_preserves_complete_text_and_cleans_failed_temporary_files() {
