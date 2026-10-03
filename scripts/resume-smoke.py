@@ -152,6 +152,20 @@ def button(text):
     return f"//button[normalize-space(.)='{text}']"
 
 
+def transcript_loaded(driver, title):
+    return driver.command("POST", "/execute/sync", {
+        "script": "const main=document.querySelector('main[aria-label=\\\"Transcript\\\"]'); "
+                  "const heading=main?.querySelector('h2'); "
+                  "const transcript=main?.querySelector('[aria-label=\\\"Session transcript\\\"]'); "
+                  "const message=transcript?.querySelector('article#message-0'); "
+                  "return heading?.textContent?.trim() === arguments[0] "
+                  "&& message?.innerText?.includes(arguments[0]) "
+                  "&& transcript?.getAttribute('aria-busy') !== 'true' "
+                  "&& !document.querySelector('dialog[open]');",
+        "args": [title],
+    })
+
+
 def choose_folder(project, output):
     if os.name != "nt":
         window = wait(lambda: subprocess.run(["xdotool", "search", "--onlyvisible", "--name",
@@ -294,7 +308,9 @@ def smoke(app, output, self_check=False):
             driver.click(button("Subagent: Native installed child proof"))
             driver.contains("Subagents cannot independently resume.")
             driver.click(button("Parent: Native installed resume proof"))
+            wait(lambda: transcript_loaded(driver, title), "parent transcript loaded")
             driver.click(button("Edit bookmark note for message 0"))
+            wait(lambda: driver.command("POST", "/execute/sync", {"script": "!!document.querySelector('main[aria-label=\\\"Transcript\\\"] label textarea') && !document.querySelector('dialog[open]');", "args": []}), "parent bookmark editor opened")
             note_field = driver.element("//label[starts-with(normalize-space(.),'Note for message 0')]/textarea")
             assert driver.command("GET", f"/element/{note_field}/property/value") == saved_note
             driver.screenshot(output / "bookmark-draft.png")
