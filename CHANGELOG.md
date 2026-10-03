@@ -4,6 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- Open a local session's existing project folder from its transcript header, with a one-click path copy. Recovered folder mappings are respected; remote, child, missing, and unknown folders cannot be opened.
+
 ## [1.0.11] - 2026-10-03
 
 ### Fixed

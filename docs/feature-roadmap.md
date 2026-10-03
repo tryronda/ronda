@@ -1,10 +1,17 @@
 # Ronda feature and release plan
 
-Prepared on 2026-10-02. The original ten improvements are now individually released and verified through 1.0.10. Their plans and initial review findings remain below; the execution ledger records delivery evidence. Follow-up work continues as small, separately verified patch releases.
+Maintained on 2026-10-03. The original ten improvements shipped through v1.0.10. The current release cycle is preserving bookmark note drafts for v1.0.11, followed by Open project folder for v1.0.12. The historical 1.0.0 assessment and initial ten-feature plans remain below; the execution ledger tracks completed releases and verification.
 
 The goal is faster context recovery and reuse for individual developers. Each feature ships as a separately reviewable desktop release, with matching documentation and a working browser demonstration. The first cycle shipped patches 1.0.1 through 1.0.10. Check remote tags and releases before allocating each follow-up version; hotfixes can consume patch numbers without changing feature order.
 
-## Initial findings at 1.0.0
+## Current status verified 2026-10-03
+
+- `origin/main` and the latest published GitHub release are v1.0.10 at `8df378f0ac5770d659dee3870b9c728fa6176169`. Patches 1.0.1–1.0.10 from the original plan have been shipped.
+- PR [#13](https://github.com/tryronda/ronda/pull/13) prepares 1.0.11, preserving bookmark note drafts. Its source checks, five package jobs, and installed Windows/Linux smoke checks passed in [CI run 37089199985](https://github.com/tryronda/ronda/actions/runs/37089199985). A separately packaged macOS app also passed synthetic-data verification for draft preservation across navigation/restart and Escape discard behavior. A changelog date correction is running through PR checks; the release remains untagged.
+- The live product site at [tryronda.cloud](https://tryronda.cloud/) responds successfully and currently reflects the 1.0.10 release. `site/changelog/releases.ts` derives changelog entries from `CHANGELOG.md`; no separate web changelog should be maintained.
+- The next candidate is follow-up 12 below, branch `ronda/open-project-folder`, patch 1.0.12 after 1.0.11. Four additional candidates are ranked below with their own scope, acceptance, and release records.
+
+## Initial findings at 1.0.0 (historical snapshot)
 
 - The repository and latest published GitHub release are at 1.0.0. Earlier releases used a dated `CHANGELOG.md` section, synchronized app versions, a `vX.Y.Z` tag, and platform installers.
 - `CONTRIBUTING.md` describes release preparation. Versions live in `package.json`, the workspace section of `Cargo.toml`, and `src-tauri/tauri.conf.json`; workspace package versions also appear in `Cargo.lock`. Settings currently displays a hardcoded 1.0.0.
@@ -19,9 +26,9 @@ The goal is faster context recovery and reuse for individual developers. Each fe
 
 Reviewed sources: [contribution and release guide](../CONTRIBUTING.md), [build workflow](../.github/workflows/build.yml), [site workflow](../.github/workflows/pages.yml), [changelog](../CHANGELOG.md), and [demo backend](../site/preview/demo.ts). Live checks: [product and preview](https://tryronda.cloud/#preview), [published release](https://github.com/tryronda/ronda/releases/tag/v1.0.0), and [latest tag workflow](https://github.com/tryronda/ronda/actions/runs/35278496114). Local uncommitted launch/site work exists; preserve it and keep it outside feature commits unless intentionally included.
 
-## Release order
+## Original release order (shipped)
 
-The refresh fix ships first because it corrects existing behavior. The remaining releases add capabilities in dependency order.
+The refresh fix shipped first because it corrected existing behavior. The remaining releases added capabilities in dependency order.
 
 | Order | Feature | Released version and tag | GitHub release title | Branch |
 | --- | --- | --- | --- | --- |
@@ -431,3 +438,40 @@ Acceptance and delivery:
 - 2026-10-02: Follow-up 11 is implemented on `ronda/bookmark-note-drafts`: app-session drafts, shared write state, explicit discard, and successful-write reconciliation. The regression fails on 1.0.10 and passes with the change; 35 frontend tests, 47 Rust tests, TypeScript, Clippy, site generation, release checks, and local macOS app/DMG packaging pass. The installed Windows/Linux smoke now checks draft navigation, explicit save, and restart persistence. Final CI, packaged native UI evidence, publication, and production verification remain open gates.
 
 - 2026-10-02: Follow-up 11 CI run 37088525035 passed source checks and Linux/macOS packaging, but cold Windows PowerShell hit the documented five-second readiness deadline in a resolution test. Command-resolution assertions now use a separate 30-second test budget; the product keeps its five-second limit, and the explicit timeout assertion and installed-app checks remain required. macOS UI verification is waiting for the Mac to be unlocked.
+
+## Follow-up 12: open a session's project folder
+
+**Release target:** 1.0.12 / `v1.0.12`, branch `ronda/open-project-folder`, title “Open a session's project folder”. Start from the 1.0.11 candidate while PR #13 is pending; rebase or merge its verified main commit before release preparation. The latest published release was verified from GitHub as v1.0.10 on 2026-10-03. Features 1.0.1–1.0.10 in the original roadmap are shipped; 1.0.11 is a separate open draft and is not yet published. The live product site is `https://tryronda.cloud`; its source derives release highlights and changelog entries from `CHANGELOG.md`.
+
+**Problem and outcome:** A transcript records the project path, and Resume readiness can recover a moved project, but opening that working copy currently takes manual path copying and Finder/Explorer navigation. Add one action in the transcript header to open the effective local project folder in the platform's default file manager. Copy project path remains available beside the path.
+
+**Behavior and boundaries:**
+
+1. The action is available for local root sessions with a recorded project path. Use the exact local folder mapping from Resume readiness when one exists, so opening and resuming land in the same recovered copy. Open a directory directly; do not run a shell command or an agent.
+2. Validate the session key, reject remote and child sessions, require an absolute path to an existing directory, canonicalize it, then pass the resulting path as a path value to Tauri's opener. Paths with spaces, quotes, dollar signs, and Unicode must remain literal. Return a readable error for missing, unavailable, or unknown folders.
+3. Remote and child sessions disable Open project folder and retain Copy project path. Missing local paths report that the folder is unavailable; users can copy the recorded path and use **Choose project folder** under Resume readiness to set a recovered mapping. Browser preview uses synthetic paths and always reports Desktop required; it never opens a visitor's folder.
+4. No schema change, agent adapter, new dependency, CLI/MCP command, network request, or telemetry is needed. The action changes no session metadata or agent files.
+
+**Acceptance and site work:** Cover existing, mapped, missing, relative, file-as-folder, remote, child, unknown, and unusual Unicode/quoted paths. Verify the native macOS package against an isolated synthetic index; installed Linux and Windows smoke jobs remain CI evidence for the shared command and platform packaging. Do not claim a manual check on an OS that was not exercised. Update the Resume docs, README feature summary, preview instructions and synthetic command, plus an Added changelog entry. The preview response must name Desktop required and prove no real folder access.
+
+**Release sequence:** Run frontend/Rust checks, site prerendering, sidecar/release checks, native macOS synthetic UI check, and the five-target packaging matrix. Merge the reviewed bot-authored commit after 1.0.11, synchronize package, Tauri, Cargo workspace and lockfile versions to 1.0.12, add a dated changelog section, and push annotated bot tag `v1.0.12`. Let the tag workflow publish the release. Verify the seven installers, checksum file and source SHA, then verify the Pages deployment shows the matching highlight, changelog, docs, preview behavior and release downloads. Record real PR, tag, release and successful workflow URLs here only after each exists.
+
+## Ranked backlog after 1.0.12
+
+These are research candidates, not scheduled releases. Allocate each next available patch only after the preceding release is published and a focused review confirms that the behavior still fills a gap.
+
+### Copy one transcript message
+
+**Why:** The multi-message context bundle can assemble excerpts from several sessions, but copying a single visible response still requires selecting rendered text. **Scope:** Add a per-message Copy action for visible user/assistant text; preserve plain text, Markdown, code fences, and line breaks. Do not include hidden thinking, tool input/output, system messages, or image payloads. **Acceptance:** Verify Unicode and code formatting, clipboard success/failure feedback, keyboard/screen-reader labeling, and the browser preview's sample-only response. **Release records:** Update transcript/context docs, preview instructions and sample handler, README if space permits, and an Added changelog entry; use a `ronda/copy-transcript-message` branch and the next available patch tag. **Size:** XS/S, low risk; distinct from cross-session context bundling.
+
+### Export a privacy-safe diagnostics report
+
+**Why:** Support reports need basic installation and index facts, while the privacy promise rules out transcript content. **Scope:** A user-initiated preview followed by a local JSON export containing app/schema versions, enabled source paths, index size, and counts; omit titles, message text, tokens, remote credentials, and environment variables. **Acceptance:** Inspect the preview and saved file, exercise cancel and write failures, and assert that seeded synthetic transcript strings and secrets never appear. Update Settings → Data docs and a synthetic site example. **Release records:** Add a Changed or Added changelog entry, documentation and site-preview guidance, then ship on the next patch `ronda/diagnostics-export`; do not send the report anywhere. **Size:** S, modest privacy review.
+
+### Remember the last-read message
+
+**Why:** Transcript refresh preserves a current reading position, but deliberately reopening a session starts at its default location. **Scope:** Persist one last-read sequence per local session and offer a clear Continue action when opening it again. Save only deliberate navigation, never terminal state or a background refresh; keep the normal open-at-latest behavior available. **Acceptance:** Verify restart persistence in a synthetic library, backward/forward navigation, new messages, deleted message fallback, and cleanup when the session is removed. Update Resume docs, preview and Added changelog. **Release records:** Assign a later patch and `ronda/reading-position` branch after a short UX review; do not silently jump users away from the latest message. **Size:** S/M, depends on a clear reopen interaction.
+
+### Show source refresh health
+
+**Why:** Users can see whether locations are enabled, but a stale or failing source can still make a session appear absent. **Scope:** Surface the last successful local scan and existing per-location error summaries in Settings → Locations, with Refresh as the explicit retry. Avoid new periodic network activity and avoid persisting transcript content. **Acceptance:** Use synthetic enabled/disabled locations, success/error scan results, and recovery after Refresh; redact usernames from example screenshots. Update Locations docs and preview. **Release records:** Use a subsequent patch branch `ronda/source-refresh-health`, document the exact summary fields, and add a Changed changelog entry. **Size:** S/M; depends on confirming which scan state is already retained.

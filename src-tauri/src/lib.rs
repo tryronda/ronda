@@ -18,6 +18,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 mod resume;
 mod terminal;
@@ -864,6 +865,16 @@ async fn inspect_resume(state: State<'_, Shared>, key: String) -> CommandResult<
 }
 
 #[tauri::command]
+async fn open_project_folder(
+    state: State<'_, Shared>,
+    app: tauri::AppHandle,
+    key: String,
+) -> CommandResult<()> {
+    let path = off_main(state, move |state| resume::project_directory(state, &key)).await?;
+    app.opener().open_path(path, None::<&str>).map_err(error)
+}
+
+#[tauri::command]
 async fn set_resume_folder(
     state: State<'_, Shared>,
     app: tauri::AppHandle,
@@ -1259,6 +1270,7 @@ pub fn run() {
             trash_session,
             resume_session,
             inspect_resume,
+            open_project_folder,
             set_resume_folder,
             terminal_open,
             terminal_write,
