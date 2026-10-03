@@ -4,6 +4,15 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-10-03
+
+### Added
+- **Source refresh health** shows the last completed local scan time and safe per-location status and source-record counts in Settings → Locations.
+
+### Changed
+- Missing configured sources retain their indexed sessions until they return or the location is removed or disabled; unused absent default locations do not prevent pruning.
+- The browser preview opens directly on the sample app without a separate control strip or instruction block.
+
 ## [1.0.16] - 2026-10-03
 
 ### Added

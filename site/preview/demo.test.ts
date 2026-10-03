@@ -57,6 +57,29 @@ test("sample messages update the real workbench backend and notify subscribed re
   await expect(invoke("unknown_preview_command")).rejects.toThrow("Unsupported preview command");
 });
 
+test("source health preview shows fixed local states and refreshes deterministically without visitor data", async () => {
+  installDemoBackend();
+  const locations = await invoke<{health_id:string;enabled:boolean}[]>("list_locations");
+  const initial = await invoke<{completed_at_ms:number;roots:{id:string;status:string;source_records:number;issues:number}[]}>("get_local_source_refresh_health");
+  expect(locations.map(location=>location.health_id)).toContain("a".repeat(64));
+  expect(initial.roots.map(root=>root.status)).toEqual(["checked","unavailable","partial","checked"]);
+  expect(initial.roots.find(root=>root.id==="a".repeat(64))?.source_records).toBe(18);
+  expect(initial.roots.find(root=>root.id==="d".repeat(64))?.source_records).toBe(0);
+  const firstReport = await invoke("scan");
+  const firstRefresh = await invoke<typeof initial>("get_local_source_refresh_health");
+  expect(firstReport).toMatchObject({discovered:25});
+  expect(firstRefresh.completed_at_ms).toBeGreaterThanOrEqual(initial.completed_at_ms);
+  expect(firstRefresh.roots.find(root=>root.id==="c".repeat(64))?.status).toBe("checked");
+  expect(firstRefresh.roots.find(root=>root.id==="c".repeat(64))?.issues).toBe(0);
+  await invoke("scan");
+  const secondRefresh = await invoke<typeof initial>("get_local_source_refresh_health");
+  expect(secondRefresh.roots.find(root=>root.id==="c".repeat(64))?.status).toBe("partial");
+  expect(secondRefresh.roots.find(root=>root.id==="c".repeat(64))?.issues).toBe(1);
+  uninstallDemoBackend();
+  installDemoBackend();
+  expect((await invoke<typeof initial>("get_local_source_refresh_health")).roots.find(root=>root.id==="c".repeat(64))?.status).toBe("partial");
+});
+
 test("sample reading snapshots use SHA-256 and preferences reset when the preview reloads", async () => {
   installDemoBackend();
   const snapshot = await backend.getTranscriptSnapshot("claude-code:demo-0");
@@ -100,9 +123,9 @@ test("preview scan examples are fixed, local-only, and alternate clean then part
   installDemoBackend();
   const first = await invoke<{discovered:number;indexed:number;unchanged:number;errors:string[]}>("scan");
   const second = await invoke<{discovered:number;indexed:number;unchanged:number;errors:string[]}>("scan");
-  expect(first).toEqual({discovered:32,indexed:3,unchanged:24,errors:[]});
-  expect(second).toEqual({discovered:32,indexed:3,unchanged:24,errors:["Synthetic sample scan error; details are hidden."]});
-  expect(first.discovered).not.toBe(first.indexed + first.unchanged);
+  expect(first).toEqual({discovered:25,indexed:1,unchanged:24,errors:[]});
+  expect(second).toEqual({discovered:25,indexed:1,unchanged:24,errors:["Synthetic sample scan error; details are hidden."]});
+  expect(first.discovered).toBe(first.indexed + first.unchanged);
 });
 
 test("preview groups title and message matches, sorts, pages, and honors filters", async () => {

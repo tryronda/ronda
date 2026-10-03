@@ -1,7 +1,7 @@
 import { BookmarkData } from "./BookmarkData";
 import { DiagnosticsExport } from "./DiagnosticsExport";
 import { version as appVersion } from "../../package.json";
-import { invoke } from '@/lib/tauri';
+import { invoke, listen } from '@/lib/tauri';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useState } from 'react';
 import { Switch } from '@/components/motion/switch';
@@ -12,7 +12,9 @@ import { scanSummary } from '@/workbench/scan-summary';
 import './panels.css';
 
 type Section = 'general' | 'locations' | 'remote' | 'connect' | 'data' | 'updates' | 'about';
-type Location = { agent: string; path: string; enabled: boolean; custom: boolean };
+type Location = { agent: string; path: string; health_id: string; enabled: boolean; custom: boolean };
+type RootHealth = { id: string; status: 'disabled' | 'unavailable' | 'checked' | 'partial'; source_records: number; issues: number; counts_truncated: boolean };
+type LocalRefreshHealth = { version: 1; completed_at_ms: number; roots_truncated: boolean; roots: RootHealth[] };
 type RemoteHost = { host: string; enabled: boolean; last_sync_ms: number | null; last_error: string | null };
 type CustomRoots = Record<string, string[]>;
 
@@ -24,7 +26,13 @@ const copy = {
   connect: 'Connect', data: 'Data', updates: 'Updates', about: 'About',
   appearance: 'Appearance', theme: 'Theme', themeHelp: 'Four times of day, from dawn to night.',
   system: 'System', dawn: 'Dawn', morning: 'Morning', dusk: 'Dusk', night: 'Night',
-  sourceLocations: 'Session locations', locationsHelp: 'Ronda reads these paths without changing agent data.',
+  sourceLocations: 'Session locations', locationsHelp: 'Ronda reads these paths without changing agent data. Checked counts are source records found before grouping; zero does not prove that agent data is absent.',
+  lastLocalScan: 'Last completed local scan', noLocalScan: 'No completed local scan yet.',
+  rootsOmitted: 'Scan status is shown for up to 512 locations; additional locations are omitted.',
+  notScanned: 'Not scanned yet', unavailable: 'Unavailable', checked: 'Checked', partial: 'Partial',
+  disabledNotScanned: 'Disabled · not scanned',
+  sourceRecordFound: 'source record found', sourceRecordsFound: 'source records found', scanIssue: 'scan issue', scanIssues: 'scan issues',
+  atLeast: 'at least',
   enabled: 'Enabled', disabled: 'Disabled', default: 'Default', custom: 'Custom',
   addLocation: 'Add location', agent: 'Agent', path: 'Absolute folder path', add: 'Add', remove: 'Remove',
   missingPath: 'Enter an absolute folder path.', noLocations: 'No locations found.',
@@ -49,6 +57,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [section, setSection] = useState<Section>('general');
   const [theme, setTheme] = useState('morning');
   const [locations, setLocations] = useState<Location[]>([]);
+  const [refreshHealth, setRefreshHealth] = useState<LocalRefreshHealth | null>(null);
   const [customRoots, setCustomRoots] = useState<CustomRoots>({});
   const [resumeMappings,setResumeMappings]=useState<Record<string,string>>({});
   const [disabledRoots, setDisabledRoots] = useState<string[]>([]);
@@ -64,13 +73,15 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [loading, setLoading] = useState(true);
 
   async function loadLocations() {
-    const [rows, custom, disabled, mappings] = await Promise.all([
+    const [rows, custom, disabled, mappings, health] = await Promise.all([
       invoke<Location[]>('list_locations'),
       invoke<string | null>('get_pref', { key: 'custom_roots' }),
       invoke<string | null>('get_pref', { key: 'disabled_roots' }),
       invoke<string | null>('get_pref', { key: 'resume_project_mappings' }),
+      invoke<LocalRefreshHealth | null>('get_local_source_refresh_health'),
     ]);
     setLocations(rows);
+    setRefreshHealth(health);
     try {setResumeMappings(mappings ? JSON.parse(mappings) as Record<string,string> : {});} catch {setResumeMappings({});}
     try { setCustomRoots(custom ? JSON.parse(custom) as CustomRoots : {}); } catch { setCustomRoots({}); }
     try { setDisabledRoots(disabled ? JSON.parse(disabled) as string[] : []); } catch { setDisabledRoots([]); }
@@ -91,6 +102,20 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     return () => window.removeEventListener('ronda:theme', onTheme);
   }, []);
 
+  useEffect(() => {
+    if (section !== 'locations') return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen('library-changed', () => {
+      void invoke<LocalRefreshHealth | null>('get_local_source_refresh_health')
+        .then(setRefreshHealth)
+        .catch(reason => setError(String(reason)));
+    }).then(stop => { if (disposed) stop(); else unlisten = stop; }).catch(reason => {
+      if (!disposed) setError(String(reason));
+    });
+    return () => { disposed = true; unlisten?.(); };
+  }, [section]);
+
   async function act(work: () => Promise<unknown>, success?: string) {
     setBusy(true); setError(''); setNotice('');
     try { await work(); if (success) setNotice(success); }
@@ -100,7 +125,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   async function rebuildIndex() {
     setBusy(true); setError(''); setNotice('');
-    try { setNotice(scanSummary(await invoke<ScanReport>('scan'))); }
+    try { setNotice(scanSummary(await invoke<ScanReport>('scan'))); await loadLocations(); }
     catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
   }
@@ -116,6 +141,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     await invoke('set_pref', { key: 'disabled_roots', value: JSON.stringify(disabled) });
     await loadLocations();
     await invoke('scan');
+    await loadLocations();
   }
 
   function addLocation() {
@@ -200,9 +226,21 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </>}
         {section === 'locations' && <section className="panel-card">
           <h2>{t.sourceLocations}</h2><p className="panel-help">{t.locationsHelp}</p>
+          <p className="panel-help" role="status">{t.lastLocalScan}: {refreshHealth ? new Date(refreshHealth.completed_at_ms).toLocaleString() : t.noLocalScan}</p>
+          {refreshHealth?.roots_truncated && <p className="panel-help">{t.rootsOmitted}</p>}
           <div className="location-list">{locations.length ? locations.map(location =>
             <div className="location-row" key={`${location.agent}:${location.path}`}>
               <div><strong>{location.agent}</strong><small>{location.custom ? t.custom : t.default}</small>
+                <small>{location.enabled ? (() => {
+                  const root = refreshHealth?.roots.find(item => item.id === location.health_id);
+                  if (!root || root.status === 'disabled') return t.notScanned;
+                  if (root.status === 'unavailable') return t.unavailable;
+                  const issuePrefix = root.issues === 1_000_000_000 ? `${t.atLeast} ` : '';
+                  const recordPrefix = root.source_records === 1_000_000_000 ? `${t.atLeast} ` : '';
+                  const recordLabel = root.source_records === 1 ? t.sourceRecordFound : t.sourceRecordsFound;
+                  if (root.status === 'partial') return `${t.partial} · ${issuePrefix}${root.issues} ${root.issues === 1 ? t.scanIssue : t.scanIssues} · ${recordPrefix}${root.source_records} ${recordLabel}`;
+                  return `${t.checked} · ${recordPrefix}${root.source_records} ${recordLabel}`;
+                })() : t.disabledNotScanned}</small>
                 <code title={location.path}>{location.path}</code></div>
               <div className="location-actions"><span className="panel-switch">
                 <Switch checked={location.enabled} disabled={busy} onCheckedChange={() => toggleLocation(location)} ariaLabel={`${location.agent} ${location.path}`} />

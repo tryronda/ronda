@@ -412,6 +412,36 @@ async fn list_locations(state: State<'_, Shared>) -> CommandResult<Vec<Location>
 }
 
 #[tauri::command]
+async fn get_local_source_refresh_health(
+    state: State<'_, Shared>,
+) -> CommandResult<Option<ronda_core::source_health::LocalRefreshHealth>> {
+    off_main(state, |state| {
+        let store = state.store.lock().map_err(error)?;
+        let Some(raw) = store
+            .pref_get(ronda_core::source_health::PREF_KEY)
+            .map_err(error)?
+        else {
+            return Ok(None);
+        };
+        let now = chrono::Utc::now().timestamp_millis();
+        let Ok(mut health) = ronda_core::source_health::LocalRefreshHealth::decode(&raw, now)
+        else {
+            return Ok(None);
+        };
+        let current = state
+            .scanner
+            .locations(&store)
+            .map_err(error)?
+            .into_iter()
+            .map(|location| location.health_id)
+            .collect::<HashSet<_>>();
+        health.retain_current_roots(&current);
+        Ok(Some(health))
+    })
+    .await
+}
+
+#[tauri::command]
 async fn scan(app: tauri::AppHandle, state: State<'_, Shared>) -> CommandResult<ScanReport> {
     let state = state.inner().clone();
     let report = tauri::async_runtime::spawn_blocking(move || {
@@ -1345,6 +1375,7 @@ pub fn run() {
             find_error_history,
             get_session_relationships,
             list_locations,
+            get_local_source_refresh_health,
             scan,
             set_session_flags,
             list_bookmarks,
