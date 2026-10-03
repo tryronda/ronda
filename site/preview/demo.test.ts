@@ -56,6 +56,12 @@ test("sample messages update the real workbench backend and notify subscribed re
   await expect(invoke("unknown_preview_command")).rejects.toThrow("Unsupported preview command");
 });
 
+test("sample project folders require the desktop app", async () => {
+  installDemoBackend();
+  await expect(invoke("open_project_folder", {key:"claude-code:demo-0"}))
+    .rejects.toThrow("Desktop required: sample sessions cannot open a project folder.");
+});
+
 test("preview groups title and message matches, sorts, pages, and honors filters", async () => {
   installDemoBackend();
   const { queryDefaults } = await import("@/workbench/api");
