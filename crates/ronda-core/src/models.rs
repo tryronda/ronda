@@ -138,6 +138,13 @@ pub struct TranscriptMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptSnapshot {
+    pub session_key_hash: String,
+    pub messages: Vec<TranscriptMessage>,
+    pub fingerprints: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedSession {
     pub meta: SessionMeta,
     pub messages: Vec<TranscriptMessage>,

@@ -8,7 +8,7 @@ use ronda_core::{
     related::SessionRelationships,
     scanner::{Location, ScanReport, Scanner},
     GroupedSearch, Insights, LibraryOptions, ProjectInfo, SearchHit, SearchMatches, SearchSort,
-    SessionMeta, SessionPage, SessionQuery, Store, TranscriptMessage,
+    SessionMeta, SessionPage, SessionQuery, Store, TranscriptMessage, TranscriptSnapshot,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -219,6 +219,23 @@ async fn get_transcript(
             .map_err(error)?
             .get_transcript(&key)
             .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn get_transcript_snapshot(
+    state: State<'_, Shared>,
+    key: String,
+) -> CommandResult<TranscriptSnapshot> {
+    off_main(state, move |state| {
+        let messages = {
+            let store = state.store.lock().map_err(error)?;
+            store.get_transcript(&key).map_err(error)?
+        };
+        Ok(ronda_core::reading_position::snapshot_for_session(
+            &key, messages,
+        ))
     })
     .await
 }
@@ -1317,6 +1334,7 @@ pub fn run() {
             library_options,
             get_session,
             get_transcript,
+            get_transcript_snapshot,
             search_sessions,
             search_grouped,
             search_session_matches,
