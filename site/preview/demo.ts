@@ -127,6 +127,27 @@ let prefs = new Map<string, string>();
 let hosts: { host: string; enabled: boolean; last_sync_ms: number | null; last_error: string | null }[] = [];
 let scanCount = 0;
 
+async function sampleSha256(value: Uint8Array | string): Promise<string> {
+  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sampleTranscriptSnapshot(key: string) {
+  const messages = structuredClone(transcripts.get(key) ?? []);
+  const fingerprints = await Promise.all(messages.map(async message => sampleSha256(JSON.stringify([
+    message.role, message.kind, message.text, message.timestamp, message.model, message.thinking,
+    message.tool_calls.map(call => [call.id, call.name, call.input, call.output, call.is_error]),
+    await Promise.all(message.images.map(async image => {
+      try {
+        const bytes = Uint8Array.from(atob(image.data_base64), character => character.charCodeAt(0));
+        return [image.media_type, await sampleSha256(bytes)];
+      } catch { return [image.media_type, await sampleSha256(`invalid:${image.data_base64}`)]; }
+    })),
+  ]))));
+  return { session_key_hash: await sampleSha256(`ronda:session-key:v1\0${key}`), messages, fingerprints };
+}
+
 function meta(key: string, title: string, agent: AgentId, project: string, model: string, updated: number, index: number): SessionMeta {
   return {
     key, native_id: key.split(":")[1], agent, host: null, parent_key: null, title, project_path: project,
@@ -586,9 +607,10 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
     case "get_bookmark_backup": return JSON.stringify({version:1,bookmarks},null,2);
-    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.15",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
+    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.16",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
     case "import_bookmarks": return importBookmarks(args.json as string, args.replacements as BookmarkReplacement[]);
     case "get_transcript": return transcripts.get(args.key as string) ?? [];
+    case "get_transcript_snapshot": return sampleTranscriptSnapshot(args.key as string);
     case "search_sessions": return search(args.query as string, args.filter as SessionQuery, args.limit as number);
     case "search_grouped": return searchGrouped(args.query as string, args.filter as SessionQuery, args.sort as SearchSort, args.offset as number, args.limit as number);
     case "search_session_matches": return searchSessionMatches(args.query as string, args.filter as SessionQuery, args.key as string, args.offset as number, args.limit as number);
@@ -660,6 +682,26 @@ export function appendDemoMessage() {
   const messages = transcripts.get(key)!;
   messages.push({ ...text("assistant", `Sample update ${messages.length}: the transcript refreshes while you read.`),
     seq: messages.length, timestamp: Date.now() });
+  sessions = sessions.map(session => session.key === key ? { ...session, updated_at: Date.now() } : session);
+  libraryListeners.forEach(callback => callback());
+}
+
+export function insertEarlierDemoMessage() {
+  const key = "claude-code:demo-0";
+  const messages = transcripts.get(key)!;
+  const timestamp = messages[0]?.timestamp === null || messages[0]?.timestamp === undefined
+    ? null : messages[0].timestamp - 60_000;
+  messages.unshift({ ...text("user", "Earlier sample message inserted before this conversation."), seq: 0, timestamp });
+  messages.forEach((message, seq) => { message.seq = seq; });
+  sessions = sessions.map(session => session.key === key ? { ...session, updated_at: Date.now() } : session);
+  libraryListeners.forEach(callback => callback());
+}
+
+export function changeFirstDemoAssistantReply() {
+  const key = "claude-code:demo-0";
+  const message = transcripts.get(key)!.find(item => item.role === "assistant" && item.kind === "text");
+  if (!message) return;
+  message.text = `${message.text}\n\n[Sample edit] This reply changed, so a saved place on it can no longer resolve.`;
   sessions = sessions.map(session => session.key === key ? { ...session, updated_at: Date.now() } : session);
   libraryListeners.forEach(callback => callback());
 }
