@@ -8,6 +8,7 @@ pub mod query;
 pub mod reading_position;
 pub mod related;
 pub mod scanner;
+pub mod source_health;
 pub mod store;
 
 pub use adapter::{AgentAdapter, SourceRef};

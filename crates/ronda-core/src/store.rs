@@ -450,6 +450,26 @@ impl Store {
         Ok(())
     }
 
+    /// Returns whether a local indexed session came from this configured root.
+    /// `Path::starts_with` compares components, so `/data/a` does not match `/data/ab`.
+    pub fn has_local_source_under_root(&self, agent: &str, root: &Path) -> Result<bool> {
+        Ok(self
+            .local_source_paths_for_agent(agent)?
+            .iter()
+            .any(|path| path.starts_with(root)))
+    }
+
+    pub fn local_source_paths_for_agent(&self, agent: &str) -> Result<Vec<PathBuf>> {
+        let mut statement = self.conn.prepare(
+            "SELECT source_path FROM sessions WHERE agent=?1 AND json_extract(meta,'$.host') IS NULL",
+        )?;
+        let paths = statement.query_map([agent], |row| row.get::<_, String>(0))?;
+        paths
+            .map(|path| path.map(PathBuf::from))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn search(
         &self,
         query: &str,
@@ -907,6 +927,34 @@ impl Store {
 #[cfg(test)]
 mod search_tests {
     use super::*;
+
+    #[test]
+    fn local_source_root_match_uses_path_components_and_host_scope() {
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        for (key, source, host) in [
+            ("under", "/data/root/session.jsonl", None),
+            ("prefix", "/data/root-other/session.jsonl", None),
+            ("remote", "/data/root/remote.jsonl", Some("build")),
+        ] {
+            let meta = serde_json::json!({"key":key,"agent":"claude-code","host":host});
+            store.conn.execute(
+                "INSERT INTO sessions(key,meta,fingerprint,source_path,agent,updated_at) VALUES(?1,?2,'x',?3,'claude-code',0)",
+                params![key, meta.to_string(), source],
+            ).unwrap();
+        }
+        assert!(store
+            .has_local_source_under_root("claude-code", Path::new("/data/root"))
+            .unwrap());
+        assert!(!store
+            .has_local_source_under_root("claude-code", Path::new("/data/roo"))
+            .unwrap());
+        assert!(!store
+            .has_local_source_under_root("claude-code", Path::new("/data/root/remote.jsonl"))
+            .unwrap());
+        assert!(!store
+            .has_local_source_under_root("codex", Path::new("/data/root"))
+            .unwrap());
+    }
 
     #[test]
     fn excerpts_center_case_insensitive_matches_on_unicode_boundaries() {

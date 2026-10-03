@@ -1,4 +1,10 @@
-use crate::{adapters, AgentAdapter, SourceRef, Store};
+use crate::{
+    adapters,
+    source_health::{
+        bound_roots, root_id, LocalRefreshHealth, RootHealth, RootStatus, MAX_COUNT, PREF_KEY,
+    },
+    AgentAdapter, SourceRef, Store,
+};
 use anyhow::Result;
 use std::{
     collections::{HashMap, HashSet},
@@ -22,8 +28,26 @@ pub struct ScanReport {
 pub struct Location {
     pub agent: String,
     pub path: String,
+    pub health_id: String,
     pub enabled: bool,
     pub custom: bool,
+}
+
+#[derive(Default)]
+struct RootScanState {
+    id: String,
+    source_records: u64,
+    issues: u64,
+    counts_truncated: bool,
+    status: Option<RootStatus>,
+}
+
+fn bump_count(count: &mut u64, truncated: &mut bool) {
+    if *count == MAX_COUNT {
+        *truncated = true;
+    } else {
+        *count += 1;
+    }
 }
 
 impl Scanner {
@@ -67,6 +91,7 @@ impl Scanner {
                 let path = root.to_string_lossy().into_owned();
                 locations.push(Location {
                     agent: adapter.agent().as_str().into(),
+                    health_id: root_id(adapter.agent().as_str(), &root),
                     enabled: !disabled.contains(&path),
                     path,
                     custom: is_custom,
@@ -87,8 +112,24 @@ impl Scanner {
         host: Option<&str>,
         force: bool,
     ) -> Result<ScanReport> {
+        let outcome = self.scan_host_with_health(store, home, host, force)?;
+        if host.is_none() {
+            store.pref_set(PREF_KEY, &outcome.health.encode()?)?;
+        }
+        Ok(outcome.report)
+    }
+
+    fn scan_host_with_health(
+        &self,
+        store: &mut Store,
+        home: &Path,
+        host: Option<&str>,
+        force: bool,
+    ) -> Result<ScanOutcome> {
         let mut report = ScanReport::default();
-        let mut refs: HashMap<String, Vec<(usize, SourceRef)>> = HashMap::new();
+        let mut refs: HashMap<String, Vec<(usize, SourceRef, String)>> = HashMap::new();
+        let mut root_states = HashMap::<String, RootScanState>::new();
+        let mut local_paths_by_agent = HashMap::<String, Vec<PathBuf>>::new();
         let mut complete = true;
         let custom: HashMap<String, Vec<PathBuf>> = store
             .pref_get("custom_roots")?
@@ -109,21 +150,57 @@ impl Scanner {
             roots.dedup();
             for root in roots {
                 if host.is_none() && disabled.contains(&root.to_string_lossy().to_string()) {
+                    let id = root_id(adapter.agent().as_str(), &root);
+                    root_states.insert(
+                        id.clone(),
+                        RootScanState {
+                            id,
+                            status: Some(RootStatus::Disabled),
+                            ..RootScanState::default()
+                        },
+                    );
                     continue;
                 }
-                if !root.exists() {
+                let id = root_id(adapter.agent().as_str(), &root);
+                let state = root_states
+                    .entry(id.clone())
+                    .or_insert_with(|| RootScanState {
+                        id: id.clone(),
+                        ..RootScanState::default()
+                    });
+                if std::fs::metadata(&root).is_err() {
+                    state.status = Some(RootStatus::Unavailable);
+                    if host.is_none() {
+                        let agent = adapter.agent().as_str();
+                        if !local_paths_by_agent.contains_key(agent) {
+                            local_paths_by_agent.insert(
+                                agent.to_string(),
+                                store.local_source_paths_for_agent(agent)?,
+                            );
+                        }
+                        if local_paths_by_agent
+                            .get(agent)
+                            .is_some_and(|paths| paths.iter().any(|path| path.starts_with(&root)))
+                        {
+                            complete = false;
+                        }
+                    }
                     continue;
                 }
                 match adapter.discover(&root) {
                     Ok(found) => {
                         for source in found {
                             let key = session_key(source.agent.as_str(), host, &source.native_id);
-                            refs.entry(key).or_default().push((index, source));
+                            refs.entry(key)
+                                .or_default()
+                                .push((index, source, id.clone()));
                             report.discovered += 1;
+                            bump_count(&mut state.source_records, &mut state.counts_truncated);
                         }
                     }
                     Err(e) => {
                         complete = false;
+                        bump_count(&mut state.issues, &mut state.counts_truncated);
                         report.errors.push(format!("{}: {e}", root.display()));
                     }
                 }
@@ -139,7 +216,7 @@ impl Scanner {
                     .then(b.1.modified_ms.cmp(&a.1.modified_ms))
             });
             let mut parsed = None;
-            for (index, source) in candidates {
+            for (index, source, id) in candidates {
                 let adapter = &self.adapters[index];
                 let fingerprint = adapter.fingerprint(&source);
                 let same_source = store
@@ -178,9 +255,14 @@ impl Scanner {
                         break;
                     }
                     Ok(None) => {}
-                    Err(e) => report
-                        .errors
-                        .push(format!("{}: {e}", source.path.display())),
+                    Err(e) => {
+                        if let Some(root) = root_states.get_mut(&id) {
+                            bump_count(&mut root.issues, &mut root.counts_truncated);
+                        }
+                        report
+                            .errors
+                            .push(format!("{}: {e}", source.path.display()));
+                    }
                 }
             }
             if parsed.is_none() {
@@ -190,7 +272,32 @@ impl Scanner {
         if complete {
             store.prune_missing(host, &seen)?;
         }
-        Ok(report)
+        let roots = root_states
+            .into_values()
+            .map(|root| {
+                let status = root.status.unwrap_or(if root.issues == 0 {
+                    RootStatus::Checked
+                } else {
+                    RootStatus::Partial
+                });
+                RootHealth {
+                    id: root.id,
+                    status,
+                    source_records: root.source_records,
+                    issues: root.issues,
+                    counts_truncated: root.counts_truncated,
+                }
+            })
+            .collect::<Vec<_>>();
+        let (roots, roots_truncated) = bound_roots(roots);
+        Ok(ScanOutcome {
+            report,
+            health: LocalRefreshHealth::new(
+                chrono::Utc::now().timestamp_millis(),
+                roots,
+                roots_truncated,
+            ),
+        })
     }
 
     pub fn adapter(&self, agent: crate::AgentId) -> Option<&dyn AgentAdapter> {
@@ -199,6 +306,11 @@ impl Scanner {
             .find(|a| a.agent() == agent)
             .map(|a| a.as_ref())
     }
+}
+
+struct ScanOutcome {
+    report: ScanReport,
+    health: LocalRefreshHealth,
 }
 
 pub fn session_key(agent: &str, host: Option<&str>, id: &str) -> String {
