@@ -263,6 +263,9 @@ def smoke(app, output, self_check=False):
                 mappings = json.loads(db.execute("SELECT value FROM prefs WHERE key='resume_project_mappings'").fetchone()[0])
             assert Path(mappings[str(original)]).resolve() == project.resolve()
             driver.screenshot(output / "recovered.png")
+            driver.click(button("Open project folder"))
+            driver.contains("Opened project folder")
+            driver.screenshot(output / "project-folder-opened.png")
             # A note draft must survive replacing the transcript, without silently persisting it.
             saved_note = "Native note draft café ü"
             driver.click(button("Bookmark message 0"))
@@ -330,7 +333,8 @@ def smoke(app, output, self_check=False):
             assert {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources} == original_hashes
             (output / "result.json").write_text(json.dumps({"source": os.environ.get("GITHUB_SHA"),
                 "platform": os.environ.get("RUNNER_OS"), "installed_app": str(app), "launches": logs(),
-                "checks": ["idle inspection", "native folder picker", "mapping persistence", "embedded resume",
+                "checks": ["idle inspection", "native folder picker", "mapping persistence", "mapped project-folder opener",
+                           "embedded resume",
                            "restart", "external launch", "launch revalidation", "Settings removal", "child restriction",
                            "literal arguments", "unchanged sources", "bookmark draft navigation/save/restart"]}, indent=2), encoding="utf-8")
             print("Installed-app resume smoke passed")
