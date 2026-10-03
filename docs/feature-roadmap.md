@@ -82,6 +82,54 @@ These candidates follow published v1.0.18. They are ordered product plans, not c
 
 **Risks, size, and release:** Main risks are selecting sessions outside the current filter, implying bulk delete, partial bulk writes, and colliding with context-bundle checkboxes. **Size:** S. Proposed release **1.0.21 / `v1.0.21`**, GitHub title **Ronda 1.0.21**, branch **`ronda/bulk-session-triage`**, only after published v1.0.20 and a fresh tag/release check.
 
+## Follow-up 22: local session titles — research candidate after v1.0.21
+
+**Problem:** Agent-generated titles are often generic or repeated. The current session model exposes one source title, and the Workbench has star and pin actions but no way to distinguish two sessions without changing their source transcript.
+
+**Scope and interaction:** Add an explicit **Rename session** action and **Reset to original title** action for one session. Show the local title in lists and the detail heading, with the source title available as secondary text or a tooltip. Search should match the local title while preserving the source title for adapter metadata, exports, and agent-owned files. Keep title override local; do not rename or edit source files. Define clear behavior for missing sessions and source-title updates before implementation.
+
+**Implementation seam:** Add an additive local annotation keyed by stable session key beside the existing `user_data` and bookmark records. Overlay the alias in desktop presentation and add alias matching to the desktop grouped-search path. Keep adapter metadata canonical and preserve existing CLI/MCP output contracts. Demo aliases live in a fixed in-memory map and reset on reload.
+
+**Privacy and acceptance:** Aliases remain in the local database and are excluded from diagnostics and exports. Verify rename/reset, Unicode and length bounds, case-only and duplicate aliases, alias search with saved-search replay, rescan/restart persistence, changing source titles, missing session handling, and no source-file writes. Browser preview demonstrates rename, reset, and search without persisting visitor data.
+
+**Risks, size, and release:** Main risks are conflating a local alias with the source title and changing non-desktop search contracts. **Size:** S/M. Proposed release **1.0.22 / `v1.0.22`**, GitHub title **Ronda 1.0.22**, branch **`ronda/session-titles`**, only after published v1.0.21 and a fresh tag/release check.
+
+## Follow-up 23: reveal a session's source file — research candidate after v1.0.22
+
+**Problem:** Users can open a session's project folder, but cannot quickly locate the conversation file for manual inspection, backup, or agent-specific recovery.
+
+**Scope and interaction:** Add **Reveal source file** to eligible local file-backed sessions. Ask the operating system to select the file in its file manager; where selection is unsupported, open its containing directory and show a clear notice. Remote, database-backed, metadata-only, and missing sources have explicit unavailable states. The action only reveals a path and never opens, edits, copies, or deletes transcript content.
+
+**Implementation seam:** Reuse the source path carried by session metadata, but validate it against the enabled adapter/source root before calling a native file-manager reveal API. Canonicalize the target, reject symlink escapes, and require the expected regular-file or supported directory type. Add an explicit fixed-data browser preview response. Inspect existing adapter location contracts before choosing the guard boundary.
+
+**Privacy and acceptance:** Do not send or log source paths. Test supported file-backed adapters, folder/database-backed sources, missing files, symlink escapes, remote sessions, and metadata-only rows. Verify macOS, Windows, and Linux behavior or document the directory-open fallback. The browser preview must never inspect a visitor's filesystem.
+
+**Risks, size, and release:** Main risks are unsafe path resolution, assuming every adapter stores one file per session, and platform differences in selecting a file. **Size:** S. Proposed release **1.0.23 / `v1.0.23`**, GitHub title **Ronda 1.0.23**, branch **`ronda/reveal-session-source`**, only after published v1.0.22 and a fresh tag/release check.
+
+## Follow-up 24: new activity since last viewed — research candidate after v1.0.23
+
+**Problem:** With many sessions, recency sorting requires users to remember which conversations they already opened. The library has source update times but no local per-session view marker.
+
+**Scope and interaction:** Record a local last-viewed timestamp only when the user intentionally opens a session. Add a subtle **New since viewed** marker and a filter, plus an explicit mark-read action. Background refresh must not mark sessions viewed. Describe the marker as an update-time comparison, not a message-level unread count or notification.
+
+**Implementation seam:** Add a local annotation keyed by stable session key and overlay it without changing adapter records. Compare it with the existing source `updated_at`; keep filter state in existing local preferences. Preview state is in-memory and resets on reload. Avoid changes to reading-position restoration and source parsing.
+
+**Privacy and acceptance:** Keep timestamps local and omit them from diagnostics, exports, and network requests. Verify opening marks viewed, refresh does not, later updates show new status, mark-read clears it, backward timestamps and unavailable sessions are handled, and reading-position/navigation behavior stays intact. Preview demonstrates the marker, filter, explicit mark-read, and reload reset.
+
+**Risks, size, and release:** Source timestamps can be approximate and do not prove unread content; labels and copy must avoid implying otherwise. **Size:** M. Proposed release **1.0.24 / `v1.0.24`**, GitHub title **Ronda 1.0.24**, branch **`ronda/session-activity-markers`**, only after published v1.0.23 and a fresh tag/release check.
+
+## Follow-up 25: full-session Markdown export — conditional research candidate after v1.0.24
+
+**Problem:** The app has a selected-context export and bookmark backup, but users may want a faithful offline Markdown archive for one entire session. The existing `export_session` command must be inspected first; proceed only if it does not already provide this behavior.
+
+**Scope and interaction:** Offer an explicit per-session Markdown export with ordered user and assistant messages and a small metadata header. Tool input/output and internal thinking are excluded by default and may be added only through explicit options. Preserve code fences and Unicode; represent images with omission or attachment placeholders rather than embedding large payloads. Use a cancellation-safe native save dialog and bounded output.
+
+**Implementation seam:** Inspect `export_session` and its native renderer before adding anything. Reuse the existing command if it already writes an appropriate transcript; otherwise add a format-specific renderer with a fixed synthetic browser-preview implementation. Keep context-bundle limits and semantics separate, and do not alter adapter files.
+
+**Privacy and acceptance:** Export stays local and user initiated; explain that transcript content may contain secrets or paths. Verify message order, roles, Unicode, code fences, size limits, cancellation/retry, unavailable or malformed transcripts, and that default output excludes tool I/O, thinking, and a synthetic canary secret. Preview downloads only its fixed sample content.
+
+**Risks, size, and release:** Main risk is duplicating or misrepresenting the existing export path. **Size:** M. Proposed release **1.0.25 / `v1.0.25`**, GitHub title **Ronda 1.0.25**, branch **`ronda/transcript-export`**, only after confirming this is a distinct capability, published v1.0.24, and a fresh tag/release check.
+
 ## Initial findings at 1.0.0 (historical snapshot)
 
 - The repository and latest published GitHub release are at 1.0.0. Earlier releases used a dated `CHANGELOG.md` section, synchronized app versions, a `vX.Y.Z` tag, and platform installers.
