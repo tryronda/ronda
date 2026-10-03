@@ -28,9 +28,10 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
   const scroll = vi.fn(); Element.prototype.scrollIntoView = scroll;
   const host=document.createElement("div");document.body.append(host);
   const scope=createRef<HTMLDivElement>();const container=createRef<HTMLDivElement>();
+  const beforeScroll=vi.fn();
   const root=createRoot(host);let active=true, jumpToken=0;
   const render=async()=>{await act(async()=>root.render(<div ref={scope} tabIndex={0}>
-    <TranscriptNavigation container={container} scope={scope} active={active} embedded promptsOnly={false} setPromptsOnly={()=>{}} reducedMotion jumpToken={jumpToken}/>
+    <TranscriptNavigation container={container} scope={scope} active={active} embedded promptsOnly={false} setPromptsOnly={()=>{}} reducedMotion jumpToken={jumpToken} onBeforeProgrammaticScroll={beforeScroll}/>
     <div ref={container}><article id="message-2"><p data-transcript-field="text">Needle needle</p><details><pre data-transcript-field="tool-0-output">needle</pre></details></article></div>
     <textarea/><div className="xterm" tabIndex={0}/></div>));};
   const key=async(target:Element,value:string,options:KeyboardEventInit={})=>{const event=new KeyboardEvent("keydown",{key:value,bubbles:true,cancelable:true,...options});await act(async()=>{target.dispatchEvent(event);});return event;};
@@ -40,8 +41,10 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
     const buttons = Array.from(host.querySelectorAll("button"));
     await act(async()=>buttons.find(button=>button.textContent==="First message")!.click());
     expect(scroll.mock.calls.at(-1)?.[0]).toEqual({block:"start",behavior:"instant"});
+    expect(beforeScroll).toHaveBeenCalledTimes(1);
     await act(async()=>buttons.find(button=>button.textContent==="Last message")!.click());
     expect(scroll.mock.calls.at(-1)?.[0]).toEqual({block:"end",behavior:"instant"});
+    expect(beforeScroll).toHaveBeenCalledTimes(2);
     expect((await key(document.body,"f",{ctrlKey:true})).defaultPrevented).toBe(false);
     expect((await key(host.querySelector("textarea")!,"f",{metaKey:true})).defaultPrevented).toBe(false);
     expect((await key(host.querySelector(".xterm")!,"f",{metaKey:true})).defaultPrevented).toBe(false);
@@ -50,6 +53,7 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
     await type("needle");expect(host.querySelector('[role="status"]')?.textContent).toBe("1 of 3");
     const input=host.querySelector<HTMLInputElement>('input[type="search"]')!;
     await key(input,"Enter",{shiftKey:true});expect(host.querySelector('[role="status"]')?.textContent).toBe("3 of 3");
+    expect(beforeScroll.mock.calls.length).toBeGreaterThan(2);
     expect(host.querySelector("details")?.open).toBe(true);
     expect(scroll.mock.calls.at(-1)?.[0]).toMatchObject({behavior:"instant"});
     await act(async()=>{container.current!.querySelector("p")!.append(" needle");await new Promise(resolve=>setTimeout(resolve,0));});

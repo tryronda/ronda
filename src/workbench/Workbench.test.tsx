@@ -9,6 +9,7 @@ MotionGlobalConfig.skipAnimations = true;
 Reflect.deleteProperty(Element.prototype, "animate");
 import { Workbench } from "./Workbench";
 import { backend, type BookmarkView, type SessionMeta, type TranscriptMessage, type WorkbenchBackend } from "./api";
+vi.mock("./SessionTerminal", () => ({ SessionTerminal: () => null }));
 
 const session: SessionMeta = {
   key: "codex:one", native_id: "one", agent: "codex", host: null, parent_key: null,
@@ -20,6 +21,227 @@ const session: SessionMeta = {
 
 const libraryOptions = async () => ({agents:["codex" as const,"claude-code" as const],models:["gpt-5"],hosts:[],
   projects:[{path:session.project_path!,session_count:1,updated_at:session.updated_at}]});
+
+const withSyntheticTranscriptSnapshot = (api: WorkbenchBackend): WorkbenchBackend => {
+  api.getTranscriptSnapshot = async key => {
+    const messages = await api.getTranscript(key);
+    return { session_key_hash: "a".repeat(64), messages, fingerprints: messages.map(message => {
+      let value = 2166136261;
+      for (const character of JSON.stringify(message)) value = Math.imul(value ^ character.charCodeAt(0), 16777619);
+      return (value >>> 0).toString(16).padStart(8, "0").repeat(8);
+    }) };
+  };
+  return api;
+};
+
+test("Continue reading is an explicit jump to the current exact anchor", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const transcript: TranscriptMessage[] = [
+    { seq: 7, role: "assistant", kind: "text", text: "Saved content", timestamp: null, model: null, thinking: null, tool_calls: [], images: [] },
+    { seq: 9, role: "assistant", kind: "text", text: "Requested evidence", timestamp: null, model: null, thinking: null, tool_calls: [], images: [] },
+  ];
+  const fingerprint = "b".repeat(64);
+  const record = { session_key_hash: "a".repeat(64), seq: 0, anchor: fingerprint, before: [], after: [],
+    at_start: true, at_end: true, saved_at: 10, generation: 1 };
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getSession: async () => session, getTranscript: async () => transcript,
+    getTranscriptSnapshot: async () => ({ session_key_hash: record.session_key_hash, messages: transcript, fingerprints: [fingerprint, "d".repeat(64)] }),
+    getPref: async key => key === "reading_positions_v1" ? JSON.stringify({ version: 1, records: [record] }) : null,
+    onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    await act(async () => host.querySelector<HTMLButtonElement>(".session-card")!.click());
+    expect(host.querySelector("#message-7")).not.toBeNull();
+    expect(scroll).not.toHaveBeenCalled();
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Continue reading"]')
+      ?? Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent === "Continue reading");
+    expect(button).not.toBeNull();
+    await act(async () => button!.click());
+    expect(scroll).toHaveBeenCalledWith({ block: "center", behavior: expect.any(String) });
+    expect(scroll.mock.instances.at(-1)).toBe(host.querySelector("#message-7"));
+    expect(host.textContent).toContain("Continued from saved position");
+    scroll.mockClear();
+    await act(async () => root.render(<Workbench api={api} openRequest={{ key: session.key, seq: 9, token: 1 }} />));
+    expect(scroll).toHaveBeenCalledWith({ block: "center", behavior: expect.any(String) });
+    expect(scroll.mock.instances.at(-1)).toBe(host.querySelector("#message-9"));
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("a stale saved anchor reports its state and never moves the transcript", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const transcript: TranscriptMessage[] = [{ seq: 8, role: "assistant", kind: "text", text: "Changed message",
+    timestamp: null, model: null, thinking: null, tool_calls: [], images: [] }];
+  const record = { session_key_hash: "a".repeat(64), seq: 0, anchor: "c".repeat(64), before: [], after: [],
+    at_start: true, at_end: true, saved_at: 10, generation: 1 };
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getSession: async () => session, getTranscript: async () => transcript,
+    getTranscriptSnapshot: async () => ({ session_key_hash: record.session_key_hash, messages: transcript, fingerprints: ["b".repeat(64)] }),
+    getPref: async key => key === "reading_positions_v1" ? JSON.stringify({ version: 1, records: [record] }) : null,
+    onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const scroll = vi.fn(); Element.prototype.scrollIntoView = scroll;
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    await act(async () => host.querySelector<HTMLButtonElement>(".session-card")!.click());
+    expect(host.textContent).toContain("Saved place no longer matches this transcript");
+    expect(Array.from(host.querySelectorAll("button")).some(button => button.textContent === "Continue reading")).toBe(false);
+    expect(scroll).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("Continue is unavailable while the selected session is showing its terminal", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
+  const transcript: TranscriptMessage[] = [{ seq: 0, role: "assistant", kind: "text", text: "Saved content",
+    timestamp: null, model: null, thinking: null, tool_calls: [], images: [] }];
+  const record = { session_key_hash: "a".repeat(64), seq: 0, anchor: "b".repeat(64), before: [], after: [],
+    at_start: true, at_end: true, saved_at: 10, generation: 1 };
+  const prefWrites: string[] = [];
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getSession: async () => session, getTranscript: async () => transcript,
+    getTranscriptSnapshot: async () => ({ session_key_hash: record.session_key_hash, messages: transcript, fingerprints: [record.anchor] }),
+    getPref: async key => key === "reading_positions_v1" ? JSON.stringify({ version: 1, records: [record] }) : null,
+    inspectResume: async () => ({ supported: true, ready: true, host: null, original_directory: session.project_path,
+      directory: session.project_path, program: "codex", args: [], command: "codex resume one", reasons: [] }),
+    setPref: async (key, value) => { prefWrites.push(`${key}:${value}`); },
+    onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    await act(async () => host.querySelector<HTMLButtonElement>(".session-card")!.click());
+    expect(Array.from(host.querySelectorAll("button")).some(button => button.textContent === "Continue reading")).toBe(true);
+    const resume = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Resume")!;
+    await act(async () => resume.click());
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(host.querySelector('[role="tablist"][aria-label="Terminal"]')).not.toBeNull();
+    expect(Array.from(host.querySelectorAll("button")).some(button => button.textContent === "Continue reading")).toBe(false);
+    const transcriptPane = host.querySelector<HTMLElement>('[aria-label="Session transcript"]')!;
+    await act(async () => { transcriptPane.dispatchEvent(new Event("wheel", { bubbles: true })); transcriptPane.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(prefWrites.some(value => value.startsWith("reading_positions_v1:"))).toBe(false);
+  } finally {
+    await act(async () => root.unmount()); host.remove();
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+  }
+});
+
+test("only a settled deliberate transcript gesture saves; boundary input and filter layout do not", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.useFakeTimers();
+  const transcript: TranscriptMessage[] = [{ seq: 0, role: "user", kind: "text", text: "Prompt",
+    timestamp: null, model: null, thinking: null, tool_calls: [], images: [] }];
+  const writes = vi.fn(async (_key: string, _value: string) => {});
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getSession: async () => session, getTranscript: async () => transcript,
+    getTranscriptSnapshot: async () => ({ session_key_hash: "a".repeat(64), messages: transcript, fingerprints: ["b".repeat(64)] }),
+    getPref: async () => null, setPref: writes, onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    await act(async () => host.querySelector<HTMLButtonElement>(".session-card")!.click());
+    const container = host.querySelector<HTMLElement>('[aria-label="Session transcript"]')!;
+    const article = host.querySelector<HTMLElement>("#message-0")!;
+    container.getBoundingClientRect = () => ({ top: 0, bottom: 400, left: 0, right: 800, width: 800, height: 400, x: 0, y: 0, toJSON: () => ({}) });
+    article.getBoundingClientRect = () => ({ top: 20, bottom: 120, left: 0, right: 800, width: 800, height: 100, x: 0, y: 20, toJSON: () => ({}) });
+    await act(async () => { container.dispatchEvent(new Event("wheel", { bubbles: true })); container.dispatchEvent(new Event("scroll", { bubbles: true })); await vi.advanceTimersByTimeAsync(241); });
+    expect(writes.mock.calls.filter(([key]) => key === "reading_positions_v1")).toHaveLength(1);
+
+    await act(async () => { container.dispatchEvent(new Event("touchmove", { bubbles: true })); container.dispatchEvent(new Event("scroll", { bubbles: true })); await vi.advanceTimersByTimeAsync(241); });
+    expect(writes.mock.calls.filter(([key]) => key === "reading_positions_v1")).toHaveLength(2);
+    await act(async () => { container.focus(); container.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true }));
+      container.dispatchEvent(new Event("scroll")); await vi.advanceTimersByTimeAsync(241); });
+    expect(writes.mock.calls.filter(([key]) => key === "reading_positions_v1")).toHaveLength(3);
+    const copyButton = host.querySelector<HTMLButtonElement>('button[aria-label="Copy message 0"]')!;
+    await act(async () => { copyButton.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true }));
+      container.dispatchEvent(new Event("scroll")); await vi.advanceTimersByTimeAsync(241); });
+    expect(writes.mock.calls.filter(([key]) => key === "reading_positions_v1")).toHaveLength(3);
+
+    await act(async () => { container.dispatchEvent(new Event("wheel", { bubbles: true })); await vi.advanceTimersByTimeAsync(701); });
+    await act(async () => { container.dispatchEvent(new Event("scroll", { bubbles: true })); await vi.advanceTimersByTimeAsync(300); });
+    expect(writes.mock.calls.filter(([key]) => key === "reading_positions_v1")).toHaveLength(3);
+
+    const promptsOnly = Array.from(host.querySelectorAll("label")).find(label => label.textContent?.includes("Prompts only"))!.querySelector("input")!;
+    await act(async () => { container.dispatchEvent(new Event("wheel", { bubbles: true })); promptsOnly.click(); });
+    await act(async () => { container.dispatchEvent(new Event("scroll", { bubbles: true })); await vi.advanceTimersByTimeAsync(300); });
+    expect(writes.mock.calls.filter(([key]) => key === "reading_positions_v1")).toHaveLength(3);
+
+    await act(async () => { container.dispatchEvent(new Event("wheel", { bubbles: true })); });
+    await act(async () => { root.render(<Workbench api={api} isActive={false} />); await vi.advanceTimersByTimeAsync(300); });
+    await act(async () => { container.dispatchEvent(new Event("scroll", { bubbles: true })); await vi.advanceTimersByTimeAsync(300); });
+    expect(writes.mock.calls.filter(([key]) => key === "reading_positions_v1")).toHaveLength(3);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); }
+});
+
+test("captured A survives A→B, queued writes merge latest records, and a newer A replaces only A", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.useFakeTimers();
+  const remote = { ...session, key: "codex:buildbox:one", host: "buildbox", title: "Remote session" };
+  const transcript: TranscriptMessage[] = [{ seq: 4, role: "assistant", kind: "text", text: "Same visible content",
+    timestamp: null, model: null, thinking: null, tool_calls: [], images: [] }];
+  const readingWrites: string[] = [];
+  let releaseFirst!: () => void;
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session, remote], listProjects: async () => [],
+    getSession: async key => key === remote.key ? remote : session, getTranscript: async () => transcript,
+    getTranscriptSnapshot: async key => ({ session_key_hash: key === remote.key ? "c".repeat(64) : "a".repeat(64),
+      messages: transcript, fingerprints: ["b".repeat(64)] }), getPref: async () => null,
+    setPref: async (key, value) => {
+      if (key !== "reading_positions_v1") return;
+      readingWrites.push(value);
+      if (readingWrites.length === 1) await new Promise<void>(resolve => { releaseFirst = resolve; });
+    }, onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => {
+    const rows = [session, remote].slice(offset, offset + limit);
+    return { items: rows, total: 2, offset, limit };
+  };
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const choose = async (title: string) => act(async () => {
+    Array.from(host.querySelectorAll<HTMLButtonElement>(".session-card")).find(card => card.textContent?.includes(title))!.click();
+  });
+  const scrollDeliberately = async () => act(async () => {
+    const container = host.querySelector<HTMLElement>('[aria-label="Session transcript"]')!;
+    const article = host.querySelector<HTMLElement>("article[id^='message-']")!;
+    container.getBoundingClientRect = () => ({ top: 0, bottom: 400, left: 0, right: 800, width: 800, height: 400, x: 0, y: 0, toJSON: () => ({}) });
+    article.getBoundingClientRect = () => ({ top: 20, bottom: 120, left: 0, right: 800, width: 800, height: 100, x: 0, y: 20, toJSON: () => ({}) });
+    container.dispatchEvent(new Event("wheel", { bubbles: true })); container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(241);
+  });
+  try {
+    await act(async () => { root.render(<Workbench api={api} />); await Promise.resolve(); await Promise.resolve(); });
+    await choose(session.title);
+    await act(async () => {
+      const container = host.querySelector<HTMLElement>('[aria-label="Session transcript"]')!;
+      container.dispatchEvent(new Event("wheel", { bubbles: true })); container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await choose(remote.title);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(readingWrites).toHaveLength(0); // Selection cancels an uncaptured A gesture.
+    await choose(session.title); await scrollDeliberately();
+    expect(readingWrites).toHaveLength(1);
+    await choose(remote.title); await scrollDeliberately();
+    expect(readingWrites).toHaveLength(1); // B is queued behind A's deferred write.
+    await act(async () => { releaseFirst(); await Promise.resolve(); await Promise.resolve(); });
+    expect(readingWrites).toHaveLength(2);
+    let saved = JSON.parse(readingWrites.at(-1)!) as { version: number; records: { session_key_hash: string; generation: number }[] };
+    expect(saved.records.map(record => record.session_key_hash).sort()).toEqual(["a".repeat(64), "c".repeat(64)]);
+    await choose(session.title); await scrollDeliberately();
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    saved = JSON.parse(readingWrites.at(-1)!) as typeof saved;
+    expect(saved.records).toHaveLength(2);
+    expect(saved.records.find(record => record.session_key_hash === "a".repeat(64))?.generation).toBe(2);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); }
+});
 
 afterEach(() => { document.body.innerHTML = ""; });
 
@@ -34,7 +256,7 @@ test("opens local project folders and keeps the path copyable on errors", async 
   const click=async(selector:string)=>{await act(async()=>host.querySelector<HTMLButtonElement>(selector)!.click());};
   const notices=()=>Array.from(host.querySelectorAll('[role="status"]')).map(node=>node.textContent);
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     await click('[aria-label="Recent sessions"] .session-card');
     await click('button[aria-label="Open project folder"]');
     expect(openProjectFolder).toHaveBeenCalledWith(session.key);
@@ -61,7 +283,7 @@ test("Refresh library announces partial and clean local reports, clears stale fe
   const click=async()=>act(async()=>{refresh().click();await new Promise(resolve=>setTimeout(resolve,0));});
   const summary=()=>Array.from(host.querySelectorAll('[role="status"]')).map(node=>node.textContent??"").find(text=>/local scan/i.test(text));
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     await click();
     expect(summary()).toContain("Partial local scan");
     expect(summary()).toContain("scan errors: 1");
@@ -93,7 +315,7 @@ test("Workbench disables the refresh action while a scan promise is pending", as
   api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="Refresh library"]')!.click());
     expect(scan).toHaveBeenCalledTimes(1);
     expect(host.querySelector<HTMLButtonElement>('button[aria-label="Refresh library"]')!.disabled).toBe(true);
@@ -123,7 +345,7 @@ test("copies only each nonempty user or assistant text message as exact Markdown
   const click=async(seq:number)=>{await act(async()=>{host.querySelector<HTMLButtonElement>(`#message-${seq} button[aria-label="Copy message ${seq}"]`)!.click();await Promise.resolve();});};
   const notice=()=>Array.from(host.querySelectorAll('[role="status"]')).find(node=>node.textContent?.includes("Message copied"));
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Recent sessions"] .session-card')!.click());
     expect(host.querySelectorAll('button[aria-label^="Copy message"]')).toHaveLength(2);
     await click(1);
@@ -171,7 +393,7 @@ test("keeps bookmark drafts across browsing and shared editors, with explicit sa
   const reopen=async(scope:ParentNode)=>{await click(scope,"Edit bookmark note for message 1");return scope.querySelector<HTMLTextAreaElement>("textarea")!;};
   const draft="Retained café ü <plain> note";
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));await click(host,"Bookmarks2");
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));await click(host,"Bookmarks2");
     await input(await reopen(row(session.title)),draft);
     await click(row(session.title),"Edit bookmark note for message 1");
     await click(host,"All sessions2");await click(host,"Bookmarks2");
@@ -212,8 +434,8 @@ test("keeps bookmark drafts across browsing and shared editors, with explicit sa
     await choose(session.title);await input(await reopen(transcript()),"Keep through external changes");
     notes[0].bookmark={...notes[0].bookmark,note:"External note",updated_at:99};
     const refresh=async()=>{
-      await act(async()=>root.render(<Workbench api={api} isActive={false}/>));
-      await act(async()=>root.render(<Workbench api={api}/>));
+      await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)} isActive={false}/>));
+      await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
       if(!transcript().querySelector("textarea"))await reopen(transcript());
     };
     await refresh();expect(transcript().querySelector<HTMLTextAreaElement>("textarea")!.value).toBe("Keep through external changes");
@@ -244,7 +466,7 @@ test("a pending bookmark save locks its shared editors without clearing another 
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(field,text);field.dispatchEvent(new Event("input",{bubbles:true}));
   });};
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));await click(host,"Bookmarks2");
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));await click(host,"Bookmarks2");
     await click(row(session.title),"Edit bookmark note for message 1");await type(row(session.title),"Submitted A");
     await click(row(session.title),"Save note");expect(row(session.title).querySelector<HTMLTextAreaElement>("textarea")!.disabled).toBe(true);
     await act(async()=>row(session.title).querySelector<HTMLButtonElement>('.session-card')!.click());
@@ -280,7 +502,7 @@ test("bookmarks search saved notes, filter missing projects, and open messages o
     input.dispatchEvent(new Event("input",{bubbles:true}));
   });};
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     await click("Bookmarks2");
     const pane=host.querySelector('[aria-label="Bookmarks"]')!;
     expect(pane.textContent).toContain("2 saved messages");
@@ -321,11 +543,11 @@ test("opens on the library home, then loads a session, shows its transcript, and
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  await act(async () => { root.render(<Workbench api={api} />); });
+  await act(async () => { root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)} />); });
   expect(host.textContent).toContain("All your agent sessions");
   await act(async () => { host.querySelector<HTMLButtonElement>('.session-card')!.click(); });
   expect(host.querySelector('.transcript-skeleton')).not.toBeNull();
-  await act(async () => { root.render(<Workbench api={api} searchFocusToken={1} />); });
+  await act(async () => { root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)} searchFocusToken={1} />); });
   expect(document.activeElement).toBe(host.querySelector('input[type="search"]'));
   await act(async () => { finishTranscript([{ seq: 0, role: "user", kind: "text", text: "Search for naïve ünicode",
     timestamp: null, model: null, thinking: null, tool_calls: [], images: [] }]); });
@@ -361,7 +583,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
   api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
-  const render = async (active = true) => { await act(async () => root.render(<Workbench api={api} isActive={active} />)); };
+  const render = async (active = true) => { await act(async () => root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)} isActive={active} />)); };
   const notify = async () => { await act(async () => { changed(); changed(); await vi.advanceTimersByTimeAsync(401); }); };
   try {
     await render();
@@ -454,7 +676,7 @@ test("groups search, pages sessions and excerpts, respects archives, and rejects
     await act(async()=>{await vi.advanceTimersByTimeAsync(121);});
   };
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     await type("needle");
     expect(host.querySelectorAll(".session-card")).toHaveLength(1);
     expect(host.textContent).toContain("Showing 1 of 51 sessions · 151 matching messages");
@@ -519,7 +741,7 @@ test("full-library choices combine filters, preserve hidden selection, and rejec
   });};
   const clear=async()=>{await act(async()=>Array.from(host.querySelectorAll("button")).find(button=>button.textContent === "Clear filters")!.click());};
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     await act(async()=>host.querySelector<HTMLButtonElement>('.session-card')!.click());
     await change("Filter by model","off-page-model");
     expect(list.mock.calls.at(-1)?.[0].model).toBe("off-page-model");
@@ -562,7 +784,7 @@ test("complete browsing appends unique pages, resets on query changes, and disca
     await vi.advanceTimersByTimeAsync(121);
   });};
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     expect(host.textContent).toContain("Showing 100 of 601 sessions");
     expect(host.querySelector('dl')?.textContent).toContain("601");
     for (let i=0;i<6;i++) await act(async()=>more().click());
@@ -609,7 +831,7 @@ test("restores validated filter preferences and serializes the last choice witho
     field.value=value;field.dispatchEvent(new Event("change",{bubbles:true}));
   });};
   try {
-    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
     expect(host.querySelector<HTMLInputElement>('[aria-label="Updated from"]')?.value).toBe(saved.dateFrom);
     expect(host.querySelector<HTMLSelectElement>('[aria-label="Filter by host"]')?.value).toBe("remote:local");
     await select("Filter by model","new-model");await select("Filter by host","local");
