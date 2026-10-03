@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-10-03
+
+### Added
+- Preview and save a local diagnostics report with app/index versions and aggregate session and source-directory counts.
+
 ## [1.0.13] - 2026-10-03
 
 ### Added

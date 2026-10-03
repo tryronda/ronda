@@ -1,4 +1,5 @@
 import { BookmarkData } from "./BookmarkData";
+import { DiagnosticsExport } from "./DiagnosticsExport";
 import { version as appVersion } from "../../package.json";
 import { invoke } from '@/lib/tauri';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -234,6 +235,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         {section === 'data' && <section className="panel-card"><h2>{t.data}</h2><p className="panel-help">{t.dataHelp}</p>
           <div className="settings-field"><div><strong>{t.index}</strong><code className="settings-path">{paths?.[2] ?? '…'}</code></div></div>
           <button disabled={busy} onClick={() => void act(() => invoke('scan'), t.refreshed)}>{t.refresh}</button>
+          <DiagnosticsExport embedded={embedded} />
           <BookmarkData embedded={embedded} />
         </section>}
         {section === 'updates' && <section className="panel-card"><h2>{t.updates}</h2><p className="panel-help">{t.updateHelp}</p>
