@@ -62,6 +62,15 @@ test("sample project folders require the desktop app", async () => {
     .rejects.toThrow("Desktop required: sample sessions cannot open a project folder.");
 });
 
+test("preview scan examples are fixed, local-only, and alternate clean then partial", async () => {
+  installDemoBackend();
+  const first = await invoke<{discovered:number;indexed:number;unchanged:number;errors:string[]}>("scan");
+  const second = await invoke<{discovered:number;indexed:number;unchanged:number;errors:string[]}>("scan");
+  expect(first).toEqual({discovered:32,indexed:3,unchanged:24,errors:[]});
+  expect(second).toEqual({discovered:32,indexed:3,unchanged:24,errors:["Synthetic sample scan error; details are hidden."]});
+  expect(first.discovered).not.toBe(first.indexed + first.unchanged);
+});
+
 test("preview groups title and message matches, sorts, pages, and honors filters", async () => {
   installDemoBackend();
   const { queryDefaults } = await import("@/workbench/api");

@@ -48,6 +48,62 @@ test("opens local project folders and keeps the path copyable on errors", async 
   } finally {await act(async()=>root.unmount());host.remove();}
 });
 
+test("Refresh library announces partial and clean local reports, clears stale feedback on failure, and accepts retry", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  let report={discovered:2,indexed:1,unchanged:0,errors:["/Users/refresh-secret-canary/session.jsonl parser-secret-canary"]};
+  let rejectScan=false;
+  const scan=vi.fn(async()=>{if(rejectScan)throw new Error("synthetic scan failure");return report;});
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],
+    getSession:async()=>session,getTranscript:async()=>[],scan,onLibraryChanged:async()=>()=>{}};
+  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const refresh=()=>host.querySelector<HTMLButtonElement>('button[aria-label="Refresh library"]')!;
+  const click=async()=>act(async()=>{refresh().click();await new Promise(resolve=>setTimeout(resolve,0));});
+  const summary=()=>Array.from(host.querySelectorAll('[role="status"]')).map(node=>node.textContent??"").find(text=>/local scan/i.test(text));
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await click();
+    expect(summary()).toContain("Partial local scan");
+    expect(summary()).toContain("scan errors: 1");
+    expect(host.textContent).not.toMatch(/refresh-secret-canary|parser-secret-canary/);
+    rejectScan=true;
+    await click();
+    expect(summary()).toBeUndefined();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Local scan failed: Error: synthetic scan failure");
+    expect(host.querySelector('[role="alert"] button')?.textContent).toBe("Retry scan");
+    rejectScan=false;report={discovered:8,indexed:3,unchanged:4,errors:[]};
+    await act(async()=>{host.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();await new Promise(resolve=>setTimeout(resolve,0));});
+    expect(scan).toHaveBeenCalledTimes(3);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(summary()).toContain("Local scan complete");
+    expect(summary()).toContain("session sources discovered: 8");
+    expect(summary()).not.toContain("Partial");
+    report={discovered:0,indexed:0,unchanged:0,errors:[]};
+    await click();
+    expect(summary()).toContain("No local sessions discovered");
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
+test("Workbench disables the refresh action while a scan promise is pending", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  let finish:(value:{discovered:number;indexed:number;unchanged:number;errors:string[]})=>void=()=>{};
+  const scan=vi.fn(()=>new Promise<{discovered:number;indexed:number;unchanged:number;errors:string[]}>(resolve=>{finish=resolve;}));
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
+    getTranscript:async()=>[],scan,onLibraryChanged:async()=>()=>{}};
+  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="Refresh library"]')!.click());
+    expect(scan).toHaveBeenCalledTimes(1);
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Refresh library"]')!.disabled).toBe(true);
+    await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="Refresh library"]')!.click());
+    expect(scan).toHaveBeenCalledTimes(1);
+    await act(async()=>finish({discovered:1,indexed:1,unchanged:0,errors:[]}));
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Refresh library"]')!.disabled).toBe(false);
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
 test("copies only each nonempty user or assistant text message as exact Markdown", async () => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
   const writeText=vi.fn(async()=>{});
