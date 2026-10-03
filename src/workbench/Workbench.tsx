@@ -93,7 +93,7 @@ function IconButton({ icon, title, onClick, active, disabled }: {
   </motion.button>;
 }
 
-function Message({ message, animate, children, onFindError }: { message: TranscriptMessage; animate: boolean; children?: ReactNode; onFindError:(text:string)=>void }) {
+function Message({ message, animate, children, onFindError, onCopyMessage }: { message: TranscriptMessage; animate: boolean; children?: ReactNode; onFindError:(text:string)=>void; onCopyMessage:(text:string)=>void }) {
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
@@ -113,6 +113,8 @@ function Message({ message, animate, children, onFindError }: { message: Transcr
       </div>
       {message.text && <div data-transcript-field="text"><Suspense fallback={<p className="markdown mt-1 whitespace-pre-wrap">{message.text}</p>}>
         <Streamdown mode="static" dir="auto" className="markdown mt-1">{message.text}</Streamdown></Suspense></div>}
+      {message.kind === "text" && (message.role === "user" || message.role === "assistant") && message.text.trim() !== "" &&
+        <button type="button" className="mt-2 text-[13px] underline" aria-label={`Copy message ${message.seq}`} onClick={() => onCopyMessage(message.text)}>Copy message</button>}
       {message.images.length > 0 && <div className="my-3 flex flex-wrap gap-2.5">
         {message.images.map((image, index) => <img key={index} className="max-h-[300px] max-w-[min(100%,420px)] object-contain shadow-lift"
           src={`data:${image.media_type};base64,${image.data_base64}`}
@@ -256,6 +258,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const contextSelected = new Set(contextSelection.map(contextId));
   const toggleContext = (item: ContextSelection) => setContextSelection(current => current.some(selected => contextId(selected) === contextId(item))
     ? current.filter(selected => contextId(selected) !== contextId(item)) : [...current, item]);
+  const copyMessage = async (text: string) => {
+    try { await navigator.clipboard.writeText(text); setError(null); setNotice("Message copied"); }
+    catch (cause) { setError(`Could not copy message: ${String(cause)}`); }
+  };
   const [jumpTo, setJumpTo] = useState<number | null>(null);
   const [opened, setOpened] = useState<SessionMeta | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
@@ -840,7 +846,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
           </div> : messages.length ? <div className="transcript-messages mx-auto max-w-[780px] px-10 pt-6 pb-24 max-[1100px]:px-6">
-            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)}>
+            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)} onCopyMessage={text=>void copyMessage(text)}>
               {contextEligible(message) && <label className="mt-3 block text-[13px]"><input type="checkbox" disabled={unavailable} checked={contextSelected.has(contextId({key:selected.key,seq:message.seq}))}
                 onChange={()=>toggleContext({key:selected.key,seq:message.seq})} /> Select message {message.seq} for context</label>}
               <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)}
