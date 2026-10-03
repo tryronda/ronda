@@ -45,6 +45,9 @@ const copy = {
   loading: "Loading library…", refreshing: "Refreshing library…", browse: "Browse sessions", sessions: "sessions", scanDone: "Library refreshed",
   transcript: "Transcript", terminal: "Terminal", terminalRunning: "terminal open", terminalExited: "exited",
   restart: "Restart", stop: "Stop and close terminal", openExternal: "Open in system terminal",
+  openProjectFolder: "Open project folder", remoteFolderUnavailable: "Remote project folders cannot be opened locally",
+  subagentFolderUnavailable: "Subagent sessions do not have an openable project folder",
+  unknownFolderUnavailable: "Project folder is unknown", copyProjectPath: "Copy project path",
   you: "You", assistant: "Assistant", note: "Note", localPrivate: "Local and private", error: "Error",
 };
 
@@ -567,6 +570,18 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     } catch (cause) { setError(String(cause)); }
   };
 
+  const openProjectFolder = async () => {
+    if (!selected || selected.host != null || selected.parent_key || !selected.project_path) return;
+    try { await api.openProjectFolder(selected.key); setNotice("Opened project folder"); }
+    catch (cause) { setError(String(cause)); }
+  };
+
+  const copyProjectPath = async () => {
+    if (!selected?.project_path) return;
+    try { await navigator.clipboard.writeText(selected.project_path); setNotice("Project path copied"); }
+    catch (cause) { setError(`Could not copy project path: ${String(cause)}`); }
+  };
+
   const resume = async () => {
     if (!selected || selected.parent_key) return;
     if (inTauri()) { startTerminal(selected.key); return; }
@@ -781,12 +796,18 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             </div>
             <h2 className="mt-1.5 mb-1 truncate font-serif text-[32px] leading-[1.1] tracking-[-0.01em]">{plainTitle(selected.title) || selected.native_id}</h2>
             <div className="label-mono flex min-w-0 items-center gap-2 text-muted-foreground">
-              <span className="truncate">{selected.project_path ?? t.unknown}</span>
+              <span className="truncate" title={selected.project_path ?? t.unknown}>{selected.project_path ?? t.unknown}</span>
+              {selected.project_path && <button type="button" className="flex-none underline underline-offset-2 hover:text-foreground"
+                aria-label={t.copyProjectPath} onClick={()=>void copyProjectPath()}>{t.copyProjectPath}</button>}
               {selected.model && <><span className="text-border">/</span><span className="whitespace-nowrap">{selected.model}</span></>}
               {selected.host && <><span className="text-border">/</span><span>@{selected.host}</span></>}
             </div>
           </div>
           <div className="flex flex-none items-center gap-0.5">
+            <IconButton icon={Folder01Icon}
+              title={selected.host != null ? t.remoteFolderUnavailable : selected.parent_key ? t.subagentFolderUnavailable : !selected.project_path ? t.unknownFolderUnavailable : t.openProjectFolder}
+              disabled={!selected.project_path || selected.host != null || !!selected.parent_key}
+              onClick={() => void openProjectFolder()} />
             <IconButton icon={StarIcon} title={selected.starred ? t.unstar : t.star} active={selected.starred} onClick={() => void flag("starred")} />
             <IconButton icon={PinIcon} title={selected.pinned ? t.unpin : t.pin} active={selected.pinned} onClick={() => void flag("pinned")} />
             <IconButton icon={Download01Icon} title={t.export} onClick={() => void exportMarkdown()} />

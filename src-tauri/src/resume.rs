@@ -72,6 +72,47 @@ pub fn mappings(raw: Option<String>) -> CommandResult<BTreeMap<String, String>> 
     Ok(values)
 }
 
+/// Resolves a session's current local project folder without checking or starting its agent.
+pub fn project_directory(state: &AppState, key: &str) -> CommandResult<String> {
+    if key.is_empty() || key.chars().count() > 4096 || key.contains('\0') {
+        return Err("invalid session key".into());
+    }
+    let (meta, saved) = {
+        let store = state.store.lock().map_err(error)?;
+        let meta = store
+            .get_session(key)
+            .map_err(error)?
+            .ok_or("unknown session")?;
+        if meta.host.is_some() {
+            return Err("Remote project folders cannot be opened locally".into());
+        }
+        if meta.parent_key.is_some() {
+            return Err("Subagent sessions do not have an openable project folder".into());
+        }
+        (meta, store.pref_get(MAPPINGS).map_err(error)?)
+    };
+    let original = meta
+        .project_path
+        .filter(|path| !path.is_empty())
+        .ok_or("Project folder is unknown")?;
+    let directory = mappings(saved)?.get(&original).cloned().unwrap_or(original);
+    checked_project_directory(&directory)
+}
+
+fn checked_project_directory(directory: &str) -> CommandResult<String> {
+    if !valid_path(directory) {
+        return Err("Project folder must be an absolute local path".into());
+    }
+    let path =
+        std::fs::canonicalize(directory).map_err(|_| "Project folder is missing or unavailable")?;
+    if !path.is_dir() {
+        return Err("Project folder is missing or unavailable".into());
+    }
+    path.into_os_string()
+        .into_string()
+        .map_err(|_| "Project folder path cannot be represented as text".into())
+}
+
 #[cfg(not(target_os = "windows"))]
 pub fn login_shell() -> String {
     std::env::var("SHELL")
@@ -318,6 +359,112 @@ mod tests {
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn folder_validation_accepts_unicode_and_spaces_but_rejects_missing_and_files() {
+        let root = std::env::temp_dir().join(format!("ronda folder ' ü ; {}", std::process::id()));
+        let file = root.with_extension("txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&file, "synthetic").unwrap();
+
+        assert_eq!(
+            checked_project_directory(root.to_str().unwrap()).unwrap(),
+            fs::canonicalize(&root).unwrap().to_string_lossy()
+        );
+        assert_eq!(
+            checked_project_directory(root.join("missing").to_str().unwrap()).unwrap_err(),
+            "Project folder is missing or unavailable"
+        );
+        assert_eq!(
+            checked_project_directory(file.to_str().unwrap()).unwrap_err(),
+            "Project folder is missing or unavailable"
+        );
+        assert!(checked_project_directory("relative/folder").is_err());
+        fs::remove_file(file).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn open_folder_resolves_mappings_and_rejects_remote_child_and_unknown_sessions() {
+        let root = std::env::temp_dir().join(format!("ronda open folder ü {}", std::process::id()));
+        let mapped = root.join("mapped folder");
+        fs::create_dir_all(&mapped).unwrap();
+        let state = AppState {
+            store: std::sync::Mutex::new(ronda_core::Store::open(&root.join("index.db")).unwrap()),
+            scan_gate: std::sync::Mutex::new(()),
+            scanner: ronda_core::scanner::Scanner::new(root.clone()),
+        };
+        let mut meta = ronda_core::SessionMeta {
+            key: "codex:open-folder".into(),
+            native_id: "open-folder".into(),
+            agent: ronda_core::AgentId::Codex,
+            host: None,
+            parent_key: None,
+            title: "Fixture".into(),
+            project_path: Some(root.join("original folder").to_string_lossy().into_owned()),
+            source_path: "synthetic".into(),
+            created_at: 1,
+            updated_at: 1,
+            model: None,
+            source: None,
+            tokens: None,
+            archived: false,
+            metadata_only: false,
+            can_delete: false,
+            starred: false,
+            pinned: false,
+        };
+        let insert = |meta: &ronda_core::SessionMeta| {
+            state
+                .store
+                .lock()
+                .unwrap()
+                .upsert(
+                    &ronda_core::models::ParsedSession {
+                        meta: meta.clone(),
+                        messages: vec![],
+                    },
+                    "fixture",
+                )
+                .unwrap();
+        };
+        insert(&meta);
+        let mappings = BTreeMap::from([(
+            meta.project_path.clone().unwrap(),
+            mapped.to_string_lossy().into_owned(),
+        )]);
+        state
+            .store
+            .lock()
+            .unwrap()
+            .pref_set(MAPPINGS, &serde_json::to_string(&mappings).unwrap())
+            .unwrap();
+        assert_eq!(
+            project_directory(&state, &meta.key).unwrap(),
+            fs::canonicalize(&mapped).unwrap().to_string_lossy()
+        );
+
+        meta.host = Some(String::new());
+        insert(&meta);
+        assert!(project_directory(&state, &meta.key)
+            .unwrap_err()
+            .contains("Remote"));
+        meta.host = None;
+        meta.parent_key = Some("codex:parent".into());
+        insert(&meta);
+        assert!(project_directory(&state, &meta.key)
+            .unwrap_err()
+            .contains("Subagent"));
+        meta.parent_key = None;
+        meta.project_path = None;
+        insert(&meta);
+        assert!(project_directory(&state, &meta.key)
+            .unwrap_err()
+            .contains("unknown"));
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn lookup_uses_shell_path_never_runs_agent_and_distinguishes_missing_from_unknown() {
         let root = std::env::temp_dir().join(format!("ronda resume ' ü ; {}", std::process::id()));

@@ -614,6 +614,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
       return handle("inspect_resume",{key:args.key});
     }
     case "resume_session": throw new Error("Desktop required: sample sessions cannot open an agent or terminal.");
+    case "open_project_folder": throw new Error("Desktop required: sample sessions cannot open a project folder.");
     case "export_session": return null;
     case "get_insights": return insights();
     case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);

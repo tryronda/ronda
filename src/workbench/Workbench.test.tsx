@@ -23,6 +23,31 @@ const libraryOptions = async () => ({agents:["codex" as const,"claude-code" as c
 
 afterEach(() => { document.body.innerHTML = ""; });
 
+test("opens local project folders and keeps the path copyable on errors", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const openProjectFolder=vi.fn(async()=>{}),writeText=vi.fn(async()=>{});
+  Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText}});
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],
+    getSession:async()=>session,getTranscript:async()=>[],openProjectFolder,onLibraryChanged:async()=>()=>{}};
+  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const click=async(selector:string)=>{await act(async()=>host.querySelector<HTMLButtonElement>(selector)!.click());};
+  const notices=()=>Array.from(host.querySelectorAll('[role="status"]')).map(node=>node.textContent);
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await click('[aria-label="Recent sessions"] .session-card');
+    await click('button[aria-label="Open project folder"]');
+    expect(openProjectFolder).toHaveBeenCalledWith(session.key);
+    expect(notices()).toContain("Opened project folder");
+    await click('button[aria-label="Copy project path"]');
+    expect(writeText).toHaveBeenCalledWith(session.project_path);
+    expect(notices()).toContain("Project path copied");
+    writeText.mockRejectedValueOnce(new Error("Clipboard unavailable"));
+    await click('button[aria-label="Copy project path"]');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not copy project path");
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
 test("keeps bookmark drafts across browsing and shared editors, with explicit save and discard", async () => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
   const other={...session,key:"codex:two",native_id:"two",title:"Other session"};
