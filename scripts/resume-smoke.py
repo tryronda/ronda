@@ -139,6 +139,9 @@ def choose_folder(project, output):
                         "^Choose project folder$"], capture_output=True, text=True).stdout.strip(), "GTK folder picker")
         assert "\n" not in window, "Expected one owned picker"
         subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True)
+        # Recent is a search view; switch to filesystem browsing before entering an absolute path.
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "alt+Home"], check=True)
+        time.sleep(.5)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+l"], check=True)
         subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", str(project)], check=True)
         subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=True)
@@ -173,13 +176,25 @@ $bitmap.Save(SCREENSHOT_LITERAL, [System.Drawing.Imaging.ImageFormat]::Png)
 $graphics.Dispose(); $bitmap.Dispose()
 if (!$window) { $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { Write-Host $_.Current.Name $_.Current.ProcessId $_.Current.ControlType.ProgrammaticName }; throw 'Native folder picker was not found' }
 $controls = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-$edits = @($controls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and $_.Current.Name -match '^Folder( name)?:$' })
-if ($edits.Count -ne 1) { $controls | ForEach-Object { Write-Host $_.Current.Name $_.Current.AutomationId $_.Current.ControlType.ProgrammaticName }; throw 'Expected one folder entry' }
-$value = $edits[0].GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-$value.SetValue(PROJECT_LITERAL)
-$buttons = @($controls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $_.Current.Name.Replace('&','') -match '^(Select Folder|Open)$' })
-if ($buttons.Count -ne 1) { throw 'Expected one folder acceptance button' }
-$buttons[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+$edits = @($controls | Where-Object { $_.Current.AutomationId -eq '1152' })
+$buttons = @($controls | Where-Object { $_.Current.AutomationId -eq '1' -and $_.Current.Name -eq 'Select Folder' })
+if ($edits.Count -ne 1 -or $buttons.Count -ne 1) { $controls | ForEach-Object { Write-Output "$($_.Current.Name) $($_.Current.AutomationId) $($_.Current.ControlType.ProgrammaticName)" }; throw 'Expected inspected folder controls 1152 and 1' }
+# This runner exposes these Win32 controls as panes without Value/Invoke patterns.
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class PickerControl {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")]
+  public static extern IntPtr SetText(IntPtr hwnd, uint message, IntPtr wparam, string value);
+  [DllImport("user32.dll", EntryPoint="SendMessageW")]
+  public static extern IntPtr Click(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
+}
+'@
+$entry = [IntPtr]::new($edits[0].Current.NativeWindowHandle)
+$accept = [IntPtr]::new($buttons[0].Current.NativeWindowHandle)
+if ($entry -eq [IntPtr]::Zero -or $accept -eq [IntPtr]::Zero) { throw 'Native picker control handles are missing' }
+if ([PickerControl]::SetText($entry, 0x000C, [IntPtr]::Zero, PROJECT_LITERAL) -eq [IntPtr]::Zero) { throw 'Native folder text was rejected' }
+[PickerControl]::Click($accept, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
 """.replace("PROJECT_LITERAL", quoted).replace("SCREENSHOT_LITERAL",
             "'" + str((output / "native-picker.png").resolve()).replace("'", "''") + "'")
     result = subprocess.run(["powershell.exe", "-NoProfile", "-EncodedCommand",
