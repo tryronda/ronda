@@ -141,6 +141,12 @@ test("sample project folders require the desktop app", async () => {
     .rejects.toThrow("Desktop required: sample sessions cannot open a project folder.");
 });
 
+test("sample source files require the desktop app", async () => {
+  installDemoBackend();
+  await expect(invoke("reveal_source_file", {key:"claude-code:demo-0"}))
+    .rejects.toThrow("Desktop required: sample sessions cannot reveal a source file.");
+});
+
 test("preview scan examples are fixed, local-only, and alternate clean then partial", async () => {
   installDemoBackend();
   const first = await invoke<{discovered:number;indexed:number;unchanged:number;errors:string[]}>("scan");

@@ -5,7 +5,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useL
 import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Archive01Icon, ArrowLeft01Icon, ArrowRight01Icon, Delete02Icon, Folder01Icon, PinIcon, ReloadIcon,
+  Archive01Icon, ArrowLeft01Icon, ArrowRight01Icon, Delete02Icon, FileSearchIcon, Folder01Icon, PinIcon, ReloadIcon,
   Search01Icon, StarIcon, Download01Icon, Cancel01Icon, Bookmark01Icon,
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -31,6 +31,7 @@ import {
   type WorkbenchBackend, type BookmarkView, type LibraryOptions, type WorkbenchLocation, type ProjectContext,
 } from "./api";
 import { scanSummary } from "./scan-summary";
+import { canRevealSource } from "./source-reveal";
 import {
   captureReadingPosition, mergeReadingPosition, readReadingPositions,
   READING_POSITION_PREF, resolveReadingPosition, type ReadingPositionRecord,
@@ -44,7 +45,7 @@ const copy = {
   library: "Library", workbench: "Workbench", insights: "Insights", settings: "Settings",
   search: "Search all conversations", projects: "Projects", all: "All sessions", favorites: "Starred",
   agents: "Agents", recent: "Recent sessions", refresh: "Refresh library", resume: "Resume", includeArchived: "Include archived",
-  export: "Export Markdown", trash: "Move to Trash", pin: "Pin", unpin: "Unpin",
+  export: "Export Markdown", revealSource: "Reveal source file", trash: "Move to Trash", pin: "Pin", unpin: "Unpin",
   star: "Star", unstar: "Unstar", noSessions: "No sessions found", noSessionsHint: "Connect an agent or refresh your library to get started.",
   noTranscript: "No transcript is available for this session.", noSelection: "Choose a session to read its story.",
   tools: "tool calls", thinking: "Thinking", project: "Project", model: "Model", unknown: "Unknown project",
@@ -830,6 +831,19 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     catch (cause) { setError(String(cause)); }
   };
 
+  const revealSourceFile = async () => {
+    if (!selected || !canRevealSource(selected)) return;
+    setNotice(null); setError(null);
+    try { await api.revealSourceFile(selected.key); setNotice("Revealed source file in Finder"); }
+    catch (cause) {
+      const sampleUnavailable = cause instanceof Error
+        && cause.message === "Desktop required: sample sessions cannot reveal a source file.";
+      setError(sampleUnavailable || !inTauri()
+        ? "Desktop required: sample sessions cannot reveal a source file."
+        : "Could not reveal source file");
+    }
+  };
+
   const copyProjectPath = async () => {
     if (!selected?.project_path) return;
     try { await navigator.clipboard.writeText(selected.project_path); setNotice("Project path copied"); }
@@ -1122,6 +1136,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               title={selected.host != null ? t.remoteFolderUnavailable : selected.parent_key ? t.subagentFolderUnavailable : !selected.project_path ? t.unknownFolderUnavailable : t.openProjectFolder}
               disabled={!selected.project_path || selected.host != null || !!selected.parent_key}
               onClick={() => void openProjectFolder()} />
+            {canRevealSource(selected) &&
+              <IconButton icon={FileSearchIcon} title={t.revealSource} onClick={() => void revealSourceFile()} />}
             <IconButton icon={StarIcon} title={selected.starred ? t.unstar : t.star} active={selected.starred} onClick={() => void flag("starred")} />
             <IconButton icon={PinIcon} title={selected.pinned ? t.unpin : t.pin} active={selected.pinned} onClick={() => void flag("pinned")} />
             <IconButton icon={Download01Icon} title={t.export} onClick={() => void exportMarkdown()} />

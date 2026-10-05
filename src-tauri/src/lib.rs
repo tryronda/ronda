@@ -707,6 +707,98 @@ fn within_root(path: &Path, roots: &[PathBuf]) -> bool {
         .any(|root| path.starts_with(root))
 }
 
+fn reveal_source_path(
+    meta: &SessionMeta,
+    owned_paths: &[PathBuf],
+    enabled_roots: &[PathBuf],
+) -> CommandResult<PathBuf> {
+    let source = PathBuf::from(&meta.source_path);
+    if meta.host.is_some()
+        || meta.parent_key.is_some()
+        || meta.metadata_only
+        || !meta.can_delete
+        || owned_paths.is_empty()
+        || !source
+            .symlink_metadata()
+            .is_ok_and(|metadata| metadata.file_type().is_file())
+    {
+        return Err("source file is unavailable".into());
+    }
+    let canonical = source
+        .canonicalize()
+        .map_err(|_| "source file is unavailable")?;
+    let contained = enabled_roots
+        .iter()
+        .filter_map(|root| root.canonicalize().ok())
+        .any(|root| {
+            (root.is_dir() && canonical.starts_with(&root)) || (root.is_file() && canonical == root)
+        });
+    if !contained {
+        return Err("source file is unavailable".into());
+    }
+    Ok(canonical)
+}
+
+fn enabled_roots_for_agent(locations: Vec<Location>, agent: &str) -> Vec<PathBuf> {
+    locations
+        .into_iter()
+        .filter(|location| location.enabled && location.agent == agent)
+        .map(|location| PathBuf::from(location.path))
+        .collect()
+}
+
+fn finder_reveal_command(path: &Path) -> Command {
+    let mut command = Command::new("/usr/bin/open");
+    command.arg("-R").arg(path);
+    command
+}
+
+#[tauri::command]
+async fn reveal_source_file(state: State<'_, Shared>, key: String) -> CommandResult<()> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (state, key);
+        return Err("Source file reveal is supported on macOS only".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        off_main(state, move |state| {
+            let path = {
+                let store = state
+                    .store
+                    .lock()
+                    .map_err(|_| "source file is unavailable")?;
+                let meta = store
+                    .get_session(&key)
+                    .map_err(|_| "source file is unavailable")?
+                    .ok_or("source file is unavailable")?;
+                let adapter = state
+                    .scanner
+                    .adapter(meta.agent)
+                    .ok_or("source file is unavailable")?;
+                let owned_paths = adapter.owned_paths(&meta);
+                let roots = enabled_roots_for_agent(
+                    state
+                        .scanner
+                        .locations(&store)
+                        .map_err(|_| "source file is unavailable")?,
+                    meta.agent.as_str(),
+                );
+                reveal_source_path(&meta, &owned_paths, &roots)?
+            };
+            let output = finder_reveal_command(&path)
+                .output()
+                .map_err(|_| "Could not reveal source file in Finder")?;
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err("Could not reveal source file in Finder".into())
+            }
+        })
+        .await
+    }
+}
+
 #[tauri::command]
 async fn trash_session(state: State<'_, Shared>, key: String) -> CommandResult<()> {
     off_main(state, move |state| {
@@ -1393,6 +1485,7 @@ pub fn run() {
             resume_session,
             inspect_resume,
             open_project_folder,
+            reveal_source_file,
             set_resume_folder,
             terminal_open,
             terminal_write,
@@ -1415,6 +1508,137 @@ pub fn run() {
 mod tests {
     use super::*;
     use std::{fs, os::unix::fs::PermissionsExt};
+
+    fn reveal_meta(source: &Path) -> SessionMeta {
+        SessionMeta {
+            key: "reveal-test-key".into(),
+            native_id: "reveal-test-id".into(),
+            agent: ronda_core::AgentId::Codex,
+            host: None,
+            parent_key: None,
+            title: "Synthetic transcript".into(),
+            project_path: None,
+            source_path: source.to_string_lossy().into_owned(),
+            created_at: 1,
+            updated_at: 1,
+            model: None,
+            source: None,
+            tokens: None,
+            archived: false,
+            metadata_only: false,
+            can_delete: true,
+            starred: false,
+            pinned: false,
+        }
+    }
+
+    #[test]
+    fn source_reveal_requires_a_regular_non_symlink_file_in_an_enabled_root() {
+        let root = std::env::temp_dir().join(format!("ronda reveal {}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("transcript ñ '$(touch nope).jsonl");
+        fs::write(&source, b"synthetic transcript bytes").unwrap();
+        let meta = reveal_meta(&source);
+        let owned = vec![root.clone()];
+        let canonical_source = source.canonicalize().unwrap();
+
+        assert_eq!(
+            reveal_source_path(&meta, &owned, std::slice::from_ref(&root)).unwrap(),
+            canonical_source
+        );
+        assert_eq!(
+            reveal_source_path(&meta, &owned, std::slice::from_ref(&source)).unwrap(),
+            canonical_source
+        );
+
+        let outside = root
+            .parent()
+            .unwrap()
+            .join(format!("ronda outside {}.jsonl", std::process::id()));
+        fs::write(&outside, b"outside").unwrap();
+        let alias = root.join("link.jsonl");
+        std::os::unix::fs::symlink(&outside, &alias).unwrap();
+        for candidate in [alias.as_path(), outside.as_path()] {
+            let meta = reveal_meta(candidate);
+            let error = reveal_source_path(&meta, &owned, std::slice::from_ref(&root)).unwrap_err();
+            assert_eq!(error, "source file is unavailable");
+            assert!(!error.contains(&root.to_string_lossy().to_string()));
+        }
+        let missing = root.join("missing.jsonl");
+        let directory = root.join("transcript-dir");
+        fs::create_dir_all(&directory).unwrap();
+        for candidate in [missing.as_path(), directory.as_path(), outside.as_path()] {
+            assert!(reveal_source_path(
+                &reveal_meta(candidate),
+                &owned,
+                std::slice::from_ref(&root)
+            )
+            .is_err());
+        }
+
+        let mut invalid = reveal_meta(&source);
+        invalid.host = Some("remote".into());
+        assert!(reveal_source_path(&invalid, &owned, std::slice::from_ref(&root)).is_err());
+        invalid.host = None;
+        invalid.parent_key = Some("parent".into());
+        assert!(reveal_source_path(&invalid, &owned, std::slice::from_ref(&root)).is_err());
+        invalid.parent_key = None;
+        invalid.metadata_only = true;
+        assert!(reveal_source_path(&invalid, &owned, std::slice::from_ref(&root)).is_err());
+        invalid.metadata_only = false;
+        invalid.can_delete = false;
+        assert!(reveal_source_path(&invalid, &owned, std::slice::from_ref(&root)).is_err());
+        invalid.can_delete = true;
+        assert!(reveal_source_path(&invalid, &[], std::slice::from_ref(&root)).is_err());
+        assert!(reveal_source_path(&invalid, &owned, &[]).is_err());
+
+        fs::remove_file(outside).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn source_reveal_uses_only_enabled_same_agent_roots_and_literal_finder_arguments() {
+        let root = std::env::temp_dir().join(format!("ronda reveal roots {}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("space ' $(touch nope); ñ.jsonl");
+        fs::write(&source, b"unchanged").unwrap();
+        let locations = vec![
+            Location {
+                agent: "codex".into(),
+                path: root.to_string_lossy().into_owned(),
+                enabled: true,
+                health_id: String::new(),
+                custom: false,
+            },
+            Location {
+                agent: "codex".into(),
+                path: "/disabled".into(),
+                enabled: false,
+                health_id: String::new(),
+                custom: true,
+            },
+            Location {
+                agent: "claude-code".into(),
+                path: root.to_string_lossy().into_owned(),
+                enabled: true,
+                health_id: String::new(),
+                custom: false,
+            },
+        ];
+        let roots = enabled_roots_for_agent(locations, "codex");
+        assert_eq!(roots, vec![root.clone()]);
+        assert!(
+            reveal_source_path(&reveal_meta(&source), std::slice::from_ref(&root), &roots).is_ok()
+        );
+
+        let command = finder_reveal_command(&source);
+        assert_eq!(command.get_program(), "/usr/bin/open");
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(args, vec![std::ffi::OsStr::new("-R"), source.as_os_str()]);
+        assert_eq!(fs::read(&source).unwrap(), b"unchanged");
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn diagnostics_report_aggregates_facts_without_serializing_private_fixture_values() {

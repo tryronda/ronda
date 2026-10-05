@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.19] - 2026-10-05
+
+### Added
+- **Reveal source file** selects an eligible local session's source file in Finder after validating it against enabled roots for the same agent. It does not open or edit the file.
+
 ## [1.0.18] - 2026-10-05
 
 ### Added

@@ -270,6 +270,54 @@ test("opens local project folders and keeps the path copyable on errors", async 
   } finally {await act(async()=>root.unmount());host.remove();}
 });
 
+test("reveals eligible source files with generic native errors", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  Object.defineProperty(window,"__TAURI_INTERNALS__",{configurable:true,value:{invoke:async()=>[]}});
+  const revealSourceFile=vi.fn(async()=>{});
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],
+    getSession:async()=>session,getTranscript:async()=>[],getPref:async()=>null,listBookmarks:async()=>[],
+    inspectResume:async()=>({supported:false,ready:false,host:null,original_directory:null,directory:null,program:null,args:[],command:null,reasons:[]}),
+    sessionRelationships:async()=>({parent:null,children:[],related:[],candidate_limit:20}),
+    revealSourceFile,onLibraryChanged:async()=>()=>{}};
+  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const click=async(selector:string)=>{await act(async()=>host.querySelector<HTMLButtonElement>(selector)!.click());};
+  const notices=()=>Array.from(host.querySelectorAll('[role="status"]')).map(node=>node.textContent);
+  try {
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
+    await click('[aria-label="Recent sessions"] .session-card');
+    expect(host.querySelector('button[aria-label="Reveal source file"]')).not.toBeNull();
+    await click('button[aria-label="Reveal source file"]');
+    expect(revealSourceFile).toHaveBeenCalledWith(session.key);
+    expect(notices()).toContain("Revealed source file in Finder");
+    revealSourceFile.mockRejectedValueOnce(new Error("/private/secret/path"));
+    await click('button[aria-label="Reveal source file"]');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not reveal source file");
+    expect(host.textContent).not.toContain("/private/secret/path");
+    expect(notices()).not.toContain("Revealed source file in Finder");
+    await click('button[aria-label="Reveal source file"]');
+    expect(notices()).toContain("Revealed source file in Finder");
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+  } finally {await act(async()=>root.unmount());host.remove();Reflect.deleteProperty(window,"__TAURI_INTERNALS__");}
+});
+
+test("shows the fixed Desktop-required preview response without exposing command errors", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  Reflect.deleteProperty(window,"__TAURI_INTERNALS__");
+  const revealSourceFile=vi.fn(async()=>{throw new Error("Desktop required: sample sessions cannot reveal a source file.");});
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],
+    getSession:async()=>session,getTranscript:async()=>[],revealSourceFile,onLibraryChanged:async()=>()=>{}};
+  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
+    await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Recent sessions"] .session-card')!.click());
+    await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="Reveal source file"]')!.click());
+    expect(revealSourceFile).toHaveBeenCalledWith(session.key);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Desktop required: sample sessions cannot reveal a source file.");
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
 test("Refresh library announces partial and clean local reports, clears stale feedback on failure, and accepts retry", async () => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
   let report={discovered:2,indexed:1,unchanged:0,errors:["/Users/refresh-secret-canary/session.jsonl parser-secret-canary"]};
