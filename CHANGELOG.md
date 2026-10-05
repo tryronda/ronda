@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.20] - 2026-10-05
+
+### Fixed
+- Reveal-source errors no longer offer an unrelated library refresh retry.
+
 ## [1.0.19] - 2026-10-05
 
 ### Added

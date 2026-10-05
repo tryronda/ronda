@@ -71,7 +71,12 @@ test("the real preview Workbench labels source reveal Desktop required under moc
     const reveal=host.querySelector<HTMLButtonElement>('button[aria-label="Reveal source file"]');
     expect(reveal).not.toBeNull();
     await act(async()=>reveal!.click());
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Desktop required: sample sessions cannot reveal a source file.");
+    const alert=host.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Desktop required: sample sessions cannot reveal a source file.");
+    expect(alert?.textContent).not.toMatch(/Retry (scan|refresh)/);
+    expect(alert?.querySelector('button[aria-label="Dismiss"]')).not.toBeNull();
     expect(host.textContent).not.toContain("Could not reveal source file");
+    await act(async()=>alert!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]')!.click());
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
 });
