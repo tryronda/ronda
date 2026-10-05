@@ -273,13 +273,14 @@ test("opens local project folders and keeps the path copyable on errors", async 
 test("reveals eligible source files with generic native errors", async () => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
   Object.defineProperty(window,"__TAURI_INTERNALS__",{configurable:true,value:{invoke:async()=>[]}});
-  const revealSourceFile=vi.fn(async()=>{});
+  const revealSourceFile=vi.fn(async()=>{}),scan=vi.fn(async()=>({discovered:0,indexed:0,unchanged:0,errors:[]}));
+  let failReload=false;
   const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],
-    getSession:async()=>session,getTranscript:async()=>[],getPref:async()=>null,listBookmarks:async()=>[],
+    getSession:async()=>session,getTranscript:async()=>[],getPref:async()=>null,listBookmarks:async()=>[],scan,
     inspectResume:async()=>({supported:false,ready:false,host:null,original_directory:null,directory:null,program:null,args:[],command:null,reasons:[]}),
     sessionRelationships:async()=>({parent:null,children:[],related:[],candidate_limit:20}),
     revealSourceFile,onLibraryChanged:async()=>()=>{}};
-  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  api.sessionPage=async(_query,offset,limit)=>{if(failReload)throw new Error("synthetic library refresh failure");return {items:[session],total:1,offset,limit};};
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   const click=async(selector:string)=>{await act(async()=>host.querySelector<HTMLButtonElement>(selector)!.click());};
   const notices=()=>Array.from(host.querySelectorAll('[role="status"]')).map(node=>node.textContent);
@@ -294,10 +295,22 @@ test("reveals eligible source files with generic native errors", async () => {
     await click('button[aria-label="Reveal source file"]');
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not reveal source file");
     expect(host.textContent).not.toContain("/private/secret/path");
+    expect(host.querySelector('[role="alert"] button[aria-label="Dismiss"]')).not.toBeNull();
+    expect(Array.from(host.querySelectorAll('[role="alert"] button')).map(button=>button.textContent)).toEqual(["×"]);
     expect(notices()).not.toContain("Revealed source file in Finder");
+    await click('[role="alert"] button[aria-label="Dismiss"]');
+    expect(host.querySelector('[role="alert"]')).toBeNull();
     await click('button[aria-label="Reveal source file"]');
     expect(notices()).toContain("Revealed source file in Finder");
     expect(host.querySelector('[role="alert"]')).toBeNull();
+    failReload=true;
+    await click('button[aria-label="Refresh library"]');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("synthetic library refresh failure");
+    expect(host.querySelector('[role="alert"] button')?.textContent).toBe("Retry refresh");
+    failReload=false;
+    await act(async()=>{host.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();await new Promise(resolve=>setTimeout(resolve,0));});
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(scan).toHaveBeenCalledTimes(1);
   } finally {await act(async()=>root.unmount());host.remove();Reflect.deleteProperty(window,"__TAURI_INTERNALS__");}
 });
 
@@ -315,6 +328,10 @@ test("shows the fixed Desktop-required preview response without exposing command
     await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="Reveal source file"]')!.click());
     expect(revealSourceFile).toHaveBeenCalledWith(session.key);
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("Desktop required: sample sessions cannot reveal a source file.");
+    expect(host.querySelector('[role="alert"] button[aria-label="Dismiss"]')).not.toBeNull();
+    expect(host.querySelector('[role="alert"]')?.textContent).not.toMatch(/Retry (scan|refresh)/);
+    await act(async()=>host.querySelector<HTMLButtonElement>('[role="alert"] button[aria-label="Dismiss"]')!.click());
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   } finally {await act(async()=>root.unmount());host.remove();}
 });
 

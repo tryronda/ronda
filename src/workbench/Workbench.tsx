@@ -323,7 +323,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<{message:string;retry:"scan"|"refresh"|null}|null>(null);
+  const setError = (message:string|null,retry:"scan"|"refresh"|null="refresh") => setErrorState(message===null ? null : {message,retry});
   const [notice, setNotice] = useState<string | null>(null);
   const enqueueReadingPositionWrite = () => {
     if (!readingPositionsLoaded.current) return;
@@ -784,7 +785,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setNotice(null); setError(null);
     setScanning(true);
     try { const report = await api.scan(); await reload(); setNotice(scanSummary(report)); }
-    catch (cause) { setError(`Local scan failed: ${String(cause)}`); }
+    catch (cause) { setError(`Local scan failed: ${String(cause)}`, "scan"); }
     finally { setScanning(false); }
   };
 
@@ -840,7 +841,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         && cause.message === "Desktop required: sample sessions cannot reveal a source file.";
       setError(sampleUnavailable || !inTauri()
         ? "Desktop required: sample sessions cannot reveal a source file."
-        : "Could not reveal source file");
+        : "Could not reveal source file", null);
     }
   };
 
@@ -1233,7 +1234,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         {error && <motion.div key="error" role="alert" layout
           initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
           className="pointer-events-auto flex max-w-[min(440px,80vw)] items-center gap-3 bg-destructive px-3.5 py-2.5 text-[12px] text-white shadow-lg">
-          <span>{error}</span><button type="button" disabled={scanning} onClick={() => void (error.startsWith("Local scan failed:") ? refresh() : reload())} className="underline disabled:opacity-50">{error.startsWith("Local scan failed:") ? "Retry scan" : "Retry refresh"}</button><button type="button" className="text-[16px] leading-none opacity-80 hover:opacity-100" onClick={() => setError(null)} aria-label="Dismiss">×</button></motion.div>}
+          <span>{error.message}</span>{error.retry && <button type="button" disabled={scanning} onClick={() => void (error.retry === "scan" ? refresh() : reload())} className="underline disabled:opacity-50">{error.retry === "scan" ? "Retry scan" : "Retry refresh"}</button>}<button type="button" className="text-[16px] leading-none opacity-80 hover:opacity-100" onClick={() => setError(null)} aria-label="Dismiss">×</button></motion.div>}
         {notice && <motion.div key={notice} role="status" layout
           initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
           className="label-mono pointer-events-auto flex items-center gap-2.5 bg-foreground px-3.5 py-2.5 text-[12px] text-background shadow-lg">
