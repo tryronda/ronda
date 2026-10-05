@@ -54,7 +54,7 @@ cargo test --workspace
 
 For changes to resume inspection or launching, test the packaged macOS app with an isolated `RONDA_HOME` and `RONDA_DB` and a synthetic agent that records its working directory and arguments. Record the source commit, installer, and results in the implementation PR. Packaging and Rust fixture checks do not replace these checks.
 
-CI runs `python3 scripts/resume-smoke.py --self-check` on every pull request. Native WebDriver smoke for the installed app is a manual macOS check: it exercises the native folder picker, mapped project-folder opener, app restart, embedded Resume, Restart, external launch, late missing-executable guards, Settings removal, child restrictions, literal arguments, and unchanged source files.
+CI runs `python3 scripts/resume-smoke.py --self-check` on every pull request. Packaged macOS app checks use an isolated synthetic profile and exercise the native folder picker, mapped project-folder opener, app restart, embedded Resume, Restart, external launch, late missing-executable guards, Settings removal, child restrictions, literal arguments, and unchanged source files.
 
 1. Selecting a session and checking readiness must not invoke an agent or SSH. Verify missing executables, unknown or missing folders, unsupported agents, and child-session restrictions.
 2. Recover a moved local project with the native folder picker. Use spaces, quotes, Unicode, and shell metacharacters in the folder and session ID. Verify the recorded working directory and literal arguments after explicit Resume, then confirm the mapping survives app restart.

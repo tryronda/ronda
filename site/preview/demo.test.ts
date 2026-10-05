@@ -80,8 +80,27 @@ test("source health preview shows fixed local states and refreshes deterministic
   expect((await invoke<typeof initial>("get_local_source_refresh_health")).roots.find(root=>root.id==="c".repeat(64))?.status).toBe("partial");
 });
 
+test("preview saved-search seed replays against the sample index and resets on reload", async () => {
+  installDemoBackend();
+  const raw = await backend.getPref("saved_searches_v1");
+  const saved = JSON.parse(raw!) as { version: number; items: { name: string; query: string; filters: Record<string, unknown>; sort: string }[] };
+  expect(saved).toMatchObject({ version: 1, items: [{ name: "Preference storage", query: "Preferences now live", sort: "relevance" }] });
+  const results = await backend.searchGrouped(saved.items[0].query, { ...queryDefaults, project_path: saved.items[0].filters.project as string },
+    saved.items[0].sort as "relevance" | "recent", 0, 50);
+  expect(results.total_sessions).toBeGreaterThan(0);
+  expect(results.groups.some(group => group.session.project_path === saved.items[0].filters.project)).toBe(true);
+  const next = { version: 1 as const, items: [{ ...saved.items[0], name: "Renamed preview search", query: "pagination" }] };
+  await backend.setPref("saved_searches_v1", JSON.stringify(next));
+  expect(JSON.parse((await backend.getPref("saved_searches_v1"))!).items[0].name).toBe("Renamed preview search");
+  uninstallDemoBackend();
+  installDemoBackend();
+  expect(await backend.getPref("saved_searches_v1")).toBe(raw);
+});
+
 test("sample reading snapshots use SHA-256 and preferences reset when the preview reloads", async () => {
   installDemoBackend();
+  const savedSearches = await backend.getPref("saved_searches_v1");
+  expect(JSON.parse(savedSearches!).items[0]).toMatchObject({ name: "Preference storage", query: "Preferences now live" });
   const snapshot = await backend.getTranscriptSnapshot("claude-code:demo-0");
   expect(snapshot.messages.length).toBeGreaterThan(0);
   expect(snapshot.fingerprints).toHaveLength(snapshot.messages.length);
@@ -89,9 +108,12 @@ test("sample reading snapshots use SHA-256 and preferences reset when the previe
   expect(snapshot.fingerprints.every(value => /^[0-9a-f]{64}$/.test(value))).toBe(true);
   await backend.setPref("reading_positions_v1", "synthetic only");
   expect(await backend.getPref("reading_positions_v1")).toBe("synthetic only");
+  await backend.setPref("saved_searches_v1", JSON.stringify({ version: 1, items: [] }));
+  expect(JSON.parse((await backend.getPref("saved_searches_v1"))!).items).toEqual([]);
   uninstallDemoBackend();
   installDemoBackend();
   expect(await backend.getPref("reading_positions_v1")).toBeNull();
+  expect(await backend.getPref("saved_searches_v1")).toBe(savedSearches);
 });
 
 test("synthetic earlier insertion preserves exact saved content and an edited reply becomes stale", async () => {

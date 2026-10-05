@@ -183,6 +183,11 @@ function reset() {
   };
   transcripts.clear();
   prefs = new Map();
+  prefs.set("saved_searches_v1", JSON.stringify({ version: 1, items: [{
+    id: "123e4567-e89b-42d3-a456-426614174018", name: "Preference storage",
+    query: "Preferences now live", filters: { project: projects.ronda, agent: null, starredOnly: false,
+      includeArchived: false, dateFrom: "", dateThrough: "", model: "", host: "" }, sort: "relevance",
+  }] }));
   hosts = [{ host: "buildbox", enabled: true, last_sync_ms: now - 3 * HOUR, last_error: null }];
   scripts.forEach((script, index) => {
     const key = `${script.agent}:demo-${index}`;
