@@ -22,14 +22,14 @@ By contributing, you agree that your contributions are licensed under the [AGPL-
 
 ## Build and run
 
-Install [Bun](https://bun.sh) 1.4.2 and a current stable Rust toolchain. Linux also needs the [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/).
+Install [Bun](https://bun.sh) 1.4.2 and a current stable Rust toolchain on an Apple silicon Mac. The desktop app is built for macOS Apple silicon only.
 
 ```sh
 bun install --frozen-lockfile
 bun run tauri:dev
 ```
 
-`bun run tauri:build` creates an installer for the current platform. The packaging script builds `ronda-cli` and `ronda-mcp` for the current Rust target and bundles them next to the app executable. To build for another target, set `CARGO_BUILD_TARGET` to its Rust target triple first.
+`bun run tauri:build` creates a macOS Apple silicon DMG. The packaging script builds `ronda-cli` and `ronda-mcp` for the current Rust target and bundles them next to the app executable.
 
 To keep your own sessions out of development, set `RONDA_HOME` to scan a synthetic home directory and `RONDA_DB` to put the index somewhere else. Ronda never reads agent credential files.
 
@@ -52,9 +52,9 @@ cargo test --workspace
 
 ### Installed-app resume checks
 
-For changes to resume inspection or launching, test the packaged app on macOS, Windows, and Linux with an isolated `RONDA_HOME` and `RONDA_DB` and a synthetic agent that records its working directory and arguments. Record the source commit, operating system, installer, and results in the implementation PR. Packaging and Rust fixture checks do not replace these checks.
+For changes to resume inspection or launching, test the packaged macOS app with an isolated `RONDA_HOME` and `RONDA_DB` and a synthetic agent that records its working directory and arguments. Record the source commit, installer, and results in the implementation PR. Packaging and Rust fixture checks do not replace these checks.
 
-CI installs the built Debian and NSIS packages and runs `scripts/resume-smoke.py` through native WebDriver (Tauri/WebKit on Linux and Edge on Windows). It exercises the native folder picker, mapped project-folder opener, app restart, embedded Resume, Restart, external launch, late missing-executable guards, Settings removal, child restrictions, literal arguments, and unchanged source files. Screenshots, the final rendered DOM, driver logs, and a JSON result are saved as `resume-smoke-*` artifacts; publication depends on these jobs. The fixture uses a compiled synthetic agent and isolated data, with no product dependency or test hook. `python3 scripts/resume-smoke.py --self-check` checks the fixture without opening an app. On elevated Windows CI runners, the smoke temporarily sets an app-scoped HKLM WebView2 debugging policy and restores its previous value; Windows execution is restricted to isolated CI. macOS still needs a native manual check because the native driver supports Linux and Windows.
+CI runs `python3 scripts/resume-smoke.py --self-check` on every pull request. Packaged macOS app checks use an isolated synthetic profile and exercise the native folder picker, mapped project-folder opener, app restart, embedded Resume, Restart, external launch, late missing-executable guards, Settings removal, child restrictions, literal arguments, and unchanged source files.
 
 1. Selecting a session and checking readiness must not invoke an agent or SSH. Verify missing executables, unknown or missing folders, unsupported agents, and child-session restrictions.
 2. Recover a moved local project with the native folder picker. Use spaces, quotes, Unicode, and shell metacharacters in the folder and session ID. Verify the recorded working directory and literal arguments after explicit Resume, then confirm the mapping survives app restart.
@@ -99,7 +99,7 @@ The **Build Ronda** release job requests **Deploy site** through a repository di
    git push origin main vX.Y.Z
    ```
 
-The **Build Ronda** workflow builds every platform, checks that each package contains the CLI and MCP sidecars, and publishes a GitHub release only after verifying the draft assets and checksums. Draft publication is retryable; already-published assets are never overwritten. The site then deploys from the same tag. Its notes come from the changelog section. Release assets have version-free names, such as `Ronda-macos-arm64.dmg`, so `releases/latest/download/<name>` links in the README and on the site always get the newest build. The workflow refuses to publish when the tag doesn't match the app version or the changelog has no section for it.
+The **Build Ronda** workflow builds a macOS arm64 DMG, checks that the package contains the CLI and MCP sidecars, and publishes a GitHub release only after verifying the draft assets and checksums. Draft publication is retryable; already-published assets are never overwritten. The site then deploys from the same tag. Its notes come from the changelog section. Release assets have version-free names, such as `Ronda-macos-arm64.dmg`, so `releases/latest/download/<name>` links in the README and on the site always get the newest build. The workflow refuses to publish when the tag doesn't match the app version or the changelog has no section for it.
 
 ### Code signing (optional)
 
@@ -111,5 +111,3 @@ macOS builds are ad-hoc signed unless these repository secrets are set. With the
 | `APPLE_CERTIFICATE_PASSWORD` | Password for that `.p12` |
 | `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Name (TEAMID)` |
 | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | Apple ID, app-specific password, and team ID for notarization |
-
-Windows builds are not signed yet.

@@ -4,13 +4,16 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
-## [1.0.18] - 2026-10-03
+## [1.0.18] - 2026-10-05
 
 ### Added
 - **Saved searches** store named literal queries with their current filters and sort in local preferences, with replay, rename, and removal. Unavailable saved scopes stay exact until explicitly cleared.
 
 ### Privacy
 - Saved queries and scope values remain local and are excluded from diagnostics and bookmark exports.
+
+### Changed
+- Desktop releases and CI now build a macOS Apple silicon DMG only. Windows, Linux, and Intel Mac installers are no longer published.
 
 ## [1.0.17] - 2026-10-03
 
