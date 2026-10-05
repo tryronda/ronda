@@ -156,6 +156,7 @@ export interface WorkbenchBackend {
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
   inspectResume(key:string):Promise<ResumeReadiness>;
   openProjectFolder(key:string):Promise<void>;
+  revealSourceFile(key:string):Promise<void>;
   setResumeFolder(key:string,folder:string):Promise<ResumeReadiness>;
   resumeSession(key: string): Promise<string>;
   exportSession(key: string, destination: string): Promise<void>;
@@ -186,6 +187,7 @@ export const backend: WorkbenchBackend = {
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
   inspectResume:key=>invoke("inspect_resume",{key}),
   openProjectFolder:key=>invoke("open_project_folder",{key}),
+  revealSourceFile:key=>invoke("reveal_source_file",{key}),
   setResumeFolder:(key,folder)=>invoke("set_resume_folder",{key,folder}),
   resumeSession: (key) => invoke("resume_session", { key }),
   exportSession: (key, destination) => invoke("export_session", { key, destination }),

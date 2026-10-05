@@ -682,6 +682,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     }
     case "resume_session": throw new Error("Desktop required: sample sessions cannot open an agent or terminal.");
     case "open_project_folder": throw new Error("Desktop required: sample sessions cannot open a project folder.");
+    case "reveal_source_file": throw new Error("Desktop required: sample sessions cannot reveal a source file.");
     case "export_session": return null;
     case "get_insights": return insights();
     case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);
