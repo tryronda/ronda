@@ -707,6 +707,7 @@ fn within_root(path: &Path, roots: &[PathBuf]) -> bool {
         .any(|root| path.starts_with(root))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn reveal_source_path(
     meta: &SessionMeta,
     owned_paths: &[PathBuf],
@@ -739,6 +740,7 @@ fn reveal_source_path(
     Ok(canonical)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn enabled_roots_for_agent(locations: Vec<Location>, agent: &str) -> Vec<PathBuf> {
     locations
         .into_iter()
@@ -747,6 +749,7 @@ fn enabled_roots_for_agent(locations: Vec<Location>, agent: &str) -> Vec<PathBuf
         .collect()
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn finder_reveal_command(path: &Path) -> Command {
     let mut command = Command::new("/usr/bin/open");
     command.arg("-R").arg(path);
@@ -758,7 +761,7 @@ async fn reveal_source_file(state: State<'_, Shared>, key: String) -> CommandRes
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (state, key);
-        return Err("Source file reveal is supported on macOS only".into());
+        Err("Source file reveal is supported on macOS only".into())
     }
     #[cfg(target_os = "macos")]
     {
