@@ -14,3 +14,6 @@
 .env.*
 # The template carries no values, so it is committed.
 !.env.example
+
+# Local repository migration backup
+/.ronda-migration-20261008/
