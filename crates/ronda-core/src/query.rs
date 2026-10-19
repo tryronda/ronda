@@ -15,6 +15,9 @@ pub struct ListArgs {
     #[serde(default)]
     pub agents: Vec<String>,
     pub since: Option<String>,
+    /// Keep sessions updated at or before this time (same formats as `since`). CLI only.
+    #[serde(default)]
+    pub until: Option<String>,
     pub limit: Option<usize>,
     #[serde(default)]
     pub starred: bool,
@@ -65,6 +68,10 @@ fn selected_agents(raw: &[String]) -> Result<Vec<AgentId>> {
 }
 
 fn since_ms(raw: Option<&str>) -> Result<Option<i64>> {
+    time_ms(raw, "since")
+}
+
+fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
     let Some(s) = raw else { return Ok(None) };
     let s = s.trim();
     if let Some(unit) = s.chars().last() {
@@ -79,7 +86,7 @@ fn since_ms(raw: Option<&str>) -> Result<Option<i64>> {
                     'd' => 86400,
                     _ => 604800,
                 })
-                .ok_or_else(|| anyhow!("since duration is too large"))?;
+                .ok_or_else(|| anyhow!("{name} duration is too large"))?;
             return Ok(Some(
                 Utc::now()
                     .timestamp_millis()
@@ -108,7 +115,11 @@ fn since_ms(raw: Option<&str>) -> Result<Option<i64>> {
                 .timestamp_millis(),
         ));
     }
-    Err(anyhow!("invalid since value: {s}"))
+    Err(anyhow!("invalid {name} value: {s}"))
+}
+
+pub fn validate_until(raw: Option<&str>) -> Result<()> {
+    time_ms(raw, "until").map(|_| ())
 }
 
 pub fn validate_since(raw: Option<&str>) -> Result<()> {
@@ -161,14 +172,16 @@ fn accept(
     meta: &SessionMeta,
     paths: &Option<Vec<String>>,
     agents: &[AgentId],
-    since: Option<i64>,
+    window: (Option<i64>, Option<i64>),
     starred: bool,
 ) -> bool {
+    let (since, until) = window;
     paths
         .as_ref()
         .is_none_or(|v| meta.project_path.as_ref().is_some_and(|p| v.contains(p)))
         && (agents.is_empty() || agents.contains(&meta.agent))
         && since.is_none_or(|t| meta.updated_at >= t)
+        && until.is_none_or(|t| meta.updated_at <= t)
         && (!starred || meta.starred)
 }
 
@@ -231,9 +244,12 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
         return unknown_project(store, args.project.as_deref().unwrap_or(""));
     }
     let agents = selected_agents(&args.agents)?;
-    let since = since_ms(args.since.as_deref())?;
+    let window = (
+        since_ms(args.since.as_deref())?,
+        time_ms(args.until.as_deref(), "until")?,
+    );
     let mut sessions = store.list_sessions(&SessionQuery::default())?;
-    sessions.retain(|s| s.parent_key.is_none() && accept(s, &paths, &agents, since, args.starred));
+    sessions.retain(|s| s.parent_key.is_none() && accept(s, &paths, &agents, window, args.starred));
     sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
     let count = sessions.len();
     sessions.truncate(args.limit.unwrap_or(20).clamp(1, 100));
@@ -254,7 +270,10 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
         return unknown_project(store, args.filter.project.as_deref().unwrap_or(""));
     }
     let agents = selected_agents(&args.filter.agents)?;
-    let since = since_ms(args.filter.since.as_deref())?;
+    let window = (
+        since_ms(args.filter.since.as_deref())?,
+        time_ms(args.filter.until.as_deref(), "until")?,
+    );
     let hits = store.search(
         &args.query,
         &SessionQuery {
@@ -265,7 +284,7 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
     )?;
     let mut grouped: Vec<(SessionMeta, Vec<(i64, String)>)> = Vec::new();
     for h in hits {
-        if !accept(&h.session, &paths, &agents, since, false) {
+        if !accept(&h.session, &paths, &agents, window, false) {
             continue;
         }
         if let Some((_, snippets)) = grouped.iter_mut().find(|(s, _)| s.key == h.session.key) {

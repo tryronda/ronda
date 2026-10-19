@@ -215,3 +215,55 @@ test("bulk label add skips sessions at the cap, announces the result, and undo r
     expect(fake.rows().slice(0, 2).map(row => row.labels)).toEqual([[LABEL], [LABEL]]);
   } finally { await unmount(); }
 });
+
+test("Cmd/Ctrl-A in the list selects every loaded row, is ignored in inputs, and Escape clears", async () => {
+  const { api } = fakeApi();
+  const { host, unmount } = await mount(api);
+  try {
+    const first = cards(host)[0]; first.focus();
+    await key(first, { key: "a", metaKey: true });
+    expect(pressed(host)).toEqual([true, true, true, true, true]);
+    expect(bar(host)!.textContent).toContain("5 selected");
+    await key(cards(host)[0], { key: "Escape" });
+    expect(bar(host)).toBeNull();
+    await key(first, { key: "a", ctrlKey: true });
+    expect(bar(host)!.textContent).toContain("5 selected");
+    await click(action(host, "Clear selection"));
+    const search = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await key(search, { key: "a", metaKey: true });
+    expect(bar(host)).toBeNull();
+    await key(first, { key: "a" });
+    expect(bar(host)).toBeNull();
+  } finally { await unmount(); }
+});
+
+test("the Filters summary counts active filters and Clear resets them without toggling the disclosure", async () => {
+  const { api } = fakeApi();
+  const { host, unmount } = await mount(api);
+  try {
+    const summary = () => host.querySelector("details > summary")!;
+    const clear = () => Array.from(summary().querySelectorAll("button")).find(item => item.textContent === "Clear");
+    expect(summary().textContent).toBe("Filters");
+    expect(clear()).toBeUndefined();
+    await set(host, 'input[aria-label="Updated from"]', "2024-01-01", "input");
+    expect(summary().textContent).toContain("Filters (1)");
+    await set(host, 'select[aria-label="Filter by model"]', "gpt-5");
+    await click(Array.from(host.querySelectorAll("button")).find(item => item.getAttribute("aria-pressed") !== null && item.textContent === "Include archived")!);
+    expect(summary().textContent).toContain("Filters (3)");
+    expect(summary().querySelector("[aria-label]")!.getAttribute("aria-label")).toBe("Filters (3), 3 active");
+    // happy-dom does not implement summary toggling, so assert the default action is cancelled.
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(async () => { clear()!.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(summary().textContent).toBe("Filters");
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Updated from"]')!.value).toBe("");
+  } finally { await unmount(); }
+});
+
+test("archived sessions show an Archived chip in the list", async () => {
+  const { api } = fakeApi(rows => rows.map((row, index) => index === 3 ? { ...row, archived: true } : row));
+  const { host, unmount } = await mount(api);
+  try {
+    expect(cards(host).map(card => card.textContent!.includes("Archived"))).toEqual([false, false, false, true, false]);
+  } finally { await unmount(); }
+});

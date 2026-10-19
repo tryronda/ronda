@@ -368,3 +368,70 @@ fn synthetic_session(key: &str, source_path: &str) -> ParsedSession {
         messages: Vec::new(),
     }
 }
+
+fn run_cli(db: &std::path::Path, args: &[&str]) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_ronda-cli"))
+        .arg("--db")
+        .arg(db)
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn cli_until_bounds_sessions_and_search_to_a_window() {
+    let temp = std::env::temp_dir().join(format!("ronda-until-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp);
+    fs::create_dir_all(&temp).unwrap();
+    let database = temp.join("ronda.db");
+    let day = 86_400_000_i64;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    {
+        let mut store = Store::open(&database).unwrap();
+        for (key, age_days) in [("old-one", 10), ("mid-one", 5), ("new-one", 1)] {
+            let mut session = synthetic_session(key, &format!("/tmp/{key}.jsonl"));
+            session.meta.updated_at = now - age_days * day;
+            store.upsert(&session, "fixture").unwrap();
+        }
+    }
+    let sessions = |args: &[&str]| {
+        let mut all = vec!["sessions"];
+        all.extend_from_slice(args);
+        let out = run_cli(&database, &all);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let all = sessions(&[]);
+    assert!(all.contains("old-one") && all.contains("mid-one") && all.contains("new-one"));
+    let until = sessions(&["--until", "3d"]);
+    assert!(until.contains("old-one") && until.contains("mid-one") && !until.contains("new-one"));
+    let window = sessions(&["--since", "7d", "--until", "3d"]);
+    assert!(
+        !window.contains("old-one") && window.contains("mid-one") && !window.contains("new-one")
+    );
+    let equals = sessions(&["--until=3d"]);
+    assert!(!equals.contains("new-one"));
+
+    for args in [
+        vec!["sessions", "--until", "yesterdayish"],
+        vec!["search", "x", "--until", "nope"],
+        vec!["projects", "--until", "3d"],
+        vec!["insights", "--until", "3d"],
+        vec!["sessions", "--since", "lastweekish"],
+        vec!["search", "x", "--since", "nope"],
+        vec!["projects", "--since", "nope"],
+    ] {
+        let out = run_cli(&database, &args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+    }
+    let bad = run_cli(&database, &["sessions", "--until", "yesterdayish"]);
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("invalid until value: yesterdayish"));
+    fs::remove_dir_all(temp).unwrap();
+}

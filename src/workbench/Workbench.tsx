@@ -20,7 +20,7 @@ import { calendarRange, matchesSession, restoredFilters } from "./library-filter
 import { LibraryHome } from "./LibraryHome";
 import { BookmarkControl, emptyBookmarkEditor, type BookmarkEditorState } from "./BookmarkControl";
 import { ContextBundle } from "./ContextBundle";
-import { contextEligible, contextId, type ContextSelection } from "./context-bundle";
+import { contextEligible, contextId, sessionReference, type ContextSelection } from "./context-bundle";
 import { TranscriptNavigation } from "./TranscriptNavigation";
 import { ToolPre } from "./ToolPre";
 import { ResumeReadiness } from "./ResumeReadiness";
@@ -86,11 +86,14 @@ const SessionTerminal = lazy(() => import("./SessionTerminal").then(module => ({
 type TerminalEntry = { run: number; running: boolean; code: number | null; directory?:string };
 const Streamdown = lazy(() => loadStreamdown().then(module => ({ default: module.Streamdown })));
 
-function timeLabel(ms: number) {
+/** Short date and time; the year appears only when it differs from the current year. */
+export function timeLabel(ms: number) {
   if (!ms) return "";
+  const date = new Date(ms);
   return new Intl.DateTimeFormat("en-US", {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  }).format(new Date(ms));
+    month: "short", day: "numeric", ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+    hour: "2-digit", minute: "2-digit",
+  }).format(date);
 }
 
 function basename(path: string) {
@@ -113,7 +116,7 @@ function IconButton({ icon, title, onClick, active, disabled }: {
   </motion.button>;
 }
 
-function Message({ message, animate, children, onFindError, onCopyMessage }: { message: TranscriptMessage; animate: boolean; children?: ReactNode; onFindError:(text:string)=>void; onCopyMessage:(text:string)=>void }) {
+function Message({ message, animate, children, onFindError, onCopyMessage, onCopyReference }: { message: TranscriptMessage; animate: boolean; children?: ReactNode; onFindError:(text:string)=>void; onCopyMessage:(text:string)=>void; onCopyReference:(seq:number)=>void }) {
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
@@ -135,6 +138,7 @@ function Message({ message, animate, children, onFindError, onCopyMessage }: { m
         <Streamdown mode="static" dir="auto" className="markdown mt-1">{message.text}</Streamdown></Suspense></div>}
       {message.kind === "text" && (message.role === "user" || message.role === "assistant") && message.text.trim() !== "" &&
         <button type="button" className="mt-2 text-[13px] underline" aria-label={`Copy message ${message.seq}`} onClick={() => onCopyMessage(message.text)}>Copy message</button>}
+      <button type="button" className="mt-2 ml-3 text-[13px] underline" aria-label={`Copy reference ${message.seq}`} onClick={() => onCopyReference(message.seq)}>Copy reference</button>
       {message.images.length > 0 && <div className="my-3 flex flex-wrap gap-2.5">
         {message.images.map((image, index) => <img key={index} className="max-h-[300px] max-w-[min(100%,420px)] object-contain shadow-lift"
           src={`data:${image.media_type};base64,${image.data_base64}`}
@@ -235,6 +239,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setProject(null); setAgent(null); setStarredOnly(false); setLabelId(""); setIncludeArchived(false);
     setDateFrom(""); setDateThrough(""); setModel(""); setHost("");
   };
+  /** Everything `clearFilters` resets; library sort is not a filter. */
+  const activeFilterCount = [project, agent, dateFrom, dateThrough, model, host, labelId, starredOnly, includeArchived].filter(Boolean).length;
   const [search, setSearch] = useState("");
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const savedSearchesRef = useRef(savedSearches);
@@ -407,6 +413,15 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const copyMessage = async (text: string) => {
     try { await navigator.clipboard.writeText(text); setError(null); setNotice("Message copied"); }
     catch (cause) { setError(`Could not copy message: ${String(cause)}`); }
+  };
+  const copySessionKey = async () => {
+    if (!selected) return;
+    try { await navigator.clipboard.writeText(selected.key); setError(null); setNotice("Session key copied"); }
+    catch (cause) { setError(`Could not copy session key: ${String(cause)}`); }
+  };
+  const copyReference = async (key: string, seq: number) => {
+    try { await navigator.clipboard.writeText(sessionReference(key, seq)); setError(null); setNotice("Reference copied"); }
+    catch (cause) { setError(`Could not copy reference: ${String(cause)}`); }
   };
   const [jumpTo, setJumpTo] = useState<number | null>(null);
   const [opened, setOpened] = useState<SessionMeta | null>(null);
@@ -1137,7 +1152,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         <button type="button" className="my-2 text-[13px] underline" onClick={()=>findHistory(search,null)}>Find error history</button>
         <ContextBundle api={api} selection={contextSelection} clear={()=>setContextSelection([])} embedded={embedded} />
         <details className="mt-2 text-[13px]">
-          <summary className="cursor-pointer text-muted-foreground">Filters</summary>
+          <summary className="cursor-pointer text-muted-foreground">
+            <span aria-label={activeFilterCount ? `Filters (${activeFilterCount}), ${activeFilterCount} active` : undefined}>{activeFilterCount ? `Filters (${activeFilterCount})` : "Filters"}</span>
+            {activeFilterCount > 0 && <button type="button" className="ml-2 text-[12px] underline" aria-label="Clear active filters"
+              onClick={event=>{event.preventDefault();event.stopPropagation();clearFilters();if(detail.kind==="project")navigateDetail({kind:"home"});}}>Clear</button>}
+          </summary>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <label>Updated from<input aria-label="Updated from" type="date" value={dateFrom}
               onInput={event=>setDateFrom(event.currentTarget.value)} className="mt-1 w-full min-w-0 bg-chip p-1" /></label>
@@ -1247,6 +1266,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           if (event.target instanceof HTMLElement && event.target.closest("textarea,input,[contenteditable='true']")) return;
           const card = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-session-key]") : null;
           if (event.key === " " && card && !bookmarksOnly) { event.preventDefault(); toggleRow(card.dataset.sessionKey!); return; }
+          if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a" && !bookmarksOnly) {
+            event.preventDefault(); selectionAnchor.current = null; setSelection(new Set(rowOrder)); return;
+          }
           if (event.key === "Escape" && selection.size) { event.preventDefault(); clearSelection(); return; }
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           const cards = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".session-card"));
@@ -1300,6 +1322,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <span className={`agent-dot agent-${session.agent}`} /><span className="whitespace-nowrap">{agentNames[session.agent]}</span>
               {session.host && <span>@{session.host}</span>}
               {session.pinned && <HugeiconsIcon icon={PinIcon} size={12} />}
+              {session.archived && <span className="eyebrow-chip px-1.5 pt-0.5 pb-1 text-[11px]">{t.archived}</span>}
               <time className="ml-auto whitespace-nowrap">{timeLabel(session.updated_at)}</time></div>
             <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{group ? <SearchHighlight text={titleFor(session)} query={searchContext.query} /> : titleFor(session)}</strong>
             {hasAlias(aliases, session.key) && <span className="block truncate text-[11px] text-muted-foreground" title={plainTitle(session.title)}>Original: {plainTitle(session.title)}</span>}
@@ -1350,6 +1373,15 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               {selected.model && <><span className="text-border">/</span><span className="whitespace-nowrap">{selected.model}</span></>}
               {selected.host && <><span className="text-border">/</span><span>@{selected.host}</span></>}
             </div>
+            {(() => {
+              const parts = [selected.created_at ? `Started ${timeLabel(selected.created_at)}` : null,
+                selected.updated_at ? `Updated ${timeLabel(selected.updated_at)}` : null,
+                selected.tokens != null ? `${selected.tokens.toLocaleString("en-US")} tokens` : null].filter(Boolean);
+              return <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground" data-testid="session-details">
+                {parts.length > 0 && <span>{parts.join(" · ")}</span>}
+                <button type="button" className="flex-none underline underline-offset-2 hover:text-foreground"
+                  onClick={() => void copySessionKey()}>Copy session key</button></div>;
+            })()}
           </div>
           <div className="flex flex-none items-center gap-0.5">
             <IconButton icon={Folder01Icon}
@@ -1416,7 +1448,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
           </div> : messages.length ? <div className="transcript-messages mx-auto max-w-[780px] px-10 pt-6 pb-24 max-[1100px]:px-6">
-            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)} onCopyMessage={text=>void copyMessage(text)}>
+            {promptsOnly && !messages.some(message => message.role === "user" && message.kind === "text") &&
+              <div className="flex flex-col items-center gap-3 py-16 text-[13px] text-muted-foreground" role="status">
+                <p className="m-0">No prompts in this session.</p>
+                <button type="button" className="underline hover:text-foreground" onClick={() => setPromptsOnlyForNavigation(false)}>Show all messages</button></div>}
+            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)} onCopyMessage={text=>void copyMessage(text)} onCopyReference={seq=>void copyReference(selected.key,seq)}>
               {contextEligible(message) && <label className="mt-3 block text-[13px]"><input type="checkbox" disabled={unavailable} checked={contextSelected.has(contextId({key:selected.key,seq:message.seq}))}
                 onChange={()=>toggleContext({key:selected.key,seq:message.seq})} /> Select message {message.seq} for context</label>}
               <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)}
