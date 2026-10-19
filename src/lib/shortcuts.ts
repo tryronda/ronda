@@ -1,6 +1,7 @@
 /** Single source for the shortcut list shown in the app's help dialog and in the docs. */
 export const shortcuts: [string, string][] = [
   ["⌘1 / ⌘2 / ⌘3 / ⌘4", "Sessions, Insights, Intelligence, Settings"],
+  ["⌘,", "Open Settings"],
   ["⌘K", "Search the library"],
   ["⌘F", "Find in the active transcript"],
   ["Enter / Shift+Enter", "Next / previous match in transcript find"],

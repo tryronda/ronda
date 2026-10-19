@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- **⌘,** opens Settings.
+
 ### Changed
 - `ronda-cli` notes on stderr when `--limit` or `show` size options are clamped.
 

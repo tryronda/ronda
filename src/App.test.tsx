@@ -90,3 +90,29 @@ test("question mark opens the shortcuts help, Escape closes it, and typing in a 
   expect(host.querySelector("dialog")).not.toBeNull();
   await act(async () => { root.unmount(); });
 });
+
+test("Cmd-comma and Ctrl-comma open Settings, except inside a terminal", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<App />); });
+  const press = async (target: Element | Document, init: KeyboardEventInit) => act(async () => {
+    target.dispatchEvent(new KeyboardEvent("keydown", { key: ",", bubbles: true, ...init }));
+  });
+
+  await press(document.body, {});
+  expect(host.textContent).not.toContain("Settings content");
+
+  const terminal = document.createElement("div"); terminal.className = "xterm"; host.append(terminal);
+  await press(terminal, { metaKey: true });
+  expect(host.textContent).not.toContain("Settings content");
+  terminal.remove();
+
+  await press(document.body, { metaKey: true });
+  expect(host.textContent).toContain("Settings content");
+  await act(async () => { host.querySelector<HTMLButtonElement>('button[title^="Insights"]')!.click(); });
+  expect(host.textContent).toContain("Insights content");
+  await press(document.body, { ctrlKey: true });
+  expect(host.textContent).toContain("Settings content");
+  await act(async () => { root.unmount(); });
+});
