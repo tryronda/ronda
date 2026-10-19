@@ -1168,3 +1168,25 @@ test("replaying a saved search returns to the library from an open session", asy
     expect(host.querySelector(".transcript-pane h2")?.textContent).toBe("Pick up where you left off");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("bookmark rows copy their ronda:// reference, including unavailable originals", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const available: BookmarkView = {session,status:"current",bookmark:{session_key:session.key,seq:3,note:"Kept",excerpt:"Decision",text_hash:"a".repeat(64),created_at:1,updated_at:2,title:session.title,agent:session.agent,project_path:session.project_path}};
+  const missing: BookmarkView = {session:null,status:"unavailable",bookmark:{...available.bookmark,session_key:"claude-code:gone",seq:7,agent:"claude-code",title:"Removed session",updated_at:3}};
+  const api: WorkbenchBackend = {...backend, libraryOptions,listBookmarks:async()=>[missing,available],listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
+    getTranscript:async()=>[],onLibraryChanged:async()=>()=>{},searchGrouped:async()=>({groups:[],total_sessions:0,total_message_matches:0})};
+  api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
+  const writeText=vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText}});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const click=async(label:string)=>{await act(async()=>host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click());};
+  try {
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
+    await act(async()=>Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(b=>b.textContent?.trim()==="Bookmarks2")!.click());
+    await click("Copy reference 3");
+    expect(writeText).toHaveBeenLastCalledWith("ronda://session/codex:one#3");
+    expect(host.textContent).toContain("Reference copied");
+    await click("Copy reference 7");
+    expect(writeText).toHaveBeenLastCalledWith("ronda://session/claude-code:gone#7");
+  } finally {await act(async()=>root.unmount());host.remove();}
+});

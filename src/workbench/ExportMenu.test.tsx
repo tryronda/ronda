@@ -94,3 +94,26 @@ test("copy failures show the reason and leave the clipboard untouched; clipboard
     expect(host.textContent).not.toContain("Session copied as Markdown");
   } finally { await unmount(); vi.restoreAllMocks(); }
 });
+
+test("outside the desktop shell, Export Markdown… downloads the session Markdown", async () => {
+  const requests: (ExportOptions | undefined)[] = [];
+  const blobs: Blob[] = [];
+  const create = vi.fn((blob: Blob) => { blobs.push(blob); return "blob:sample"; });
+  const revoke = vi.fn();
+  Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke });
+  const names: string[] = [];
+  const anchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { names.push(this.download); });
+  const { api, exported } = fakeApi(async (_key, chosen) => { requests.push(chosen); return "# sample"; });
+  const { host, unmount } = await mount(api);
+  try {
+    expect("__TAURI_INTERNALS__" in window).toBe(false);
+    await click(host, "Export Markdown"); await click(host, "Export Markdown…");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(requests).toHaveLength(1);
+    expect(names).toEqual(["Fix search.md"]);
+    expect(await blobs[0].text()).toBe("# sample");
+    expect(revoke).toHaveBeenCalledWith("blob:sample");
+    expect(exported).toHaveLength(0);
+    expect(host.textContent).toContain("Transcript exported");
+  } finally { anchor.mockRestore(); await unmount(); }
+});

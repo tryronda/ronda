@@ -90,6 +90,21 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
     return () => { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle); };
   }, []);
 
+  // Switching views inerts the old page, which drops focus to <body>. Move it into the new page's region,
+  // but only when focus was lost or still sits in the departing page, and never over a ⌘K search focus.
+  const seen = useRef({ page, search: searchFocusToken });
+  useEffect(() => {
+    const previous = seen.current;
+    seen.current = { page, search: searchFocusToken };
+    if (previous.page === page || previous.search !== searchFocusToken) return;
+    const layerEl = rootRef.current?.querySelector<HTMLElement>('.page-layer[data-visible="true"]');
+    if (!layerEl) return;
+    const active = document.activeElement;
+    const lost = !active || active === document.body || active === document.documentElement;
+    const departing = active instanceof Element && !layerEl.contains(active) && active.closest(".page-layer") !== null;
+    if (lost || departing) layerEl.focus({ preventScroll: true });
+  }, [page, searchFocusToken]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (embedded && !(event.target instanceof Node && rootRef.current?.contains(event.target))) return;
@@ -161,7 +176,7 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
       </div>}
     </header>
     <div className="relative min-h-0 min-w-0 flex-1">
-      <div className="workspace-view page-layer" {...layer(page === "workbench")}>
+      <div className="workspace-view page-layer outline-none" {...layer(page === "workbench")}>
         <Workbench embedded={embedded} sidebarOpen={sidebarOpen} isActive={page === "workbench"}
           searchFocusToken={searchFocusToken} homeToken={homeToken} location={page==="workbench" ? entry.detail : undefined}
           onNavigateDetail={detail=>navigate("workbench",detail)} onOpenIntelligence={project=>navigate("intelligence",undefined,project)} />
@@ -210,11 +225,11 @@ function ChromeButton({ label, className, children, ...props }: Omit<React.Compo
 /** Every page stays mounted in the same box. Hidden ones skip rendering via content-visibility,
  * which keeps their scroll position and layout, so switching tabs never reflows or jumps. */
 function layer(visible: boolean) {
-  return { "data-visible": visible, "aria-hidden": !visible, inert: !visible };
+  return { "data-visible": visible, "aria-hidden": !visible, inert: !visible, tabIndex: -1 };
 }
 
 function PageView({ hidden, children }: { hidden: boolean; children: React.ReactNode }) {
-  return <main className="page-layer bg-canvas" {...layer(!hidden)}>
+  return <main className="page-layer bg-canvas outline-none" {...layer(!hidden)}>
     <Suspense fallback={null}>{children}</Suspense>
   </main>;
 }

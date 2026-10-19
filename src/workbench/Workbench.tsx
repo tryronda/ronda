@@ -1041,7 +1041,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const exportMarkdown = async (exportOptions: ExportOptions) => {
     if (!selected) return;
     try {
-      const destination = await save({ defaultPath: `${selected.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "session"}.md`,
+      const fileName = `${selected.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "session"}.md`;
+      if (!inTauri() || embedded) {
+        const url = URL.createObjectURL(new Blob([await api.sessionMarkdown(selected.key, exportOptions)], { type: "text/markdown;charset=utf-8" }));
+        const link = document.createElement("a"); link.href = url; link.download = fileName; link.click(); URL.revokeObjectURL(url);
+        setError(null); setNotice(t.exported); return;
+      }
+      const destination = await save({ defaultPath: fileName,
         filters: [{ name: "Markdown", extensions: ["md"] }] });
       if (destination) { await api.exportSession(selected.key, destination, exportOptions); setNotice(t.exported); }
     } catch (cause) { setError(String(cause)); }
@@ -1295,6 +1301,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             </button>
             <label className="my-2 block text-[13px]"><input type="checkbox" disabled={view.status === "unavailable" && !contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))} checked={contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))}
               onChange={()=>toggleContext({key:view.bookmark.session_key,seq:view.bookmark.seq})} /> Select bookmarked message {view.bookmark.seq} for context</label>
+            <button type="button" className="mr-3 text-[13px]" aria-label={`Copy reference ${view.bookmark.seq}`} onClick={()=>void copyReference(view.bookmark.session_key,view.bookmark.seq)}>Copy reference</button>
             {view.status === "unavailable" && <p className="text-[12px] text-muted-foreground">Original content unavailable; saved excerpts cannot substitute for the original message in context.</p>}
             <BookmarkControl api={api} sessionKey={view.bookmark.session_key} seq={view.bookmark.seq} view={view}
               editorState={bookmarkEditors[contextId({key:view.bookmark.session_key,seq:view.bookmark.seq})] ?? emptyBookmarkEditor}
