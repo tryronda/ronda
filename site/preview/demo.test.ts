@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, test, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { backend, queryDefaults, type BookmarkBackup, type BookmarkImport } from "@/workbench/api";
+import { backend, queryDefaults, type BookmarkBackup, type SessionQuery, type BookmarkImport } from "@/workbench/api";
 import { appendDemoMessage, changeFirstDemoAssistantReply, installDemoBackend, insertEarlierDemoMessage, uninstallDemoBackend } from "./demo";
 import { captureReadingPosition, resolveReadingPosition } from "@/workbench/reading-position";
 
@@ -329,4 +329,70 @@ test("preview bookmark rows follow the labels of their linked sessions", async (
   expect(filtered.map(view => view.bookmark.session_key).sort()).toEqual(all.filter(view => labelled.has(view.bookmark.session_key)).map(view => view.bookmark.session_key).sort());
   expect(filtered.length).toBeLessThan(all.length);
   expect(await backend.listBookmarks("", { ...queryDefaults, label_id: "f".repeat(32) })).toEqual([]);
+});
+
+test("preview session Markdown honors the export options, fences safely, and refuses oversized copies", async () => {
+  installDemoBackend();
+  const key = "claude-code:demo-0";
+  const plain = await backend.sessionMarkdown(key, { includeTools: false, includeThinking: false });
+  expect(plain).toMatch(/^# .+\n\nAgent: claude-code\nProject: .+\n\n## User · 0\n\n/);
+  expect(plain).toBe(await backend.sessionMarkdown(key));
+  expect(plain).not.toContain("Reference: ronda://");
+  const messages = await backend.getTranscript(key);
+  messages[1].thinking = "plan ```` inside";
+  messages[1].tool_calls = [{ id: "t", name: "Bash", input: "echo ``` hi", output: "secret-output", is_error: true }];
+  const detailed = await backend.sessionMarkdown(key, { includeTools: true, includeThinking: true });
+  expect(detailed).toContain("Reference: ronda://session/" + key + "#1");
+  expect(detailed).toContain("- Tool: Bash (recorded error)\n\nInput:\n\n````\necho ``` hi\n````");
+  expect(detailed).toContain("Thinking:\n\n`````\nplan ```` inside\n`````");
+  expect(await backend.sessionMarkdown(key, { includeTools: false, includeThinking: true })).not.toContain("secret-output");
+  messages[0].text = "x".repeat(100_001);
+  await expect(backend.sessionMarkdown(key)).rejects.toThrow("Nothing was copied or truncated");
+  await expect(backend.sessionMarkdown("missing")).rejects.toThrow("unknown session");
+});
+
+test("bulk triage preview changes only the requested flag, skips unknown keys, and restores exactly", async () => {
+  installDemoBackend();
+  const { items } = await backend.sessionPage(queryDefaults, 0, 100);
+  const [a, b, c] = items;
+  const before = [a, b, c].map(item => [item.key, !!item.starred, !!item.pinned] as [string, boolean, boolean]);
+  const applied = await backend.setSessionFlagsBulk([
+    [a.key, true, !!a.pinned], [b.key, !!b.starred, true], ["demo:missing", true, true], [c.key, !c.starred, !c.pinned],
+  ]);
+  expect(applied).toBe(3);
+  const after = await Promise.all([a, b, c].map(item => backend.getSession(item.key)));
+  expect([after[0]!.starred, after[0]!.pinned]).toEqual([true, !!a.pinned]);
+  expect([after[1]!.starred, after[1]!.pinned]).toEqual([!!b.starred, true]);
+  expect([after[2]!.starred, after[2]!.pinned]).toEqual([!c.starred, !c.pinned]);
+  expect(await backend.setSessionFlagsBulk(before)).toBe(3);
+  const restored = await Promise.all([a, b, c].map(item => backend.getSession(item.key)));
+  expect(restored.map(item => [item!.key, !!item!.starred, !!item!.pinned])).toEqual(before);
+  uninstallDemoBackend();
+  installDemoBackend();
+  expect((await backend.getSession(a.key))!.starred).toBe(!!a.starred);
+});
+
+test("library sort options order pages with pins first and deterministic ties", async () => {
+  installDemoBackend();
+  const base = {...queryDefaults, limit:null};
+  const rows = (await backend.listSessions(base)).filter(session=>!session.parent_key);
+  const pinned = rows.filter(session=>session.pinned).length;
+  expect(pinned).toBeGreaterThan(0);
+  const keys = async (sort?: SessionQuery["sort"]) => {
+    const out: string[] = [];
+    for (let offset=0;offset<rows.length;offset+=37) out.push(...(await backend.sessionPage({...base,sort},offset,37)).items.map(session=>session.key));
+    return out;
+  };
+  expect(await keys()).toEqual(rows.map(session=>session.key));
+  expect(await keys("updated_desc")).toEqual(await keys());
+  for (const sort of ["updated_asc","created_desc","tokens_desc"] as const) {
+    const got = await keys(sort);
+    expect(new Set(got).size).toBe(rows.length);
+    const byKey = new Map(rows.map(session=>[session.key,session]));
+    expect(got.slice(0,pinned).every(key=>byKey.get(key)!.pinned)).toBe(true);
+    expect(got.slice(pinned).every(key=>!byKey.get(key)!.pinned)).toBe(true);
+    const value = (key: string) => { const session = byKey.get(key)!; return sort==="updated_asc" ? -session.updated_at : sort==="created_desc" ? session.created_at : session.tokens ?? -1; };
+    const rest = got.slice(pinned);
+    expect(rest.every((key,index)=>index===0 || value(rest[index-1])>value(key) || (value(rest[index-1])===value(key) && rest[index-1]<key))).toBe(true);
+  }
 });

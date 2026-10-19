@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AiBrain01Icon, ArrowLeft01Icon, ArrowRight01Icon, Cancel01Icon, ChartIcon, Home01Icon,
-  Maximize01Icon, MinusSignIcon, PanelLeftIcon, Search01Icon, Settings01Icon,
+  KeyboardIcon, Maximize01Icon, MinusSignIcon, PanelLeftIcon, Search01Icon, Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import type { ProjectContext, WorkbenchLocation } from "./workbench/api";
 import { Workbench } from "./workbench/Workbench";
@@ -14,6 +14,7 @@ import { RondaLockup } from "@/components/brand/pixel-field";
 import { MacWindowControls } from "@/components/mac-window-controls";
 import { cn } from "@/lib/utils";
 import { applyTheme } from "@/lib/theme";
+import { shortcuts } from "@/lib/shortcuts";
 
 const InsightsView = lazy(() => import("./panels/InsightsView").then(module => ({ default: module.InsightsView })));
 const IntelligenceView = lazy(() => import("./panels/IntelligenceView").then(module => ({ default: module.IntelligenceView })));
@@ -27,7 +28,7 @@ const icons = { workbench: Home01Icon, insights: ChartIcon, intelligence: AiBrai
 const labels = { workbench: "Sessions", insights: "Insights", intelligence: "Intelligence", settings: "Settings", library: "Library",
     overview: "Overview", preferences: "Preferences", back: "Back", forward: "Forward",
     toggle: "Toggle library sidebar", home: "Home", search: "Search sessions", minimize: "Minimize window",
-    maximize: "Maximize or restore window", close: "Close window" };
+    maximize: "Maximize or restore window", close: "Close window", shortcuts: "Keyboard shortcuts" };
 
 /** `embedded` hosts the app inside another page: shortcuts stay scoped to its element and it uses macOS window chrome. */
 export default function App({ embedded = false }: { embedded?: boolean } = {}) {
@@ -37,6 +38,7 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
   const [mounted, setMounted] = useState<Record<Page, boolean>>({ workbench: true, insights: false, intelligence: false, settings: false });
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const [homeToken, setHomeToken] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
   const entry = navigation.entries[navigation.index];
   const page = entry.page;
   const t = labels;
@@ -94,7 +96,9 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
       const modifier = event.metaKey || event.ctrlKey;
       const editing = event.target instanceof HTMLElement && (event.target.isContentEditable ||
         event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement);
-      if (modifier && event.key.toLowerCase() === "k") { event.preventDefault(); openSearch(); }
+      const inTerminal = event.target instanceof Element && event.target.closest(".xterm") !== null;
+      if (event.key === "?" && !modifier && !event.altKey && !editing && !inTerminal) { event.preventDefault(); setHelpOpen(true); }
+      else if (modifier && event.key.toLowerCase() === "k") { event.preventDefault(); openSearch(); }
       else if (modifier && /^[1-4]$/.test(event.key)) { event.preventDefault(); navigate(pages[Number(event.key) - 1]); }
       else if (modifier && event.key.toLowerCase() === "b" && page === "workbench") { event.preventDefault(); setSidebarOpen(value => !value); }
       else if (!editing && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); go(-1); }
@@ -142,6 +146,9 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
           <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.8} /><span className="max-[1100px]:hidden">{t.search}</span>
           <kbd className="bg-chip px-1.5 py-px text-[10px] normal-case">{shortcut}K</kbd>
         </button>
+        <ChromeButton label={`${t.shortcuts} (?)`} aria-haspopup="dialog" onClick={() => setHelpOpen(true)}>
+          <HugeiconsIcon icon={KeyboardIcon} size={16} strokeWidth={1.7} />
+        </ChromeButton>
       </div>
       {!isMac && <div className="flex items-stretch border-l border-border" data-tauri-drag-region="false">
         {([[t.minimize, MinusSignIcon, () => getCurrentWindow().minimize()], [t.maximize, Maximize01Icon, () => getCurrentWindow().toggleMaximize()],
@@ -163,7 +170,35 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
       {mounted.intelligence && <PageView hidden={page !== "intelligence"}><IntelligenceView onOpen={openSession} active={page === "intelligence"} scope={entry.project} /></PageView>}
       {mounted.settings && <PageView hidden={page !== "settings"}><SettingsView embedded={embedded} /></PageView>}
     </div>
+    {helpOpen && <ShortcutsHelp isMac={isMac} onClose={() => setHelpOpen(false)} />}
   </div>;
+}
+
+/** Modal list of every shortcut. Escape closes it and focus returns to where it was before. */
+function ShortcutsHelp({ isMac, onClose }: { isMac: boolean; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (element && !element.open) { try { element.showModal(); } catch { element.setAttribute("open", ""); } }
+    return () => { previous?.focus(); };
+  }, []);
+  const label = (keys: string) => isMac ? keys : keys.replaceAll("⌘", "Ctrl+");
+  return <dialog ref={dialog} aria-labelledby="shortcuts-heading" onClose={onClose}
+    onCancel={event => { event.preventDefault(); onClose(); }}
+    onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}
+    className="m-auto max-h-[90vh] w-[min(640px,94vw)] overflow-y-auto border border-border bg-paper p-5 text-foreground shadow-lg backdrop:bg-black/40">
+    <div className="flex items-center justify-between gap-3">
+      <h2 id="shortcuts-heading" className="font-serif text-2xl">{labels.shortcuts}</h2>
+      <button type="button" autoFocus onClick={onClose}>Close</button>
+    </div>
+    <table className="mt-3 w-full text-left text-[13px]"><tbody>
+      {shortcuts.map(([keys, action]) => <tr key={keys} className="border-t border-border align-top">
+        <th scope="row" className="w-[40%] py-2 pr-3 font-normal"><kbd className="bg-chip px-1.5 py-px">{label(keys)}</kbd></th>
+        <td className="py-2">{action}</td>
+      </tr>)}
+    </tbody></table>
+  </dialog>;
 }
 
 function ChromeButton({ label, className, children, ...props }: Omit<React.ComponentProps<"button">, "title"> & { label: string }) {

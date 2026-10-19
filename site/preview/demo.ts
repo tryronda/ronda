@@ -41,7 +41,7 @@ const scripts: Script[] = [
           tool("Bash", "cargo test -p ronda-core search", "test result: ok. 14 passed; 0 failed"),
         ] }),
       text("user", "Show a longer navigation example with repeated text and tool output."),
-      text("assistant", "Navigation marker appears here.\n\nNavigation **marker** also crosses Markdown formatting.\n\n```text\nnavigation marker in a code block\n```", { tool_calls: [tool("Read", "navigation sample", "Navigation marker in textual tool output\nAnother navigation marker")], thinking: "Navigation marker in optional recorded reasoning" }),
+      text("assistant", "Navigation marker appears here.\n\nNavigation **marker** also crosses Markdown formatting.\n\n```text\nnavigation marker in a code block\n```", { tool_calls: [tool("Read", "navigation sample", "Navigation marker in textual tool output\nAnother navigation marker"), tool("Bash", "cargo test --workspace", Array.from({ length: 60 }, (_, i) => `test store::case_${i + 1} ... ok`).join("\n") + "\ntest result: ok. 60 passed; 0 failed")], thinking: "Navigation marker in optional recorded reasoning" }),
       text("user", "How much bigger is the index?"),
       text("assistant", "On the 800 MiB benchmark fixture the index is **263 MiB**, and search stays at **23 ms p50 / 26 ms p95** including process startup. That is well inside the 100 ms target.", { model: "claude-opus-5" }),
     ],
@@ -126,6 +126,36 @@ let bookmarks: MessageBookmark[] = [];
 let bookmarkSeed = Promise.resolve();
 let sessions: SessionMeta[] = [];
 const transcripts = new Map<string, TranscriptMessage[]>();
+
+const COPY_LIMIT = 100_000;
+const fenced = (text: string) => {
+  const fence = "`".repeat((text.match(/`+/g) ?? []).reduce((longest, run) => Math.max(longest, run.length + 1), 3));
+  return `${fence}\n${text}\n${fence}`;
+};
+
+/** Browser-preview twin of the desktop exporter, over synthetic sample sessions only. */
+export function sessionMarkdown(key: string, options: { includeTools?: boolean; includeThinking?: boolean }) {
+  const session = sessions.find(item => item.key === key);
+  if (!session) throw new Error("unknown session");
+  const detailed = !!(options.includeTools || options.includeThinking);
+  let out = `# ${session.title}\n\nAgent: ${session.agent}\nProject: ${session.project_path ?? "Unknown"}\n\n`;
+  for (const message of transcripts.get(key) ?? []) {
+    out += `## ${message.role[0].toUpperCase()}${message.role.slice(1)} · ${message.seq}\n\n${message.text}\n\n`;
+    if (detailed) out += `Timestamp: ${message.timestamp === null ? "Not recorded" : new Date(message.timestamp).toISOString()}\nReference: ronda://session/${key}#${message.seq}\n\n`;
+    if (options.includeThinking && message.thinking !== null) out += `Thinking:\n\n${fenced(message.thinking)}\n\n`;
+    for (const tool of message.tool_calls) {
+      out += `- Tool: ${tool.name}${options.includeTools && tool.is_error ? " (recorded error)" : ""}\n`;
+      if (options.includeTools) {
+        if (tool.input !== null) out += `\nInput:\n\n${fenced(tool.input)}\n`;
+        if (tool.output !== null) out += `\nOutput:\n\n${fenced(tool.output)}\n`;
+        out += "\n";
+      }
+    }
+  }
+  const length = Array.from(out).length;
+  if (length > COPY_LIMIT) throw new Error(`Session Markdown is ${length} characters, over the 100,000 character copy limit. Nothing was copied or truncated; use Export Markdown to save it to a file.`);
+  return out;
+}
 let prefs = new Map<string, string>();
 let hosts: { host: string; enabled: boolean; last_sync_ms: number | null; last_error: string | null }[] = [];
 let scanCount = 0;
@@ -269,10 +299,19 @@ function validateFilter(query: SessionQuery) {
 }
 
 
+function sortOrder(sort: SessionQuery["sort"], a: SessionMeta, b: SessionMeta) {
+  switch (sort) {
+    case "updated_asc": return a.updated_at - b.updated_at;
+    case "created_desc": return b.created_at - a.created_at;
+    case "tokens_desc": return (b.tokens ?? -1) - (a.tokens ?? -1);
+    default: return b.updated_at - a.updated_at;
+  }
+}
+
 function listSessions(query: SessionQuery) {
   validateFilter(query);
   const matched = sessions.filter(session => matchesSession(session, query))
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at - a.updated_at || a.key.localeCompare(b.key));
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || sortOrder(query.sort, a, b) || a.key.localeCompare(b.key));
   return query.limit == null ? matched : matched.slice(0, query.limit);
 }
 
@@ -704,6 +743,17 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "set_session_flags":
       sessions = sessions.map(session => session.key === args.key ? { ...session, starred: args.starred as boolean, pinned: args.pinned as boolean } : session);
       return null;
+    case "set_session_flags_bulk": {
+      const updates = new Map((args.updates as [string, boolean, boolean][]).map(([key, starred, pinned]) => [key, { starred, pinned }]));
+      let applied = 0;
+      sessions = sessions.map(session => {
+        const update = updates.get(session.key);
+        if (!update) return session;
+        applied++;
+        return { ...session, ...update };
+      });
+      return applied;
+    }
     case "list_session_labels": return structuredClone(labelCatalog);
     case "create_session_label": return createLabel(args.name);
     case "rename_session_label": return renameLabel(args.id as string, args.name);
@@ -735,7 +785,8 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "resume_session": throw new Error("Desktop required: sample sessions cannot open an agent or terminal.");
     case "open_project_folder": throw new Error("Desktop required: sample sessions cannot open a project folder.");
     case "reveal_source_file": throw new Error("Desktop required: sample sessions cannot reveal a source file.");
-    case "export_session": return null;
+    case "export_session": case "export_bookmarks_markdown": return null;
+    case "session_markdown": return sessionMarkdown(args.key as string, (args.options ?? {}) as { includeTools?: boolean; includeThinking?: boolean });
     case "get_insights": return insights();
     case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);
     case "get_session": return sessions.find(session => session.key === args.key) ?? null;

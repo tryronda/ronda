@@ -484,6 +484,25 @@ async fn set_session_flags(
 }
 
 #[tauri::command]
+async fn set_session_flags_bulk(
+    state: State<'_, Shared>,
+    updates: Vec<(String, bool, bool)>,
+) -> CommandResult<usize> {
+    if updates.len() > 1000 {
+        return Err("Too many sessions in one bulk update".into());
+    }
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .set_flags_bulk(&updates)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn list_session_labels(
     state: State<'_, Shared>,
 ) -> CommandResult<Vec<ronda_core::labels::SessionLabel>> {
@@ -695,6 +714,16 @@ async fn export_context(destination: PathBuf, text: String) -> CommandResult<()>
 }
 
 #[tauri::command]
+async fn export_bookmarks_markdown(destination: PathBuf, text: String) -> CommandResult<()> {
+    if text.len() > 20_000_000 {
+        return Err("Markdown export is too large".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || write_export(&destination, text.as_bytes()))
+        .await
+        .map_err(error)?
+}
+
+#[tauri::command]
 async fn export_bookmarks(state: State<'_, Shared>, destination: PathBuf) -> CommandResult<()> {
     off_main(state, move |state| {
         let backup = serde_json::to_vec_pretty(
@@ -743,35 +772,130 @@ async fn import_bookmarks(
     Ok(result)
 }
 
+/// Markdown export choices. The default reproduces the original export byte for byte.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct ExportOptions {
+    include_tools: bool,
+    include_thinking: bool,
+}
+
+const COPY_LIMIT: usize = 100_000;
+
+/// Wrap untrusted text in a fence longer than any backtick run it contains.
+fn fenced(text: &str) -> String {
+    let (mut longest, mut run) = (0, 0);
+    for ch in text.chars() {
+        run = if ch == '`' { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    let fence = "`".repeat((longest + 1).max(3));
+    format!("{fence}\n{text}\n{fence}")
+}
+
+fn render_session_markdown(
+    meta: &SessionMeta,
+    messages: &[TranscriptMessage],
+    options: ExportOptions,
+) -> String {
+    let detailed = options.include_tools || options.include_thinking;
+    let mut output = format!(
+        "# {}\n\nAgent: {}\nProject: {}\n\n",
+        meta.title,
+        meta.agent.as_str(),
+        meta.project_path.as_deref().unwrap_or("Unknown")
+    );
+    for message in messages {
+        output.push_str(&format!(
+            "## {:?} · {}\n\n{}\n\n",
+            message.role, message.seq, message.text
+        ));
+        if detailed {
+            let timestamp = message
+                .timestamp
+                .and_then(chrono::DateTime::from_timestamp_millis)
+                .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+                .unwrap_or_else(|| "Not recorded".into());
+            output.push_str(&format!(
+                "Timestamp: {timestamp}\nReference: ronda://session/{}#{}\n\n",
+                meta.key, message.seq
+            ));
+        }
+        if options.include_thinking {
+            if let Some(thinking) = &message.thinking {
+                output.push_str(&format!("Thinking:\n\n{}\n\n", fenced(thinking)));
+            }
+        }
+        for tool in &message.tool_calls {
+            let failed = if options.include_tools && tool.is_error {
+                " (recorded error)"
+            } else {
+                ""
+            };
+            output.push_str(&format!("- Tool: {}{failed}\n", tool.name));
+            if options.include_tools {
+                if let Some(input) = &tool.input {
+                    output.push_str(&format!("\nInput:\n\n{}\n", fenced(input)));
+                }
+                if let Some(result) = &tool.output {
+                    output.push_str(&format!("\nOutput:\n\n{}\n", fenced(result)));
+                }
+                output.push('\n');
+            }
+        }
+    }
+    output
+}
+
+fn session_markdown_for(
+    state: &AppState,
+    key: &str,
+    options: ExportOptions,
+) -> CommandResult<String> {
+    let store = state.store.lock().map_err(error)?;
+    let meta = store
+        .get_session(key)
+        .map_err(error)?
+        .ok_or("unknown session")?;
+    let messages = store.get_transcript(key).map_err(error)?;
+    Ok(render_session_markdown(&meta, &messages, options))
+}
+
+fn check_copy_size(markdown: &str) -> CommandResult<()> {
+    let length = markdown.chars().count();
+    if length > COPY_LIMIT {
+        return Err(format!(
+            "Session Markdown is {length} characters, over the 100,000 character copy limit. Nothing was copied or truncated; use Export Markdown to save it to a file."
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn export_session(
     state: State<'_, Shared>,
     key: String,
     destination: String,
+    options: Option<ExportOptions>,
 ) -> CommandResult<()> {
     off_main(state, move |state| {
-        let store = state.store.lock().map_err(error)?;
-        let meta = store
-            .get_session(&key)
-            .map_err(error)?
-            .ok_or("unknown session")?;
-        let messages = store.get_transcript(&key).map_err(error)?;
-        let mut output = format!(
-            "# {}\n\nAgent: {}\nProject: {}\n\n",
-            meta.title,
-            meta.agent.as_str(),
-            meta.project_path.as_deref().unwrap_or("Unknown")
-        );
-        for message in messages {
-            output.push_str(&format!(
-                "## {:?} · {}\n\n{}\n\n",
-                message.role, message.seq, message.text
-            ));
-            for tool in message.tool_calls {
-                output.push_str(&format!("- Tool: {}\n", tool.name));
-            }
-        }
+        let output = session_markdown_for(state, &key, options.unwrap_or_default())?;
         std::fs::write(destination, output).map_err(error)
+    })
+    .await
+}
+
+/// Markdown for the clipboard. Refuses (never truncates) past the context-size cap.
+#[tauri::command]
+async fn session_markdown(
+    state: State<'_, Shared>,
+    key: String,
+    options: Option<ExportOptions>,
+) -> CommandResult<String> {
+    off_main(state, move |state| {
+        let output = session_markdown_for(state, &key, options.unwrap_or_default())?;
+        check_copy_size(&output)?;
+        Ok(output)
     })
     .await
 }
@@ -1552,6 +1676,7 @@ pub fn run() {
             get_local_source_refresh_health,
             scan,
             set_session_flags,
+            set_session_flags_bulk,
             list_session_labels,
             create_session_label,
             rename_session_label,
@@ -1562,11 +1687,13 @@ pub fn run() {
             delete_bookmark,
             get_bookmark_backup,
             export_bookmarks,
+            export_bookmarks_markdown,
             get_diagnostics_report,
             export_diagnostics,
             read_bookmark_backup,
             import_bookmarks,
             export_session,
+            session_markdown,
             export_context,
             trash_session,
             resume_session,
@@ -1618,6 +1745,90 @@ mod tests {
             pinned: false,
             labels: Vec::new(),
         }
+    }
+
+    fn export_message(seq: i64, role: ronda_core::Role, text: &str) -> TranscriptMessage {
+        TranscriptMessage {
+            seq,
+            role,
+            kind: ronda_core::MessageKind::Text,
+            text: text.into(),
+            timestamp: Some(1_700_000_000_123),
+            model: None,
+            thinking: Some("plan with ``` fence".into()),
+            tool_calls: vec![ronda_core::ToolCall {
+                id: "t1".into(),
+                name: "Bash".into(),
+                input: Some("echo ````x````".into()),
+                output: Some("token=secret".into()),
+                is_error: true,
+            }],
+            images: Vec::new(),
+        }
+    }
+
+    fn export_fixture() -> (SessionMeta, Vec<TranscriptMessage>) {
+        let mut meta = reveal_meta(Path::new("/x"));
+        meta.key = "codex:abc".into();
+        let messages = vec![
+            export_message(0, ronda_core::Role::User, "hello"),
+            export_message(1, ronda_core::Role::Assistant, "done"),
+        ];
+        (meta, messages)
+    }
+
+    #[test]
+    fn default_export_stays_byte_compatible() {
+        let (meta, messages) = export_fixture();
+        assert_eq!(
+            render_session_markdown(&meta, &messages, ExportOptions::default()),
+            "# Synthetic transcript\n\nAgent: codex\nProject: Unknown\n\n## User · 0\n\nhello\n\n- Tool: Bash\n## Assistant · 1\n\ndone\n\n- Tool: Bash\n"
+        );
+        let options: ExportOptions = serde_json::from_str("{}").unwrap();
+        assert!(!options.include_tools && !options.include_thinking);
+    }
+
+    #[test]
+    fn export_options_add_only_what_was_requested() {
+        let (meta, messages) = export_fixture();
+        let render = |include_tools, include_thinking| {
+            render_session_markdown(
+                &meta,
+                &messages,
+                ExportOptions {
+                    include_tools,
+                    include_thinking,
+                },
+            )
+        };
+        let tools = render(true, false);
+        assert!(tools
+            .contains("- Tool: Bash (recorded error)\n\nInput:\n\n`````\necho ````x````\n`````\n"));
+        assert!(tools.contains("Output:\n\n```\ntoken=secret\n```\n"));
+        assert!(tools.contains(
+            "Timestamp: 2023-11-14T22:13:20.123Z\nReference: ronda://session/codex:abc#0"
+        ));
+        assert!(!tools.contains("Thinking:"));
+        let thinking = render(false, true);
+        assert!(thinking.contains("Thinking:\n\n````\nplan with ``` fence\n````\n"));
+        assert!(thinking.contains("- Tool: Bash\n"));
+        assert!(!thinking.contains("Input:") && !thinking.contains("secret"));
+        let both = render(true, true);
+        assert!(both.contains("Thinking:") && both.contains("Output:"));
+    }
+
+    #[test]
+    fn fences_outgrow_embedded_backticks() {
+        assert_eq!(fenced("a"), "```\na\n```");
+        assert_eq!(fenced("a``b"), "```\na``b\n```");
+        assert_eq!(fenced("```\n````"), "`````\n```\n````\n`````");
+    }
+
+    #[test]
+    fn copy_refuses_instead_of_truncating() {
+        assert!(check_copy_size(&"x".repeat(COPY_LIMIT)).is_ok());
+        let error = check_copy_size(&"é".repeat(COPY_LIMIT + 1)).unwrap_err();
+        assert!(error.contains("Export Markdown") && error.contains("Nothing was copied"));
     }
 
     #[test]

@@ -174,6 +174,34 @@ pub struct SessionQuery {
     pub model: Option<String>,
     pub local_only: bool,
     pub label_id: Option<String>,
+    pub sort: LibrarySort,
+}
+
+/// Browse-list order. Pinned sessions always come first; ties break by key.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LibrarySort {
+    #[default]
+    UpdatedDesc,
+    UpdatedAsc,
+    CreatedDesc,
+    TokensDesc,
+}
+
+impl LibrarySort {
+    pub fn compare(self, a: &SessionMeta, b: &SessionMeta) -> std::cmp::Ordering {
+        let order = match self {
+            Self::UpdatedDesc => b.updated_at.cmp(&a.updated_at),
+            Self::UpdatedAsc => a.updated_at.cmp(&b.updated_at),
+            Self::CreatedDesc => b.created_at.cmp(&a.created_at),
+            // Sessions without a token count sort after every counted session.
+            Self::TokensDesc => b.tokens.cmp(&a.tokens),
+        };
+        b.pinned
+            .cmp(&a.pinned)
+            .then(order)
+            .then_with(|| a.key.cmp(&b.key))
+    }
 }
 
 impl SessionQuery {

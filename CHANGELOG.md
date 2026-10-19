@@ -4,6 +4,24 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-19
+
+### Added
+- **Session export options** add a popover to the session export control with **Include tool input and output** and **Include thinking**, both off by default, and a new **Copy as Markdown** action beside **Export Markdown…**. Included tool input, tool output, and thinking appear in fences that outgrow any backticks inside them, with timestamps and `ronda://` message references. Copying refuses sessions over 100,000 characters with a message suggesting file export instead of truncating. With both options off, the exported file is unchanged.
+- **Bulk session triage** lets you select several loaded sessions with ⌘/Ctrl-click, Shift-click, Space, or Shift+arrow keys, then star, unstar, pin, or unpin them together from a compact bar. Each action changes only its own flag, the result is announced, and **Undo** restores the previous values of the last bulk action. Changing the search, filters, or sort clears the selection. Nothing is deleted or archived in bulk.
+- **Library sort options** let you order the session list by recently updated (the default), least recently updated, newest created, or most tokens from a compact **Sort sessions** control. Pinned sessions stay at the top, ties break consistently, your choice is remembered with your filters, and changing it clears any bulk selection. Search keeps its own relevance/recent sort.
+- **Long tool output is collapsed** to a short preview with **Show all**, and the transcript toolbar can expand or collapse every tool and thinking block at once.
+- **Prompt jump** adds **Previous prompt**/**Next prompt** buttons and `[` / `]` keys to move between your prompts in a transcript.
+- **Keyboard shortcuts help** opens with `?` and lists every shortcut in the app.
+- **Bookmarks export to Markdown** saves a readable notes file grouped by session, next to the existing JSON backup.
+- **Insights** can show every row of a leaderboard and copy a Markdown summary of your totals and the current board.
+- **Bulk labels** add or remove one label on every selected session from the bulk bar, skipping sessions already at the label limit, with **Undo**.
+- **Local session titles** let you rename a session in Ronda without touching the agent's files, and reset to the original title at any time.
+
+### Privacy
+- Local titles stay in local preferences and are excluded from diagnostics and exports.
+- Tool output can contain secrets. It is included only when you opt in, and a note says so; nothing is sent anywhere.
+
 ## [1.0.21] - 2026-10-19
 
 ### Added

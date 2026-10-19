@@ -59,6 +59,12 @@ export interface TranscriptSnapshot {
   fingerprints: string[];
 }
 
+export type LibrarySort = "updated_desc" | "updated_asc" | "created_desc" | "tokens_desc";
+export const librarySorts: { value: LibrarySort; label: string }[] = [
+  { value: "updated_desc", label: "Recently updated" }, { value: "updated_asc", label: "Least recently updated" },
+  { value: "created_desc", label: "Newest created" }, { value: "tokens_desc", label: "Most tokens" },
+];
+
 export interface SessionQuery {
   agent: AgentId | null;
   project_path: string | null;
@@ -71,6 +77,7 @@ export interface SessionQuery {
   model?: string | null;
   local_only?: boolean;
   label_id?: string | null;
+  sort?: LibrarySort;
 }
 
 export interface LibraryOptions { agents: AgentId[]; models: string[]; hosts: string[]; projects: ProjectInfo[] }
@@ -141,6 +148,9 @@ export interface BookmarkImport { imported: number; unchanged: number; conflicts
 export type ResumeReason = "unsupported_agent"|"unsupported_child"|"unknown_project"|"missing_folder"|"missing_executable"|"inspection_unknown"|"remote_environment_unchecked";
 export interface ResumeReadiness {supported:boolean;ready:boolean;host:string|null;original_directory:string|null;directory:string|null;program:string|null;args:string[];command:string|null;reasons:ResumeReason[];sample?:boolean;}
 
+/** Both default to off; off reproduces the original export exactly. */
+export type ExportOptions = { includeTools: boolean; includeThinking: boolean };
+
 export interface WorkbenchBackend {
   getPref(key: string): Promise<string | null>;
   setPref(key: string, value: string): Promise<void>;
@@ -162,6 +172,8 @@ export interface WorkbenchBackend {
   sessionRelationships(key:string):Promise<SessionRelationships>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
+  /** Apply [key, starred, pinned] triples in one transaction; resolves with how many existing sessions changed. */
+  setSessionFlagsBulk(updates: [string, boolean, boolean][]): Promise<number>;
   listSessionLabels(): Promise<SessionLabel[]>;
   createSessionLabel(name: string): Promise<SessionLabel>;
   renameSessionLabel(id: string, name: string): Promise<SessionLabel>;
@@ -172,7 +184,8 @@ export interface WorkbenchBackend {
   revealSourceFile(key:string):Promise<void>;
   setResumeFolder(key:string,folder:string):Promise<ResumeReadiness>;
   resumeSession(key: string): Promise<string>;
-  exportSession(key: string, destination: string): Promise<void>;
+  exportSession(key: string, destination: string, options?: ExportOptions): Promise<void>;
+  sessionMarkdown(key: string, options?: ExportOptions): Promise<string>;
   trashSession(key: string): Promise<void>;
   onLibraryChanged(callback: () => void): Promise<() => void>;
 }
@@ -198,6 +211,7 @@ export const backend: WorkbenchBackend = {
   sessionRelationships:key=>invoke("get_session_relationships",{key}),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
+  setSessionFlagsBulk: updates => invoke("set_session_flags_bulk", { updates }),
   listSessionLabels: () => invoke("list_session_labels"),
   createSessionLabel: name => invoke("create_session_label", { name }),
   renameSessionLabel: (id, name) => invoke("rename_session_label", { id, name }),
@@ -208,7 +222,8 @@ export const backend: WorkbenchBackend = {
   revealSourceFile:key=>invoke("reveal_source_file",{key}),
   setResumeFolder:(key,folder)=>invoke("set_resume_folder",{key,folder}),
   resumeSession: (key) => invoke("resume_session", { key }),
-  exportSession: (key, destination) => invoke("export_session", { key, destination }),
+  exportSession: (key, destination, options) => invoke("export_session", { key, destination, options }),
+  sessionMarkdown: (key, options) => invoke("session_markdown", { key, options }),
   trashSession: (key) => invoke("trash_session", { key }),
   onLibraryChanged: async (callback) => listen("library-changed", callback),
 };

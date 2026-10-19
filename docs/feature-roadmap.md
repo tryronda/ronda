@@ -30,15 +30,36 @@ Interactive UI checks use the real site Workbench with fixed synthetic data and 
 
 **Release record:** v1.0.18 / `v1.0.18`, PR [#20](https://github.com/tryronda/ronda/pull/20), reviewed source `658fb3c8650dcb22574c671b7b135c4e4504456f`, merged as `3dddfe7fb23f2fca52c76b7af16bedbc903e2d12`. Published release: https://github.com/tryronda/ronda/releases/tag/v1.0.18. PR, main, release, and Pages runs 37335985889, 37337216781, 37338324205, and 37339216044 succeeded. Production behavior and the sole arm64 DMG/checksum were independently verified; DMG SHA-256 `0883e50b4552b29093c06f85142706868d8fe8279a621a792f0f9ab2f25a960b`.
 
+## Batched releases from v1.1.0
+
+From 2026-10-19 the maintainer asked for faster delivery: improvements now ship in batches of about 8–10 per release instead of one patch each. Each improvement still lands as its own commit with its own changelog line under Unreleased, plus docs and browser-preview support; the batch is prepared on `ronda/release-<version>`, merged once, and tagged once. A batch of new features takes the next minor version (1.1.0, 1.2.0, …); fixes between batches stay patches. Export options, bulk triage, and library sort were prepared as 1.0.22–1.0.24 but never tagged; they are the first items of the 1.1.0 batch.
+
+## Batch 1.1.0 — prepared 2026-10-19
+
+Ten improvements on `ronda/release-1.1.0`, each its own commit and changelog line: session export options and Copy as Markdown, bulk star/pin triage, library sort options, collapsed long tool output with expand/collapse all, previous/next prompt jump, in-app keyboard shortcuts help (shared list with the docs), bookmarks export to Markdown, Insights show-all and copy summary, bulk label assignment, and local session titles. Groups were built in parallel worktrees (`ronda/batch-1.1.0-a|b|c`) and merged into the release branch. Local titles live in the `session_aliases_v1` preference; desktop full-text search still matches source titles, while loaded rows and bookmarks also match aliases. Transcript paging stays deferred. Exact-head CI, tag `v1.1.0`, release, and Pages verification follow the usual gates.
+
+## Follow-up 22: session export options — selected for v1.1.0
+
+**Scope:** The session export control opens a popover with **Include tool input and output** and **Include thinking** (both off by default, with a "Tool output may contain secrets." note when tools are on) and two actions: **Export Markdown…** (the existing save flow, no size cap) and **Copy as Markdown** (clipboard, capped at the 100,000-character context limit, failing with a message that suggests file export rather than truncating). With both options off the file is byte-identical to the previous export, pinned by a Rust regression test. No CLI/MCP contract changes and no new dependencies.
+
+**Implementation note:** One Rust formatter, `render_session_markdown` in `src-tauri/src/lib.rs`, serves both actions. `ExportOptions` (`#[serde(default)]`, camelCase) is an optional argument of `export_session`; the new `session_markdown` command returns the string and enforces the copy cap. Either option adds a timestamp and `ronda://session/<key>#<seq>` reference per message; included tool input/output/thinking use a backtick fence longer than any run inside the content. The browser preview mirrors this with a synthetic-data `session_markdown`. Option choices are not persisted. Remaining before release: exact-head Apple silicon DMG/sidecar CI and a fresh remote tag/release check, which are not performed in this branch.
+
 ## Ranked unallocated backlog
 
 These candidates remain ordered product plans with no allocated release versions. Recheck `origin/main`, the latest GitHub release, open PRs, and annotated `vX.Y.Z` tags immediately before allocating each patch; a hotfix can take the next number and shift later labels. Keep each release a small compatible patch on a `ronda/` branch.
 
 1. **Session labels / lightweight collections** on `ronda/session-labels`. Size M. **Selected for v1.0.21** (see the implementation note below).
 2. **Older transcript-message paging** on `ronda/transcript-paging`. Size M.
-3. **Bulk session triage** on `ronda/bulk-session-triage`. Size S.
+3. **Bulk session triage** on `ronda/bulk-session-triage`. Size S. **Selected for v1.1.0** (see its implementation note below).
 4. **Bookmark labels — lower priority.** Message bookmarks already store a note, excerpt, and library search. A second label vocabulary on bookmarks overlaps session labels; revisit only if session labels prove insufficient for bookmark retrieval.
 5. **Recover a session moved to system Trash — exploratory.** No release target until exact original items restore safely across macOS, Windows, and Linux, including multi-file sessions and name collisions.
+
+Updated ranking after session labels (v1.0.21), session export options (v1.1.0 batch), bulk session triage (v1.1.0 batch), and library sort options (v1.1.0 batch):
+
+1. **Local session titles** on `ronda/local-session-titles`. Size S/M. Top remaining candidate.
+2. **Older transcript-message paging** on `ronda/transcript-paging`. Size M. Ship last.
+
+Library sort options (`ronda/library-sort`, size S) are **Selected for v1.1.0**; see the implementation note below.
 
 ## Candidate: session labels / lightweight collections
 
@@ -72,7 +93,7 @@ These candidates remain ordered product plans with no allocated release versions
 
 **Risks and size:** Main risks are losing the visible anchor on prepend, failing to load a jump target, breaking Continue-reading exact resolution, regressing live append, and still fingerprinting full histories. **Size:** M. Allocate a patch only after this feature is selected and a fresh tag/release check.
 
-## Candidate: bulk session triage
+## Candidate: bulk session triage — selected for v1.1.0
 
 **Problem:** Star and pin are single-session header actions through `set_session_flags` / `Store::set_flags`. Clearing a backlog of sessions to favorite or pin requires repeating that toggle. Context-bundle checkboxes already multi-select *messages*; the session list is single-select (`selectedKey`). Bulk destructive trash would collide with unresolved cross-platform restore, so this release stays reversible flag edits.
 
@@ -86,7 +107,17 @@ These candidates remain ordered product plans with no allocated release versions
 
 **Acceptance and verification:** Cover modifier and keyboard range selection; count accuracy; clear; star/unstar/pin/unpin leaving the opposite flag unchanged; undo restoring previous pairs; skipped missing keys; filtered-selection drop on query/filter/sort/saved-search replay; select-visible limited to loaded rows; load-more not auto-selecting; outside-filter open session excluded; no trash control in the bulk bar; accessibility names and collapsed-sidebar behavior. Exercise multi-select, flag changes, undo, and reload reset with synthetic preview data. Run frontend/Rust/release/site gates and exact-head Apple silicon DMG/sidecar CI with static metadata/checksum verification; no local app/Finder smoke. Recheck remote tags before allocating the next version.
 
+**Implementation note (v1.1.0 batch):** `Store::set_flags_bulk` applies `(key, starred, pinned)` triples in one transaction, skips keys that no longer exist, and returns the number of sessions updated; the `set_session_flags_bulk` Tauri command wraps it and caps a batch at 1,000. `BulkTriage.tsx` holds the selection helpers and the labelled toolbar; `Workbench.tsx` owns the selection set, range anchor, and in-memory undo. Selection clears when the search, filters, sort, or bookmark view change (which includes saved-search replay), and keys that leave the loaded list are pruned. Escape clears the selection and the result is announced through a polite status region. A **Select visible** control was not added. The browser preview keeps flags in memory. Remaining before release: exact-head Apple silicon DMG/sidecar CI and a fresh remote tag/release check, which are not performed in this branch.
+
 **Risks and size:** Main risks are selecting sessions outside the current filter, implying bulk delete, partial bulk writes, and colliding with context-bundle checkboxes. **Size:** S. Allocate a patch only after this feature is selected and a fresh tag/release check.
+
+## Candidate: library sort options — selected for v1.1.0
+
+**Problem:** `list_sessions` and `session_page` hard-wired pinned-first then `updated_at` descending; only grouped search had a sort.
+
+**Implementation note (v1.1.0 batch):** `SessionQuery` gains an optional `sort` (`LibrarySort`: `updated_desc` default, `updated_asc`, `created_desc`, `tokens_desc`) with a serde default, so payloads that omit it keep the previous order exactly; unknown values are rejected. `LibrarySort::compare` orders pinned sessions first, then the chosen field, then key; sessions without a token count sort after counted ones. Because `list_sessions` already filters and orders the full metadata set in memory, no SQL ORDER BY or `json_extract` was needed, no schema changed, and the CLI and MCP contracts are untouched. The browse list shows a **Sort sessions** control only when no search is active; the choice is stored as `librarySort` in the `library_filters` preference, and a missing or malformed value restores the default. Saved searches and grouped-search sort are unchanged. Changing the sort clears the bulk selection through the existing filter-reset path. The browser preview honors the sort.
+
+**Measurement:** On a synthetic 5,000-session in-memory fixture in a debug build (`cargo test -p ronda-core --lib library_sort_timing -- --ignored --nocapture`), a 100-row `session_page` took about 100-110 ms for every option, so the sort itself adds no measurable cost over the existing metadata scan, which dominates. This is a debug-build probe, not a release benchmark or a UI paint measurement. Remaining before release: exact-head Apple silicon DMG/sidecar CI and a fresh remote tag/release check, which are not performed in this branch.
 
 ## Candidate: local session titles
 

@@ -60,3 +60,33 @@ test("project and exact session entries share the existing back/forward history"
   expect(host.querySelector<HTMLButtonElement>('button[title="Forward"]')!.disabled).toBe(true);
   await act(async()=>root.unmount());host.remove();
 });
+
+test("question mark opens the shortcuts help, Escape closes it, and typing in a field is ignored", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<App />); });
+  const press = async (target: Element | Document, key: string) => act(async () => {
+    target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  });
+  expect(host.querySelector("dialog")).toBeNull();
+
+  const field = document.createElement("input"); host.append(field); field.focus();
+  await press(field, "?");
+  expect(host.querySelector("dialog")).toBeNull();
+  field.remove();
+
+  const opener = host.querySelector<HTMLButtonElement>('button[title="Back"]')!; opener.focus();
+  await press(document.body, "?");
+  const dialog = host.querySelector("dialog")!;
+  expect(dialog.textContent).toContain("Keyboard shortcuts");
+  expect(dialog.textContent).toContain("Search the library");
+  expect(dialog.textContent).toContain("Jump to the previous / next prompt");
+
+  await press(dialog, "Escape");
+  expect(host.querySelector("dialog")).toBeNull();
+
+  await act(async () => { host.querySelector<HTMLButtonElement>('button[title^="Keyboard shortcuts"]')!.click(); });
+  expect(host.querySelector("dialog")).not.toBeNull();
+  await act(async () => { root.unmount(); });
+});
