@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-19
+
 ### Added
 - **Session export options** add a popover to the session export control with **Include tool input and output** and **Include thinking**, both off by default, and a new **Copy as Markdown** action beside **Export Markdown…**. Included tool input, tool output, and thinking appear in fences that outgrow any backticks inside them, with timestamps and `ronda://` message references. Copying refuses sessions over 100,000 characters with a message suggesting file export instead of truncating. With both options off, the exported file is unchanged.
 - **Bulk session triage** lets you select several loaded sessions with ⌘/Ctrl-click, Shift-click, Space, or Shift+arrow keys, then star, unstar, pin, or unpin them together from a compact bar. Each action changes only its own flag, the result is announced, and **Undo** restores the previous values of the last bulk action. Changing the search, filters, or sort clears the selection. Nothing is deleted or archived in bulk.
