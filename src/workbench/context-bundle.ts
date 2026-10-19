@@ -5,6 +5,8 @@ export type ContextSelection = { key: string; seq: number };
 export type ContextSource = { session: SessionMeta; messages: TranscriptMessage[] };
 export const contextId = ({ key, seq }: ContextSelection) => JSON.stringify([key, seq]);
 export const contextEligible = (message: TranscriptMessage) => message.kind === "text" && (message.role === "user" || message.role === "assistant");
+/** The `ronda://` link that identifies one message of a session. */
+export const sessionReference = (key: string, seq: number) => `ronda://session/${key}#${seq}`;
 export const contextLength = (text: string) => Array.from(text).length;
 
 export function validateContext(text: string) {
@@ -26,7 +28,7 @@ export function formatContext(sources: ContextSource[], options = { tools: false
       if (!contextEligible(message)) throw new Error(`Message #${message.seq} is internal context and cannot be included. Remove it from the selection.`);
       const date = message.timestamp === null ? null : new Date(message.timestamp);
       const timestamp = date && Number.isFinite(date.getTime()) ? date.toISOString() : "Not recorded";
-      draft += `### ${message.role} · message #${message.seq}\n\nTimestamp: ${timestamp}\nReference: ronda://session/${session.key}#${message.seq}\n\n${message.text}\n\n`;
+      draft += `### ${message.role} · message #${message.seq}\n\nTimestamp: ${timestamp}\nReference: ${sessionReference(session.key, message.seq)}\n\n${message.text}\n\n`;
       if (options.tools) for (const tool of message.tool_calls) {
         draft += `Tool: ${label(tool.name)}${tool.is_error ? " (recorded error)" : ""}\n\n`;
         if (tool.input !== null) draft += `Input:\n\n${literal(tool.input)}\n\n`;

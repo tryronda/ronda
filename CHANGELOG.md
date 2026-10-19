@@ -7,9 +7,12 @@ All notable changes to Ronda are recorded here.
 ### Added
 - **Select all** loaded sessions with ⌘/Ctrl-A in the session list, ready for bulk star, pin, or label.
 - The library **Filters** control shows how many filters are active and offers a one-click **Clear**.
+- **Copy reference** on each message copies its `ronda://` link for use with `ronda-cli show`.
+- The transcript header shows when a session started and last changed and its token count, with **Copy session key**.
 
 ### Fixed
 - Session dates from earlier years now show the year, and archived sessions are marked in the library list.
+- **Prompts only** no longer shows a blank transcript when a session has no prompts; it explains and offers **Show all messages**.
 
 ## [1.1.0] - 2026-10-19
 
