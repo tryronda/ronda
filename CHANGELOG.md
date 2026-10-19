@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-19
+
 ### Added
 - **Insights** activity and breakdown charts now include a text summary for screen readers.
 - **Copy reference** on each saved bookmark in the library.
