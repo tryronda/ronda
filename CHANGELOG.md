@@ -7,6 +7,10 @@ All notable changes to Ronda are recorded here.
 ### Added
 - **Insights** activity and breakdown charts now include a text summary for screen readers.
 - **Copy reference** on each saved bookmark in the library.
+- **⌘,** opens Settings.
+
+### Changed
+- `ronda-cli` notes on stderr when `--limit` or `show` size options are clamped.
 
 ### Fixed
 - Adding a location that is already configured now says so instead of silently clearing the field.
@@ -14,6 +18,7 @@ All notable changes to Ronda are recorded here.
 - The browser preview's Settings → Locations now reflects added, disabled, and removed locations, and its sample diagnostics show the current version.
 - **Export Markdown…** in the browser preview now downloads the sample Markdown instead of doing nothing.
 - Switching views with the keyboard now moves focus into the new view.
+- `ronda-cli` exits with status 2 and lists valid agent ids when `--agent` is unknown.
 
 ## [1.2.0] - 2026-10-19
 

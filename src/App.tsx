@@ -115,6 +115,7 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
       if (event.key === "?" && !modifier && !event.altKey && !editing && !inTerminal) { event.preventDefault(); setHelpOpen(true); }
       else if (modifier && event.key.toLowerCase() === "k") { event.preventDefault(); openSearch(); }
       else if (modifier && /^[1-4]$/.test(event.key)) { event.preventDefault(); navigate(pages[Number(event.key) - 1]); }
+      else if (modifier && !event.altKey && !event.shiftKey && event.key === "," && !inTerminal) { event.preventDefault(); navigate("settings"); }
       else if (modifier && event.key.toLowerCase() === "b" && page === "workbench") { event.preventDefault(); setSidebarOpen(value => !value); }
       else if (!editing && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); go(-1); }
       else if (!editing && event.altKey && event.key === "ArrowRight") { event.preventDefault(); go(1); }
