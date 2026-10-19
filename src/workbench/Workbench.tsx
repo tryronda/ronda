@@ -409,6 +409,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     try { await navigator.clipboard.writeText(text); setError(null); setNotice("Message copied"); }
     catch (cause) { setError(`Could not copy message: ${String(cause)}`); }
   };
+  const copySessionKey = async () => {
+    if (!selected) return;
+    try { await navigator.clipboard.writeText(selected.key); setError(null); setNotice("Session key copied"); }
+    catch (cause) { setError(`Could not copy session key: ${String(cause)}`); }
+  };
   const copyReference = async (key: string, seq: number) => {
     try { await navigator.clipboard.writeText(sessionReference(key, seq)); setError(null); setNotice("Reference copied"); }
     catch (cause) { setError(`Could not copy reference: ${String(cause)}`); }
@@ -1355,6 +1360,15 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               {selected.model && <><span className="text-border">/</span><span className="whitespace-nowrap">{selected.model}</span></>}
               {selected.host && <><span className="text-border">/</span><span>@{selected.host}</span></>}
             </div>
+            {(() => {
+              const parts = [selected.created_at ? `Started ${timeLabel(selected.created_at)}` : null,
+                selected.updated_at ? `Updated ${timeLabel(selected.updated_at)}` : null,
+                selected.tokens != null ? `${selected.tokens.toLocaleString("en-US")} tokens` : null].filter(Boolean);
+              return <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground" data-testid="session-details">
+                {parts.length > 0 && <span>{parts.join(" · ")}</span>}
+                <button type="button" className="flex-none underline underline-offset-2 hover:text-foreground"
+                  onClick={() => void copySessionKey()}>Copy session key</button></div>;
+            })()}
           </div>
           <div className="flex flex-none items-center gap-0.5">
             <IconButton icon={Folder01Icon}

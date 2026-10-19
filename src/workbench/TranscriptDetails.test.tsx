@@ -67,3 +67,25 @@ test("Copy reference writes the ronda link, including for tool-only messages", a
     expect(writeText).toHaveBeenLastCalledWith("ronda://session/codex:one#3");
   } finally { await unmount(); vi.restoreAllMocks(); }
 });
+
+test("header shows start, update, and token count, and copies the session key", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const { host, unmount } = await mount(base, [message(0, "user", "Hi")]);
+  try {
+    const line = host.querySelector('[data-testid="session-details"]')!.textContent!;
+    expect(line).toMatch(/^Started .+ · Updated .+ · 12,345 tokens/);
+    await click(host, "Copy session key");
+    expect(writeText).toHaveBeenLastCalledWith("codex:one");
+    expect(host.textContent).toContain("Session key copied");
+  } finally { await unmount(); vi.restoreAllMocks(); }
+});
+
+test("header omits tokens when unknown", async () => {
+  const { host, unmount } = await mount({ ...base, tokens: null }, [message(0, "user", "Hi")]);
+  try {
+    const line = host.querySelector('[data-testid="session-details"]')!.textContent!;
+    expect(line).toMatch(/^Started .+ · Updated .+/);
+    expect(line).not.toContain("tokens");
+  } finally { await unmount(); }
+});
