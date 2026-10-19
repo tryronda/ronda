@@ -7,7 +7,7 @@ import { MotionGlobalConfig } from "motion/react";
 MotionGlobalConfig.skipAnimations = true;
 Reflect.deleteProperty(Element.prototype, "animate");
 import { Workbench } from "./Workbench";
-import { nextFlags, rangeKeys } from "./BulkTriage";
+import { labelStatus, nextFlags, planLabelChange, rangeKeys } from "./BulkTriage";
 import { backend, type SessionMeta, type WorkbenchBackend } from "./api";
 vi.mock("./SessionTerminal", () => ({ SessionTerminal: () => null }));
 
@@ -24,8 +24,13 @@ const options = { agents: ["codex" as const], models: ["gpt-5"], hosts: [],
 const transcript = [{ seq: 0, role: "assistant" as const, kind: "text" as const, text: "Hello", timestamp: null,
   model: null, thinking: null, tool_calls: [], images: [] }];
 
-function fakeApi() {
-  let rows = [0, 1, 2, 3, 4].map(make);
+const FULL = ["0000000000000000000000000000bb01", "0000000000000000000000000000bb02", "0000000000000000000000000000bb03", "0000000000000000000000000000bb04"];
+function fakeApi(patch: (rows: SessionMeta[]) => SessionMeta[] = rows => rows) {
+  let rows = patch([0, 1, 2, 3, 4].map(make));
+  const setLabel = vi.fn(async (key: string, labelId: string, assigned: boolean) => {
+    rows = rows.map(row => row.key !== key ? row : { ...row,
+      labels: assigned ? [...(row.labels ?? []), labelId] : (row.labels ?? []).filter(id => id !== labelId) });
+  });
   const bulk = vi.fn(async (updates: [string, boolean, boolean][]) => {
     let applied = 0;
     rows = rows.map(row => { const hit = updates.find(update => update[0] === row.key); if (!hit) return row; applied++; return { ...row, starred: hit[1], pinned: hit[2] }; });
@@ -41,8 +46,8 @@ function fakeApi() {
     getSession: async key => rows.find(row => row.key === key) ?? null, getTranscript: async () => transcript,
     getTranscriptSnapshot: async () => ({ session_key_hash: "a".repeat(64), messages: transcript, fingerprints: ["c".repeat(64)] }),
     searchGrouped: async () => ({ groups: [], total_sessions: 0, total_message_matches: 0 }),
-    setSessionFlagsBulk: bulk };
-  return { api, bulk, rows: () => rows };
+    setSessionFlagsBulk: bulk, setSessionLabel: setLabel };
+  return { api, bulk, setLabel, rows: () => rows };
 }
 
 async function mount(api: WorkbenchBackend) {
@@ -133,7 +138,7 @@ test("bulk actions change one flag, announce the count, and undo restores exact 
   try {
     await click(cards(host)[0], { metaKey: true });
     await click(cards(host)[2], { shiftKey: true });
-    expect(bar(host)!.textContent).not.toMatch(/trash|delete|archive|label/i);
+    expect(bar(host)!.textContent).not.toMatch(/trash|delete|archive/i);
     await click(action(host, "Star"));
     expect(fake.bulk).toHaveBeenLastCalledWith([["codex:s0", true, false], ["codex:s1", true, false], ["codex:s2", true, true]]);
     expect(status(host)).toBe("Starred 3 sessions");
@@ -171,5 +176,42 @@ test("selection and undo reset when the search or a filter changes", async () =>
     expect(cards(host)).toHaveLength(2);
     expect(bar(host)).toBeNull();
     expect(status(host)).toBe("");
+  } finally { await unmount(); }
+});
+
+test("planLabelChange adds, removes, skips sessions at the cap, and leaves no-ops alone", () => {
+  const rows = [{ key: "a", labels: [] }, { key: "b", labels: [LABEL] }, { key: "c", labels: FULL }, { key: "d" }];
+  expect(planLabelChange(rows, LABEL, "add")).toEqual({
+    changes: [{ key: "a", previous: [], next: [LABEL] }, { key: "d", previous: [], next: [LABEL] }], skipped: 1 });
+  expect(planLabelChange(rows, LABEL, "remove")).toEqual({ changes: [{ key: "b", previous: [LABEL], next: [] }], skipped: 0 });
+  // A session at the cap that already has the label is a no-op, not a skip.
+  expect(planLabelChange([{ key: "e", labels: [...FULL.slice(0, 3), LABEL] }], LABEL, "add")).toEqual({ changes: [], skipped: 0 });
+  expect(labelStatus("add", 5, 2)).toBe("Labeled 5 sessions, skipped 2 at the label limit");
+  expect(labelStatus("add", 1, 0)).toBe("Labeled 1 session");
+  expect(labelStatus("remove", 2, 0)).toBe("Removed label from 2 sessions");
+});
+
+test("bulk label add skips sessions at the cap, announces the result, and undo restores exact arrays", async () => {
+  const fake = fakeApi(rows => rows.map((row, index) => index === 3 ? { ...row, labels: FULL } : index === 4 ? { ...row, labels: [FULL[0]] } : row));
+  const { host, unmount } = await mount(fake.api);
+  try {
+    await click(cards(host)[2], { metaKey: true });
+    await click(cards(host)[4], { shiftKey: true });
+    await set(host, "#bulk-label", LABEL);
+    await click(action(host, "Add label"));
+    expect(fake.setLabel.mock.calls).toEqual([["codex:s2", LABEL, true], ["codex:s4", LABEL, true]]);
+    expect(status(host)).toBe("Labeled 2 sessions, skipped 1 at the label limit");
+    expect(fake.rows().map(row => row.labels)).toEqual([[LABEL], [LABEL], [LABEL], FULL, [FULL[0], LABEL]]);
+    await click(action(host, "Undo"));
+    expect(fake.rows().map(row => row.labels)).toEqual([[LABEL], [LABEL], [], FULL, [FULL[0]]]);
+    expect(status(host)).toBe("Undid add label for 2 sessions");
+
+    await click(cards(host)[0], { metaKey: true });
+    await click(cards(host)[1], { shiftKey: true });
+    await click(action(host, "Remove label"));
+    expect(status(host)).toBe("Removed label from 2 sessions");
+    expect(fake.rows().map(row => row.labels?.length)).toEqual([0, 0, 0, 4, 1]);
+    await click(action(host, "Undo"));
+    expect(fake.rows().slice(0, 2).map(row => row.labels)).toEqual([[LABEL], [LABEL]]);
   } finally { await unmount(); }
 });

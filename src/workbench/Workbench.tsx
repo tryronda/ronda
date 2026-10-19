@@ -6,7 +6,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Archive01Icon, ArrowLeft01Icon, ArrowRight01Icon, Delete02Icon, FileSearchIcon, Folder01Icon, PinIcon, ReloadIcon,
-  Search01Icon, StarIcon, Cancel01Icon, Bookmark01Icon,
+  Search01Icon, StarIcon, Cancel01Icon, Bookmark01Icon, Edit02Icon,
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Loader } from "@/components/motion/loader";
@@ -27,7 +27,10 @@ import { ResumeReadiness } from "./ResumeReadiness";
 import { SessionConnections } from "./SessionConnections";
 import { LabelManager, SessionLabelEditor } from "./SessionLabels";
 import { ExportMenu } from "./ExportMenu";
-import { BulkTriageBar, bulkMessages, flagsOf, nextFlags, rangeKeys, sessionCount, type BulkAction, type BulkUndo } from "./BulkTriage";
+import { SessionRenameForm } from "./SessionRename";
+import { aliasMatches, displayTitle, hasAlias, parseSessionAliases, serializeSessionAliases, SESSION_ALIASES_KEY,
+  SESSION_ALIAS_LIMIT, withAlias, type SessionAliases } from "./session-alias";
+import { BulkTriageBar, bulkMessages, flagsOf, labelStatus, nextFlags, planLabelChange, rangeKeys, sessionCount, type BulkAction, type BulkUndo, type LabelChange, type LabelMode } from "./BulkTriage";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
@@ -213,6 +216,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [starredOnly, setStarredOnly] = useState(false);
   const [labelId, setLabelId] = useState("");
   const [labels, setLabels] = useState<SessionLabel[]>([]);
+  const labelIdFilterRef = useRef("");
+  labelIdFilterRef.current = labelId;
   const [labelsLoaded, setLabelsLoaded] = useState(false);
   /** A restored or replayed label id that is not in the catalog stays exact (matching nothing) until cleared. */
   const staleLabel = labelsLoaded && !!labelId && !labels.some(label => label.id === labelId);
@@ -294,6 +299,39 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     }
   }, [api]);
   useEffect(() => { void restoreSavedSearches(); return () => { savedSearchReadRun.current++; }; }, [restoreSavedSearches]);
+  // Local session titles: display-only aliases. Malformed or unreadable preferences show nothing and are never overwritten.
+  const [aliases, setAliases] = useState<SessionAliases>({});
+  const aliasesRef = useRef(aliases);
+  const [aliasStatus, setAliasStatus] = useState<"loading" | "ready" | "invalid" | "unavailable">("loading");
+  const [renaming, setRenaming] = useState(false);
+  const [aliasFeedback, setAliasFeedback] = useState("");
+  const aliasWrite = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    let current = true;
+    setAliasStatus("loading");
+    void (async () => {
+      try {
+        const parsed = parseSessionAliases(await api.getPref(SESSION_ALIASES_KEY));
+        if (!current) return;
+        if (!parsed.ok) { setAliasStatus("invalid"); return; }
+        aliasesRef.current = parsed.aliases; setAliases(parsed.aliases); setAliasStatus("ready");
+      } catch { if (current) setAliasStatus("unavailable"); }
+    })();
+    return () => { current = false; };
+  }, [api]);
+  /** Returns an error message, or null once the change is applied and queued for writing. */
+  const changeAlias = (key: string, title: string | null): string | null => {
+    if (aliasStatus !== "ready") return "Local titles are unavailable";
+    const next = withAlias(aliasesRef.current, key, title);
+    const value = next && serializeSessionAliases(next);
+    if (!next || !value) return title !== null && !hasAlias(aliasesRef.current, key) && Object.keys(aliasesRef.current).length >= SESSION_ALIAS_LIMIT
+      ? `You can keep at most ${SESSION_ALIAS_LIMIT} local titles` : "That title cannot be saved";
+    aliasesRef.current = next; setAliases(next); setAliasFeedback("");
+    aliasWrite.current = aliasWrite.current.catch(() => {}).then(() => api.setPref(SESSION_ALIASES_KEY, value))
+      .catch(() => setAliasFeedback("Could not save the local title; it will reset when Ronda restarts"));
+    return null;
+  };
+  const titleFor = (session: SessionMeta) => displayTitle(aliases, session.key, plainTitle(session.title));
   const persistSavedSearches = useCallback((next: SavedSearch[]) => {
     if (savedSearchStatus !== "ready") return false;
     const value = serializeSavedSearches(next);
@@ -528,7 +566,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     if (project && (session?.project_path ?? bookmark.project_path) !== project) return false;
     const metadataFilter = {...filter,agent:null,project_path:null,include_archived:true,starred_only:false};
     if ((host || model || dateFrom || dateThrough || labelId) && (!session || !matchesSession(session,metadataFilter))) return false;
-    const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
+    const alias = session && hasAlias(aliases, session.key) ? aliases[session.key] : "";
+    const text = `${session?.title ?? bookmark.title}\n${alias}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
     return search.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term => text.includes(term));
   });
   const projectOptions = useMemo(() => {
@@ -765,11 +804,14 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setHasReplayedSavedSearch(false);
     setSavedSearchFeedback("Unavailable filters cleared from this search");
   };
+  useEffect(() => { setRenaming(false); }, [selected?.key]);
   useEffect(() => {
-    onActiveSessionChange?.(selected ? { title: plainTitle(selected.title) || selected.native_id,
+    onActiveSessionChange?.(selected ? { title: titleFor(selected) || selected.native_id,
       project: selected.project_path ? basename(selected.project_path) : null } : null);
-  }, [onActiveSessionChange, selected?.key, selected?.title, selected?.project_path]);
-  const visible = search.trim() ? hits.map(group => ({ session: group.session, group }))
+  }, [onActiveSessionChange, selected?.key, selected?.title, selected?.project_path, aliases]);
+  // Alias search is client-side over loaded rows only; desktop full-text search still matches source titles.
+  const aliasOnlyRows = search.trim() ? sessions.filter(session => aliasMatches(aliases, session.key, search) && !hits.some(group => group.session.key === session.key)) : [];
+  const visible = search.trim() ? [...hits.map(group => ({ session: group.session, group })), ...aliasOnlyRows.map(session => ({ session, group: null as SearchGroup | null }))]
     : sessions.map(session => ({ session, group: null as SearchGroup | null }));
   const agents = useMemo(() => Array.from(new Set(bookmarksOnly ? bookmarks.map(view => view.session?.agent ?? view.bookmark.agent) : options.agents)).sort(), [options, bookmarks, bookmarksOnly]);
 
@@ -816,6 +858,37 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setSessions(current => current.map(s => byKey.has(s.key) ? { ...s, ...byKey.get(s.key) } : s));
     setHits(current => current.map(h => byKey.has(h.session.key) ? { ...h, session: { ...h.session, ...byKey.get(h.session.key) } } : h));
   };
+  const patchLabels = (changes: LabelChange[], side: "next" | "previous") => {
+    const byKey = new Map(changes.map(change => [change.key, change[side]]));
+    setSessions(current => current.map(s => byKey.has(s.key) ? { ...s, labels: byKey.get(s.key) } : s));
+    setHits(current => current.map(h => byKey.has(h.session.key) ? { ...h, session: { ...h.session, labels: byKey.get(h.session.key) } } : h));
+    setOpened(current => current && byKey.has(current.key) ? { ...current, labels: byKey.get(current.key) } : current);
+  };
+  /** Sequential per-session writes; stops at the first failure and keeps what was applied undoable. */
+  const writeLabelChanges = async (changes: LabelChange[], labelId: string, assign: (change: LabelChange) => boolean) => {
+    const done: LabelChange[] = [];
+    try {
+      for (const change of changes) { await api.setSessionLabel(change.key, labelId, assign(change)); done.push(change); }
+    } catch (cause) { return { done, failure: cause }; }
+    return { done, failure: null as unknown };
+  };
+  const applyBulkLabel = async (mode: LabelMode, labelId: string) => {
+    if (bulkBusy || !labels.some(label => label.id === labelId)) return;
+    const rows = visible.map(row => row.session).filter(row => selection.has(row.key));
+    if (!rows.length) return;
+    const generation = bulkGeneration.current;
+    const { changes, skipped } = planLabelChange(rows, labelId, mode);
+    setBulkBusy(true);
+    try {
+      const { done, failure } = await writeLabelChanges(changes, labelId, change => change.next.includes(labelId));
+      patchLabels(done, "next");
+      if (labelId === labelIdFilterRef.current && done.length) void reload();
+      if (done.length && generation === bulkGeneration.current)
+        setBulkUndo({ label: mode === "add" ? "Add label" : "Remove label", labelId, changes: done });
+      if (failure) { setError(String(failure)); setBulkStatus(`Bulk label update stopped after ${sessionCount(done.length)}`); }
+      else { setError(null); setBulkStatus(labelStatus(mode, done.length, skipped)); }
+    } finally { setBulkBusy(false); }
+  };
   const writeBulk = async (updates: [string, boolean, boolean][]) => {
     const applied = await api.setSessionFlagsBulk(updates);
     patchFlags(updates);
@@ -840,6 +913,18 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const undoBulk = async () => {
     if (bulkBusy || !bulkUndo) return;
     setBulkBusy(true);
+    if ("changes" in bulkUndo) {
+      try {
+        const { labelId } = bulkUndo;
+        const { done, failure } = await writeLabelChanges(bulkUndo.changes, labelId, change => change.previous.includes(labelId));
+        patchLabels(done, "previous");
+        if (labelId === labelIdFilterRef.current && done.length) void reload();
+        if (failure) { setError(String(failure)); setBulkStatus(`Undo stopped after ${sessionCount(done.length)}`);
+          setBulkUndo({ ...bulkUndo, changes: bulkUndo.changes.filter(change => !done.includes(change)) }); }
+        else { setError(null); setBulkStatus(`Undid ${bulkUndo.label.toLowerCase()} for ${sessionCount(done.length)}`); setBulkUndo(null); }
+      } finally { setBulkBusy(false); }
+      return;
+    }
     try {
       const applied = await writeBulk(bulkUndo.previous);
       setError(null); setBulkStatus(`Undid ${bulkUndo.label.toLowerCase()} for ${sessionCount(applied)}`); setBulkUndo(null);
@@ -1156,7 +1241,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         {savedSearchFeedback && <p role="status" className="mt-1 text-[11px] text-muted-foreground">{savedSearchFeedback}</p>}
       </div>
       <BulkTriageBar selected={selection.size} status={bulkStatus} busy={bulkBusy} canUndo={!!bulkUndo}
-        onAction={action=>void applyBulk(action)} onUndo={()=>void undoBulk()} onClear={clearSelection} />
+        labels={labels} onLabel={(mode,id)=>void applyBulkLabel(mode,id)} onAction={action=>void applyBulk(action)} onUndo={()=>void undoBulk()} onClear={clearSelection} />
       <div ref={sessionListRef} className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || loadingMore || searching || scanning}
         onKeyDown={event => {
           if (event.target instanceof HTMLElement && event.target.closest("textarea,input,[contenteditable='true']")) return;
@@ -1182,7 +1267,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           {visibleBookmarks.map(view => <div key={`${view.bookmark.session_key}:${view.bookmark.seq}`} className="border-b border-border p-3">
             <button className="session-card w-full text-left" type="button" disabled={!view.session || view.status === "unavailable"}
               onClick={() => { if (view.session) choose(view.session, view.bookmark.seq); }}>
-              <strong className="font-normal"><SearchHighlight text={view.session?.title ?? view.bookmark.title} query={search} /></strong>
+              <strong className="font-normal"><SearchHighlight text={view.session ? titleFor(view.session) : view.bookmark.title} query={search} /></strong>
               <p className="mt-1 text-[12px] text-muted-foreground">Message #{view.bookmark.seq} · {agentNames[view.bookmark.agent]} · {timeLabel(view.bookmark.updated_at)}</p>
               <p className="mt-2 whitespace-pre-wrap text-[13px]"><SearchHighlight text={view.bookmark.excerpt} query={search} /></p>
             </button>
@@ -1216,7 +1301,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               {session.host && <span>@{session.host}</span>}
               {session.pinned && <HugeiconsIcon icon={PinIcon} size={12} />}
               <time className="ml-auto whitespace-nowrap">{timeLabel(session.updated_at)}</time></div>
-            <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{group ? <SearchHighlight text={plainTitle(session.title)} query={searchContext.query} /> : plainTitle(session.title)}</strong>
+            <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{group ? <SearchHighlight text={titleFor(session)} query={searchContext.query} /> : titleFor(session)}</strong>
+            {hasAlias(aliases, session.key) && <span className="block truncate text-[11px] text-muted-foreground" title={plainTitle(session.title)}>Original: {plainTitle(session.title)}</span>}
             <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
               <HugeiconsIcon icon={Folder01Icon} size={12} className="flex-none" /><span className="truncate">{session.project_path ? basename(session.project_path) : t.unknown}</span></div>
             {!!session.labels?.length && <p className="mt-1 truncate text-[12px] text-muted-foreground">
@@ -1254,7 +1340,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <span className={`agent-dot agent-${selected.agent}`} />{agentNames[selected.agent]}
               {selected.archived && <span className="eyebrow-chip px-1.5 pt-0.5 pb-1 text-[11px]">{t.archived}</span>}
             </div>
-            <h2 className="mt-1.5 mb-1 truncate font-serif text-[32px] leading-[1.1] tracking-[-0.01em]">{plainTitle(selected.title) || selected.native_id}</h2>
+            <h2 className="mt-1.5 mb-1 truncate font-serif text-[32px] leading-[1.1] tracking-[-0.01em]"
+              title={hasAlias(aliases, selected.key) ? `Original title: ${plainTitle(selected.title)}` : undefined}>{titleFor(selected) || selected.native_id}</h2>
+            {hasAlias(aliases, selected.key) && <p className="truncate text-[12px] text-muted-foreground">Original title: {plainTitle(selected.title) || selected.native_id}</p>}
             <div className="label-mono flex min-w-0 items-center gap-2 text-muted-foreground">
               <span className="truncate" title={selected.project_path ?? t.unknown}>{selected.project_path ?? t.unknown}</span>
               {selected.project_path && <button type="button" className="flex-none underline underline-offset-2 hover:text-foreground"
@@ -1271,6 +1359,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {canRevealSource(selected) &&
               <IconButton icon={FileSearchIcon} title={t.revealSource} onClick={() => void revealSourceFile()} />}
             <IconButton icon={StarIcon} title={selected.starred ? t.unstar : t.star} active={selected.starred} onClick={() => void flag("starred")} />
+            <IconButton icon={Edit02Icon} title="Rename session" active={renaming} disabled={aliasStatus !== "ready"} onClick={() => setRenaming(value => !value)} />
             <IconButton icon={PinIcon} title={selected.pinned ? t.unpin : t.pin} active={selected.pinned} onClick={() => void flag("pinned")} />
             <ExportMenu onExport={exportMarkdown} onCopy={copySession} />
             {readingPositionResolution?.status === "resolved" && !terminalShown[selected.key] && <button type="button" className="label-mono ml-2 bg-chip px-3 py-2 text-[12px] hover:bg-foreground hover:text-background"
@@ -1288,6 +1377,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
           </div>
         </header>
+        {renaming && aliasStatus === "ready" && <div><SessionRenameForm key={selected.key} initial={titleFor(selected)} sourceTitle={plainTitle(selected.title)}
+          aliased={hasAlias(aliases, selected.key)} onCancel={() => setRenaming(false)}
+          onSave={title => { const problem = changeAlias(selected.key, title); if (!problem) setRenaming(false); return problem; }}
+          onReset={() => { if (!changeAlias(selected.key, null)) setRenaming(false); }} /></div>}
+        {(aliasStatus === "invalid" || aliasStatus === "unavailable") && <p role="status" className="border-b border-border px-7 py-1 text-[12px] text-muted-foreground max-[1100px]:px-5">
+          Local titles are unavailable because their stored preference could not be read. Source titles are shown and nothing is overwritten.</p>}
+        {aliasFeedback && <p role="status" className="border-b border-border px-7 py-1 text-[12px] text-muted-foreground max-[1100px]:px-5">{aliasFeedback}</p>}
         <SessionLabelEditor api={api} session={selected} labels={labels} onError={message=>setError(message,null)}
           onChange={ids=>{
             const apply=(item:SessionMeta)=>item.key===selected.key ? {...item,labels:ids} : item;
@@ -1335,7 +1431,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }}>
         <LibraryHome sessions={sessions} sessionCount={sessionTotal} agentCount={options.agents.length} projectCount={projects.length} agentNames={agentNames}
           shortcut={shortcut} scanning={scanning} onOpen={session => choose(session)} onSearch={() => searchRef.current?.focus()}
-          onRefresh={() => void refresh()} titleOf={session => plainTitle(session.title)}
+          onRefresh={() => void refresh()} titleOf={titleFor}
           projectOf={session => session.project_path ? basename(session.project_path) : t.unknown} timeOf={ms => timeLabel(ms)} />
       </motion.div>}
       {Object.entries(terminals).map(([key, entry]) => {
