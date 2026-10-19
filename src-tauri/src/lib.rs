@@ -714,6 +714,16 @@ async fn export_context(destination: PathBuf, text: String) -> CommandResult<()>
 }
 
 #[tauri::command]
+async fn export_bookmarks_markdown(destination: PathBuf, text: String) -> CommandResult<()> {
+    if text.len() > 20_000_000 {
+        return Err("Markdown export is too large".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || write_export(&destination, text.as_bytes()))
+        .await
+        .map_err(error)?
+}
+
+#[tauri::command]
 async fn export_bookmarks(state: State<'_, Shared>, destination: PathBuf) -> CommandResult<()> {
     off_main(state, move |state| {
         let backup = serde_json::to_vec_pretty(
@@ -1677,6 +1687,7 @@ pub fn run() {
             delete_bookmark,
             get_bookmark_backup,
             export_bookmarks,
+            export_bookmarks_markdown,
             get_diagnostics_report,
             export_diagnostics,
             read_bookmark_backup,

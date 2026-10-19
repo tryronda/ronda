@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { inTauri, invoke } from "@/lib/tauri";
-import type { BookmarkImport, BookmarkReplacement } from "@/workbench/api";
+import type { BookmarkBackup, BookmarkImport, BookmarkReplacement } from "@/workbench/api";
+import { bookmarksToMarkdown } from "./bookmark-markdown";
 
 export function BookmarkData({ embedded = false }: { embedded?: boolean }) {
   const native = inTauri() && !embedded;
@@ -24,6 +25,7 @@ export function BookmarkData({ embedded = false }: { embedded?: boolean }) {
     <h3>Bookmark backups</h3>
     <p className="panel-help">Bookmarks and notes cannot be reconstructed from agent files. Export them before moving or deleting your index database. Imports keep conflicting saved notes until you explicitly replace them.</p>
     {embedded && <p className="panel-help">This preview uses synthetic bookmarks. Changes reset when you reload the page; exported files contain only sample data.</p>}
+    <p className="panel-help">Markdown export is a readable notes file. Excerpts are copied from your transcripts and may contain secrets, so review the file before sharing it.</p>
     <div className="flex flex-wrap gap-3">
       <button type="button" disabled={busy} onClick={() => void run(async () => {
         if (native) {
@@ -38,6 +40,19 @@ export function BookmarkData({ embedded = false }: { embedded?: boolean }) {
         }
         setNotice("Bookmark backup exported");
       })}>Export bookmarks</button>
+      <button type="button" disabled={busy} onClick={() => void run(async () => {
+        const markdown = bookmarksToMarkdown(JSON.parse(await invoke<string>("get_bookmark_backup")) as BookmarkBackup);
+        if (native) {
+          const destination = await save({defaultPath:"ronda-bookmarks.md",filters:[{name:"Markdown",extensions:["md"]}]});
+          if (!destination) return;
+          await invoke("export_bookmarks_markdown", {destination,text:markdown});
+        } else {
+          const url = URL.createObjectURL(new Blob([markdown],{type:"text/markdown"}));
+          const link = document.createElement("a"); link.href=url; link.download="ronda-bookmarks.md";
+          link.click(); URL.revokeObjectURL(url);
+        }
+        setNotice("Bookmarks exported as Markdown");
+      })}>Export as Markdown</button>
       <button type="button" disabled={busy} onClick={() => {
         if (!native) { picker.current?.click(); return; }
         void run(async () => {
