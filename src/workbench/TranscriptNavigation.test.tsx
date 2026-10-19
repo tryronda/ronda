@@ -68,3 +68,19 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
     expect(host.querySelector('[aria-label="Transcript navigation"]')?.classList.contains("hidden")).toBe(true);
   } finally {await act(async()=>root.unmount());host.remove();}
 });
+
+test("expand and collapse all toggle every details in the transcript", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const host=document.createElement("div");document.body.append(host);
+  const scope=createRef<HTMLDivElement>();const container=createRef<HTMLDivElement>();
+  const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<div ref={scope}>
+      <TranscriptNavigation container={container} scope={scope} active embedded={false} promptsOnly={false} setPromptsOnly={()=>{}} reducedMotion jumpToken={0}/>
+      <div ref={container}>{[1,2].map(n=><article key={n} id={`message-${n}`}><details><summary>t</summary>x</details></article>)}</div></div>));
+    const click=async(label:string)=>act(async()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent===label)!.click());
+    const details=()=>Array.from(host.querySelectorAll("details"));
+    await click("Expand all");expect(details().every(d=>d.open)).toBe(true);
+    await click("Collapse all");expect(details().some(d=>d.open)).toBe(false);
+  } finally {await act(async()=>root.unmount());host.remove();}
+});

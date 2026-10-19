@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { REVEAL_EVENT } from "./ToolPre";
 import { transcriptMatches, type TranscriptMatch } from "./transcript-find";
 
 export function TranscriptNavigation({ container, scope, active, embedded, promptsOnly, setPromptsOnly, reducedMotion, jumpToken, findRequest, onBeforeProgrammaticScroll }: {
@@ -52,6 +53,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
     let parent = current.range.startContainer.parentElement;
     while (parent && parent !== container.current) {
       if (parent instanceof HTMLDetailsElement) parent.open = true;
+      if (parent.dataset.clamped === "true") parent.dispatchEvent(new Event(REVEAL_EVENT));
       parent = parent.parentElement;
     }
     const target = current.range.startContainer.parentElement;
@@ -69,10 +71,13 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
     onBeforeProgrammaticScroll?.();
     (last ? articles?.[articles.length - 1] : articles?.[0])?.scrollIntoView({ block: last ? "end" : "start", behavior: reducedMotion ? "instant" : "smooth" });
   };
+  const setAllDetails = (value: boolean) => container.current?.querySelectorAll("details").forEach(details => { details.open = value; });
   return <div hidden={!active} className={`${active ? "flex" : "hidden"} flex-none flex-wrap items-center gap-3 border-b border-border px-5 py-2 text-[13px]`} aria-label="Transcript navigation">
     <button ref={toggle} type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>Find in transcript</button>
     <button type="button" onClick={() => edge(false)}>First message</button>
     <button type="button" onClick={() => edge(true)}>Last message</button>
+    <button type="button" onClick={() => setAllDetails(true)}>Expand all</button>
+    <button type="button" onClick={() => setAllDetails(false)}>Collapse all</button>
     <label className="ml-auto flex items-center gap-1"><input type="checkbox" checked={promptsOnly} onChange={event => setPromptsOnly(event.target.checked)} />Prompts only</label>
     {open && <div className="flex w-full flex-wrap items-center gap-2">
       <input ref={input} type="search" aria-label="Find in transcript" value={query} placeholder="Find text in this transcript"
