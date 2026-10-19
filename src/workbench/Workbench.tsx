@@ -114,7 +114,7 @@ function Message({ message, animate, children, onFindError, onCopyMessage }: { m
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
-  return <article id={`message-${message.seq}`}
+  return <article id={`message-${message.seq}`} data-prompt={isUser ? "true" : undefined}
     className={cn("flex scroll-mt-6 items-start gap-4 border-b border-border py-6 last:border-b-0",
       isUser && "-mx-4 my-3 border-b-0 bg-chip px-4 py-4",
       animate && "animate-in fade-in fill-mode-both duration-200",

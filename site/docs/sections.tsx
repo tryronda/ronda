@@ -20,6 +20,7 @@ const shortcuts: [string, string][] = [
   ["⌘K", "Search the library"],
   ["⌘F", "Find in the active transcript"],
   ["Enter / Shift+Enter", "Next / previous match in transcript find"],
+  ["[ / ]", "Jump to the previous / next prompt while the transcript is focused"],
   ["⌘B", "Toggle the library sidebar"],
   ["Alt ← / Alt →", "Back and forward through views"],
   ["↑ / ↓", "Move through the session list"],
@@ -86,7 +87,7 @@ export const docs: DocSection[] = [
     body: <>
       <P>Open a session and choose **Find in transcript** or press **⌘F**. Find searches the literal phrase, ignoring case, in the visible message text and textual tool input/output. It preserves punctuation and spaces; it does not split the query into terms. **Include thinking** also searches recorded reasoning. Images are not searched.</P>
       <P>Use **Next match**, **Previous match**, Enter, or Shift+Enter to cycle through matches. Navigation opens the matching disclosure and highlights its text. Escape closes find. **First message** and **Last message** jump to the ends of the visible transcript.</P>
-      <P>**Expand all** and **Collapse all** open or close every tool and thinking block. Tool input or output over about 40 lines or 4,000 characters is collapsed to a short preview; choose **Show all** to read it and **Show less** to fold it again. The full text stays searchable, and find opens a collapsed block when it lands inside one.</P>
+      <P>**Previous prompt** and **Next prompt**, or **[** and **]** while the transcript is focused, move to the nearest of your prompts above or below the top of the view. **Expand all** and **Collapse all** open or close every tool and thinking block. Tool input or output over about 40 lines or 4,000 characters is collapsed to a short preview; choose **Show all** to read it and **Show less** to fold it again. The full text stays searchable, and find opens a collapsed block when it lands inside one.</P>
       <P>**Prompts only** shows user messages of kind text. Find counts reflect that view. Opening an excerpt from library search restores the full transcript and closes find before jumping to the requested message. Find survives refresh of the same session and resets when you open another one.</P>
       <P>Choose **Copy message** on a user or assistant text message to copy its original Markdown, including line breaks and code fences. The action excludes system messages, thinking, tool input/output, and image data. Clipboard errors appear in an error alert. The browser preview copies only the selected synthetic sample message; its sample content does not come from your computer.</P>
       <P>Choose the export control in a session header to open its options. **Include tool input and output** and **Include thinking** are off by default; with both off, **Export Markdown…** writes the same file as before (role, message number, text, and tool names). Turning either on also adds each message's timestamp and a `ronda://` source reference. Tool input and output and thinking go in code fences longer than any backtick run inside them, and failed tool calls are marked. **Tool output may contain secrets**, so review the result before sharing it.</P>

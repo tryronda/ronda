@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
 import { searchRanges } from "./search-text";
 import { transcriptMatches } from "./transcript-find";
-import { TranscriptNavigation } from "./TranscriptNavigation";
+import { nearestPrompt, TranscriptNavigation } from "./TranscriptNavigation";
 
 test("literal find preserves Unicode offsets, phrases, overlapping occurrences and rendered fields", () => {
   expect(searchRanges("İ banana AA a.b", "ana", true)).toEqual([{start:3,end:6},{start:5,end:8}]);
@@ -83,4 +83,43 @@ test("expand and collapse all toggle every details in the transcript", async () 
     await click("Expand all");expect(details().every(d=>d.open)).toBe(true);
     await click("Collapse all");expect(details().some(d=>d.open)).toBe(false);
   } finally {await act(async()=>root.unmount());host.remove();}
+});
+
+test("prompt jump uses buttons and bracket keys, ignoring editable fields", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const host=document.createElement("div");document.body.append(host);
+  const scope=createRef<HTMLDivElement>();const container=createRef<HTMLDivElement>();
+  const beforeScroll=vi.fn();const scrolled:string[]=[];
+  Element.prototype.scrollIntoView=function(this:Element){scrolled.push(this.id);};
+  const tops:Record<string,number>={"message-1":-300,"message-3":-10,"message-5":200,"message-7":600};
+  const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<div ref={scope} tabIndex={0}>
+      <TranscriptNavigation container={container} scope={scope} active embedded={false} promptsOnly={false} setPromptsOnly={()=>{}} reducedMotion jumpToken={0} onBeforeProgrammaticScroll={beforeScroll}/>
+      <div ref={container} tabIndex={0}>
+        {[1,3,5,7].map(n=><article key={n} id={`message-${n}`} data-prompt="true">x</article>)}
+        <article id="message-4">y</article>
+        <textarea/>
+      </div></div>));
+    for(const [id,top] of Object.entries(tops))host.querySelector(`#${id}`)!.getBoundingClientRect=()=>({top} as DOMRect);
+    container.current!.getBoundingClientRect=()=>({top:0} as DOMRect);
+    const click=async(label:string)=>act(async()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent===label)!.click());
+    const key=async(target:Element,value:string)=>{const e=new KeyboardEvent("keydown",{key:value,bubbles:true,cancelable:true});await act(async()=>{target.dispatchEvent(e);});return e;};
+    await click("Next prompt");expect(scrolled.at(-1)).toBe("message-5");
+    await click("Previous prompt");expect(scrolled.at(-1)).toBe("message-3");
+    expect((await key(container.current!,"]")).defaultPrevented).toBe(true);expect(scrolled.at(-1)).toBe("message-5");
+    await key(container.current!,"[");expect(scrolled.at(-1)).toBe("message-3");
+    const before=scrolled.length;
+    await key(host.querySelector("textarea")!,"]");expect(scrolled.length).toBe(before);
+    await key(document.body,"]");expect(scrolled.length).toBe(before);
+    expect(beforeScroll).toHaveBeenCalledTimes(4);
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
+test("nearestPrompt picks the closest prompt above or below the viewport top", () => {
+  expect(nearestPrompt([-300,-10,200,600],0,1)).toBe(2);
+  expect(nearestPrompt([-300,-10,200,600],0,-1)).toBe(1);
+  expect(nearestPrompt([100],0,-1)).toBe(-1);
+  expect(nearestPrompt([-100],0,1)).toBe(-1);
+  expect(nearestPrompt([0,50],0,1)).toBe(1);
 });
