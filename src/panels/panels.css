@@ -176,3 +176,5 @@
 .intel-outcomes span { grid-area: label; margin-top: 4px; font-size: 15px; color: var(--ink-soft); }
 .intel-outcomes small { grid-area: meta; font-family: var(--font-mono); font-size: 11px; color: var(--stone); }
 @media (max-width: 760px) { .intel-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .intel-stats .insight-stat:nth-child(3) { border-left: 0; } .intel-columns { grid-template-columns: 1fr; } }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
