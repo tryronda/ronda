@@ -22,6 +22,7 @@ import { BookmarkControl, emptyBookmarkEditor, type BookmarkEditorState } from "
 import { ContextBundle } from "./ContextBundle";
 import { contextEligible, contextId, type ContextSelection } from "./context-bundle";
 import { TranscriptNavigation } from "./TranscriptNavigation";
+import { ToolPre } from "./ToolPre";
 import { ResumeReadiness } from "./ResumeReadiness";
 import { SessionConnections } from "./SessionConnections";
 import { LabelManager, SessionLabelEditor } from "./SessionLabels";
@@ -113,7 +114,7 @@ function Message({ message, animate, children, onFindError, onCopyMessage }: { m
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
-  return <article id={`message-${message.seq}`}
+  return <article id={`message-${message.seq}`} data-prompt={isUser ? "true" : undefined}
     className={cn("flex scroll-mt-6 items-start gap-4 border-b border-border py-6 last:border-b-0",
       isUser && "-mx-4 my-3 border-b-0 bg-chip px-4 py-4",
       animate && "animate-in fade-in fill-mode-both duration-200",
@@ -144,8 +145,8 @@ function Message({ message, animate, children, onFindError, onCopyMessage }: { m
         {message.tool_calls.map((tool, index) => <div className="mt-2 border-t border-border pt-2.5 text-[11px]" key={`${tool.id}-${index}`}>
           <strong className="label-mono text-foreground">{tool.name}</strong>
           {tool.is_error && <span className="label-mono ml-2 text-destructive">{t.error}</span>}
-          {tool.input && <pre data-transcript-field={`tool-${index}-input`} className="message-pre mt-1.5">{tool.input}</pre>}
-          {tool.output && <><pre data-transcript-field={`tool-${index}-output`} className="message-pre mt-1.5 text-muted-foreground">{tool.output}</pre><button type="button" className="mt-2 underline" onClick={()=>onFindError(tool.output!)}>Find history for {tool.name} output</button></>}
+          {tool.input && <ToolPre field={`tool-${index}-input`} text={tool.input} />}
+          {tool.output && <><ToolPre field={`tool-${index}-output`} text={tool.output} className="text-muted-foreground" /><button type="button" className="mt-2 underline" onClick={()=>onFindError(tool.output!)}>Find history for {tool.name} output</button></>}
         </div>)}
       </details>}
       {message.text && <button type="button" className="mt-2 text-[13px] underline" onClick={()=>onFindError(message.text)}>Find error history from message {message.seq}</button>}
