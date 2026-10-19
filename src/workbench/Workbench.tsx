@@ -29,7 +29,7 @@ import { ExportMenu } from "./ExportMenu";
 import { SessionRenameForm } from "./SessionRename";
 import { aliasMatches, displayTitle, hasAlias, parseSessionAliases, serializeSessionAliases, SESSION_ALIASES_KEY,
   SESSION_ALIAS_LIMIT, withAlias, type SessionAliases } from "./session-alias";
-import { BulkTriageBar, bulkMessages, flagsOf, nextFlags, rangeKeys, sessionCount, type BulkAction, type BulkUndo } from "./BulkTriage";
+import { BulkTriageBar, bulkMessages, flagsOf, labelStatus, nextFlags, planLabelChange, rangeKeys, sessionCount, type BulkAction, type BulkUndo, type LabelChange, type LabelMode } from "./BulkTriage";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
@@ -215,6 +215,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [starredOnly, setStarredOnly] = useState(false);
   const [labelId, setLabelId] = useState("");
   const [labels, setLabels] = useState<SessionLabel[]>([]);
+  const labelIdFilterRef = useRef("");
+  labelIdFilterRef.current = labelId;
   const [labelsLoaded, setLabelsLoaded] = useState(false);
   /** A restored or replayed label id that is not in the catalog stays exact (matching nothing) until cleared. */
   const staleLabel = labelsLoaded && !!labelId && !labels.some(label => label.id === labelId);
@@ -855,6 +857,37 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setSessions(current => current.map(s => byKey.has(s.key) ? { ...s, ...byKey.get(s.key) } : s));
     setHits(current => current.map(h => byKey.has(h.session.key) ? { ...h, session: { ...h.session, ...byKey.get(h.session.key) } } : h));
   };
+  const patchLabels = (changes: LabelChange[], side: "next" | "previous") => {
+    const byKey = new Map(changes.map(change => [change.key, change[side]]));
+    setSessions(current => current.map(s => byKey.has(s.key) ? { ...s, labels: byKey.get(s.key) } : s));
+    setHits(current => current.map(h => byKey.has(h.session.key) ? { ...h, session: { ...h.session, labels: byKey.get(h.session.key) } } : h));
+    setOpened(current => current && byKey.has(current.key) ? { ...current, labels: byKey.get(current.key) } : current);
+  };
+  /** Sequential per-session writes; stops at the first failure and keeps what was applied undoable. */
+  const writeLabelChanges = async (changes: LabelChange[], labelId: string, assign: (change: LabelChange) => boolean) => {
+    const done: LabelChange[] = [];
+    try {
+      for (const change of changes) { await api.setSessionLabel(change.key, labelId, assign(change)); done.push(change); }
+    } catch (cause) { return { done, failure: cause }; }
+    return { done, failure: null as unknown };
+  };
+  const applyBulkLabel = async (mode: LabelMode, labelId: string) => {
+    if (bulkBusy || !labels.some(label => label.id === labelId)) return;
+    const rows = visible.map(row => row.session).filter(row => selection.has(row.key));
+    if (!rows.length) return;
+    const generation = bulkGeneration.current;
+    const { changes, skipped } = planLabelChange(rows, labelId, mode);
+    setBulkBusy(true);
+    try {
+      const { done, failure } = await writeLabelChanges(changes, labelId, change => change.next.includes(labelId));
+      patchLabels(done, "next");
+      if (labelId === labelIdFilterRef.current && done.length) void reload();
+      if (done.length && generation === bulkGeneration.current)
+        setBulkUndo({ label: mode === "add" ? "Add label" : "Remove label", labelId, changes: done });
+      if (failure) { setError(String(failure)); setBulkStatus(`Bulk label update stopped after ${sessionCount(done.length)}`); }
+      else { setError(null); setBulkStatus(labelStatus(mode, done.length, skipped)); }
+    } finally { setBulkBusy(false); }
+  };
   const writeBulk = async (updates: [string, boolean, boolean][]) => {
     const applied = await api.setSessionFlagsBulk(updates);
     patchFlags(updates);
@@ -879,6 +912,18 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const undoBulk = async () => {
     if (bulkBusy || !bulkUndo) return;
     setBulkBusy(true);
+    if ("changes" in bulkUndo) {
+      try {
+        const { labelId } = bulkUndo;
+        const { done, failure } = await writeLabelChanges(bulkUndo.changes, labelId, change => change.previous.includes(labelId));
+        patchLabels(done, "previous");
+        if (labelId === labelIdFilterRef.current && done.length) void reload();
+        if (failure) { setError(String(failure)); setBulkStatus(`Undo stopped after ${sessionCount(done.length)}`);
+          setBulkUndo({ ...bulkUndo, changes: bulkUndo.changes.filter(change => !done.includes(change)) }); }
+        else { setError(null); setBulkStatus(`Undid ${bulkUndo.label.toLowerCase()} for ${sessionCount(done.length)}`); setBulkUndo(null); }
+      } finally { setBulkBusy(false); }
+      return;
+    }
     try {
       const applied = await writeBulk(bulkUndo.previous);
       setError(null); setBulkStatus(`Undid ${bulkUndo.label.toLowerCase()} for ${sessionCount(applied)}`); setBulkUndo(null);
@@ -1195,7 +1240,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         {savedSearchFeedback && <p role="status" className="mt-1 text-[11px] text-muted-foreground">{savedSearchFeedback}</p>}
       </div>
       <BulkTriageBar selected={selection.size} status={bulkStatus} busy={bulkBusy} canUndo={!!bulkUndo}
-        onAction={action=>void applyBulk(action)} onUndo={()=>void undoBulk()} onClear={clearSelection} />
+        labels={labels} onLabel={(mode,id)=>void applyBulkLabel(mode,id)} onAction={action=>void applyBulk(action)} onUndo={()=>void undoBulk()} onClear={clearSelection} />
       <div ref={sessionListRef} className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || loadingMore || searching || scanning}
         onKeyDown={event => {
           if (event.target instanceof HTMLElement && event.target.closest("textarea,input,[contenteditable='true']")) return;
