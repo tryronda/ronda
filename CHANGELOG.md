@@ -4,20 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
-## [1.0.24] - 2026-10-19
-
-### Added
-- **Library sort options** let you order the session list by recently updated (the default), least recently updated, newest created, or most tokens from a compact **Sort sessions** control. Pinned sessions stay at the top, ties break consistently, your choice is remembered with your filters, and changing it clears any bulk selection. Search keeps its own relevance/recent sort.
-
-## [1.0.23] - 2026-10-19
-
-### Added
-- **Bulk session triage** lets you select several loaded sessions with ⌘/Ctrl-click, Shift-click, Space, or Shift+arrow keys, then star, unstar, pin, or unpin them together from a compact bar. Each action changes only its own flag, the result is announced, and **Undo** restores the previous values of the last bulk action. Changing the search, filters, or sort clears the selection. Nothing is deleted, archived, or labeled in bulk.
-
-## [1.0.22] - 2026-10-19
-
 ### Added
 - **Session export options** add a popover to the session export control with **Include tool input and output** and **Include thinking**, both off by default, and a new **Copy as Markdown** action beside **Export Markdown…**. Included tool input, tool output, and thinking appear in fences that outgrow any backticks inside them, with timestamps and `ronda://` message references. Copying refuses sessions over 100,000 characters with a message suggesting file export instead of truncating. With both options off, the exported file is unchanged.
+- **Bulk session triage** lets you select several loaded sessions with ⌘/Ctrl-click, Shift-click, Space, or Shift+arrow keys, then star, unstar, pin, or unpin them together from a compact bar. Each action changes only its own flag, the result is announced, and **Undo** restores the previous values of the last bulk action. Changing the search, filters, or sort clears the selection. Nothing is deleted, archived, or labeled in bulk.
+- **Library sort options** let you order the session list by recently updated (the default), least recently updated, newest created, or most tokens from a compact **Sort sessions** control. Pinned sessions stay at the top, ties break consistently, your choice is remembered with your filters, and changing it clears any bulk selection. Search keeps its own relevance/recent sort.
 
 ### Privacy
 - Tool output can contain secrets. It is included only when you opt in, and a note says so; nothing is sent anywhere.
