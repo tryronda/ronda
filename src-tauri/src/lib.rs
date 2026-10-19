@@ -484,6 +484,85 @@ async fn set_session_flags(
 }
 
 #[tauri::command]
+async fn list_session_labels(
+    state: State<'_, Shared>,
+) -> CommandResult<Vec<ronda_core::labels::SessionLabel>> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .list_labels()
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn create_session_label(
+    state: State<'_, Shared>,
+    name: String,
+) -> CommandResult<ronda_core::labels::SessionLabel> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .create_label(&name)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn rename_session_label(
+    state: State<'_, Shared>,
+    id: String,
+    name: String,
+) -> CommandResult<ronda_core::labels::SessionLabel> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .rename_label(&id, &name)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn delete_session_label(state: State<'_, Shared>, id: String) -> CommandResult<()> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .delete_label(&id)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_session_label(
+    state: State<'_, Shared>,
+    key: String,
+    label_id: String,
+    assigned: bool,
+) -> CommandResult<()> {
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .set_session_label(&key, &label_id, assigned)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn list_bookmarks(
     state: State<'_, Shared>,
     query: String,
@@ -1473,6 +1552,11 @@ pub fn run() {
             get_local_source_refresh_health,
             scan,
             set_session_flags,
+            list_session_labels,
+            create_session_label,
+            rename_session_label,
+            delete_session_label,
+            set_session_label,
             list_bookmarks,
             save_bookmark,
             delete_bookmark,
@@ -1532,6 +1616,7 @@ mod tests {
             can_delete: true,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         }
     }
 
@@ -1678,6 +1763,7 @@ mod tests {
                         can_delete: true,
                         starred: false,
                         pinned: false,
+                        labels: Vec::new(),
                     },
                     messages: vec![ronda_core::TranscriptMessage {
                         seq: 1,
@@ -1693,6 +1779,10 @@ mod tests {
                 },
                 "fixture",
             )
+            .unwrap();
+        let label = store.create_label("label-name-secret").unwrap();
+        store
+            .set_session_label("fixture-key-secret", &label.id, true)
             .unwrap();
         let report = diagnostics_report(&store, &Scanner::new(root.join("home"))).unwrap();
         assert_eq!(report.session_count, 1);
@@ -1712,6 +1802,7 @@ mod tests {
             "transcript-body-secret",
             "thinking-secret",
             "987654321",
+            "label-name-secret",
         ] {
             assert!(!json.contains(secret), "report leaked {secret}");
         }

@@ -72,6 +72,7 @@ fn session(
             can_delete: true,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         },
         messages,
     }

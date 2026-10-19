@@ -268,3 +268,65 @@ test("synthetic error history pages distinct originals and scopes coverage befor
   const empty=await backend.errorHistory("Error: unknown sample",path,null,false,0);expect(empty.total).toBe(0);expect(empty.with_tools).toBeLessThan(empty.indexed_sessions);
   await expect(backend.errorHistory(" ",null,null,false,0)).rejects.toThrow("20,000");
 });
+
+test("label preview supports create, rename, assign, filter, caps, and delete, then resets on reload", async () => {
+  installDemoBackend();
+  const initial = await backend.listSessionLabels();
+  expect(initial.map(label => label.name)).toEqual(["Needs follow-up", "Reference", "Handoff"]);
+  const [followUp, reference, handoff] = initial;
+  const withLabel = async (id: string) => (await backend.sessionPage({ ...queryDefaults, label_id: id }, 0, 100)).items.map(session => session.key).sort();
+  expect(await withLabel(followUp.id)).toEqual(["claude-code:demo-0", "codex:demo-1"]);
+  expect(await withLabel(handoff.id)).toEqual([]);
+  expect(await withLabel("f".repeat(32))).toEqual([]);
+  const grouped = await backend.searchGrouped("idempotency", { ...queryDefaults, label_id: followUp.id }, "recent", 0, 10);
+  expect(grouped.groups.map(group => group.session.key)).toEqual(["codex:demo-1"]);
+
+  const created = await backend.createSessionLabel("  Ideas ");
+  expect(created.name).toBe("Ideas");
+  await expect(backend.createSessionLabel("ideas")).rejects.toThrow("already exists");
+  await expect(backend.createSessionLabel("   ")).rejects.toThrow("Enter a label name");
+  await expect(backend.createSessionLabel("x".repeat(41))).rejects.toThrow("40 characters");
+  expect((await backend.renameSessionLabel(created.id, "Ideas backlog")).name).toBe("Ideas backlog");
+  await expect(backend.renameSessionLabel(created.id, "REFERENCE")).rejects.toThrow("already exists");
+  for (let index = (await backend.listSessionLabels()).length; index < 12; index++) await backend.createSessionLabel(`Extra ${index}`);
+  await expect(backend.createSessionLabel("Over the cap")).rejects.toThrow("at most 12");
+
+  const key = "codex:demo-1";
+  await backend.setSessionLabel(key, reference.id, true);
+  await backend.setSessionLabel(key, handoff.id, true);
+  await backend.setSessionLabel(key, created.id, true);
+  await expect(backend.setSessionLabel(key, (await backend.listSessionLabels()).at(-1)!.id, true)).rejects.toThrow("at most 4");
+  expect((await backend.getSession(key))?.labels).toHaveLength(4);
+  await backend.setSessionLabel(key, handoff.id, false);
+  expect(await withLabel(handoff.id)).toEqual([]);
+
+  await backend.deleteSessionLabel(followUp.id);
+  expect((await backend.getSession(key))?.labels).not.toContain(followUp.id);
+  expect(await withLabel(followUp.id)).toEqual([]);
+  expect((await backend.listSessionLabels()).some(label => label.id === followUp.id)).toBe(false);
+
+  uninstallDemoBackend();
+  installDemoBackend();
+  expect((await backend.listSessionLabels()).map(label => label.name)).toEqual(["Needs follow-up", "Reference", "Handoff"]);
+  expect((await backend.getSession(key))?.labels).toEqual([followUp.id]);
+});
+
+test("label names never appear in preview bookmark backups or diagnostics", async () => {
+  installDemoBackend();
+  const canary = "CANARY-LABEL-NAME-7731";
+  const label = await backend.createSessionLabel(canary);
+  await backend.setSessionLabel("claude-code:demo-0", label.id, true);
+  expect(await invoke<string>("get_bookmark_backup")).not.toContain(canary);
+  expect(JSON.stringify(await invoke("get_diagnostics_report"))).not.toContain(canary);
+});
+
+test("preview bookmark rows follow the labels of their linked sessions", async () => {
+  installDemoBackend();
+  const [followUp] = await backend.listSessionLabels();
+  const all = await backend.listBookmarks("", queryDefaults);
+  const filtered = await backend.listBookmarks("", { ...queryDefaults, label_id: followUp.id });
+  const labelled = new Set((await backend.listSessions({ ...queryDefaults, label_id: followUp.id, limit: null, include_archived: true })).map(session => session.key));
+  expect(filtered.map(view => view.bookmark.session_key).sort()).toEqual(all.filter(view => labelled.has(view.bookmark.session_key)).map(view => view.bookmark.session_key).sort());
+  expect(filtered.length).toBeLessThan(all.length);
+  expect(await backend.listBookmarks("", { ...queryDefaults, label_id: "f".repeat(32) })).toEqual([]);
+});

@@ -711,6 +711,7 @@ mod tests {
             can_delete: false,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         };
         let msg = TranscriptMessage {
             seq: 7,

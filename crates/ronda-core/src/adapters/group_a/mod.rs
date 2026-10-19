@@ -268,6 +268,7 @@ impl AgentAdapter for FileAdapter {
             can_delete: !is_child,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         };
         Ok(Some(ParsedSession {
             meta,

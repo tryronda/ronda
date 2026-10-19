@@ -413,6 +413,7 @@ mod tests {
             can_delete: false,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         };
         let insert = |meta: &ronda_core::SessionMeta| {
             state
@@ -606,6 +607,7 @@ mod tests {
             can_delete: false,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         };
         let insert = |meta: &ronda_core::SessionMeta| {
             state

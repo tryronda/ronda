@@ -10,7 +10,7 @@ const browserDefaults: Record<string, unknown> = {
   get_session_relationships: {parent:null,children:[],related:[],candidate_limit:512},
   library_options: {agents: [], models: [], hosts: [], projects: []},
   session_page: {items: [], total: 0, offset: 0, limit: 100},
-  get_pref: null, set_pref: null, get_local_source_refresh_health: null, list_bookmarks: [], get_bookmark_backup: '{"version":1,"bookmarks":[]}', list_sessions: [], list_projects: [], search_sessions: [], get_transcript: [],
+  list_session_labels: [], get_pref: null, set_pref: null, get_local_source_refresh_health: null, list_bookmarks: [], get_bookmark_backup: '{"version":1,"bookmarks":[]}', list_sessions: [], list_projects: [], search_sessions: [], get_transcript: [],
   get_transcript_snapshot: {session_key_hash:"",messages:[],fingerprints:[]},
   get_diagnostics_report: {format_version:1,app_version:"1.0.17",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}},
   list_locations: [], list_remote_hosts: [], check_updates: null, app_paths: ["ronda-mcp", "", ""],

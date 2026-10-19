@@ -189,6 +189,7 @@ impl Store {
         ",
         )?;
         conn.execute_batch(crate::bookmarks::SCHEMA)?;
+        conn.execute_batch(crate::labels::SCHEMA)?;
         let mut store = Self { conn };
         store.migrate()?;
         Ok(store)
@@ -336,6 +337,7 @@ impl Store {
             meta.starred = starred;
             meta.pinned = pinned;
         }
+        meta.labels = self.session_labels(&meta.key)?;
         Ok(meta)
     }
 
@@ -555,6 +557,7 @@ impl Store {
              AND (?9 IS NULL OR s.updated_at<?9) \
              AND (?10 IS NULL OR json_extract(s.meta,'$.model')=?10) \
              AND (?11=0 OR json_extract(s.meta,'$.host') IS NULL) \
+             AND (?12 IS NULL OR EXISTS (SELECT 1 FROM session_label_map lm JOIN session_label_defs ld ON ld.id=lm.label_id WHERE lm.session_key=s.key AND lm.label_id=?12)) \
              ORDER BY score,s.updated_at DESC,s.key,f.seq"
         );
         let mut statement = self.conn.prepare(&sql)?;
@@ -570,7 +573,8 @@ impl Store {
                 filter.updated_from_ms,
                 filter.updated_before_ms,
                 filter.model,
-                filter.local_only
+                filter.local_only,
+                filter.label_id.as_deref()
             ],
             |row| {
                 Ok((
@@ -597,6 +601,7 @@ impl Store {
                 let mut session: SessionMeta = serde_json::from_str(&json)?;
                 session.starred = starred;
                 session.pinned = pinned;
+                session.labels = self.session_labels(&session.key)?;
                 metadata.insert(json, session.clone());
                 session
             };

@@ -91,6 +91,9 @@ pub struct SessionMeta {
     pub starred: bool,
     #[serde(default)]
     pub pinned: bool,
+    /// Assigned session label ids, overlaid from the local label tables on read.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -170,6 +173,7 @@ pub struct SessionQuery {
     pub updated_before_ms: Option<i64>,
     pub model: Option<String>,
     pub local_only: bool,
+    pub label_id: Option<String>,
 }
 
 impl SessionQuery {
@@ -208,6 +212,10 @@ impl SessionQuery {
                 .updated_before_ms
                 .is_none_or(|before| session.updated_at < before)
             && (!self.starred_only || session.starred)
+            && self
+                .label_id
+                .as_ref()
+                .is_none_or(|label| session.labels.contains(label))
     }
 }
 

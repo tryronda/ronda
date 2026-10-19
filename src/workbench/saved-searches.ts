@@ -1,3 +1,4 @@
+import { validLabelId } from "./library-filters";
 import { agentIds, type AgentId, type SearchSort } from "./api";
 
 export const SAVED_SEARCHES_KEY = "saved_searches_v1";
@@ -15,6 +16,8 @@ export interface SavedSearchFilters {
   dateThrough: string;
   model: string;
   host: string;
+  /** Either empty or exactly one label id. Documents saved before labels omit it and read as empty. */
+  labels: string[];
 }
 
 export interface SavedSearch {
@@ -45,8 +48,13 @@ const validText = (value: unknown, maxBytes: number): value is string =>
 const validId = (value: unknown) => typeof value === "string"
   && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+const BASE_FILTER_KEYS = ["project", "agent", "starredOnly", "includeArchived", "dateFrom", "dateThrough", "model", "host"];
+
 function validFilters(value: unknown): value is SavedSearchFilters {
-  if (!isObject(value) || !hasExactKeys(value, ["project", "agent", "starredOnly", "includeArchived", "dateFrom", "dateThrough", "model", "host"])) return false;
+  if (!isObject(value)) return false;
+  // Version 1 documents written before labels have exactly the base keys; later ones add `labels`.
+  if (!hasExactKeys(value, Object.hasOwn(value, "labels") ? [...BASE_FILTER_KEYS, "labels"] : BASE_FILTER_KEYS)) return false;
+  if (Object.hasOwn(value, "labels") && !(Array.isArray(value.labels) && value.labels.length <= 1 && value.labels.every(validLabelId))) return false;
   if (!(value.project === null || validText(value.project, 4096))) return false;
   if (!(value.agent === null || (typeof value.agent === "string" && agentIds.includes(value.agent as AgentId)))) return false;
   if (typeof value.starredOnly !== "boolean" || typeof value.includeArchived !== "boolean") return false;
@@ -67,6 +75,8 @@ function validSearch(value: unknown): value is SavedSearch {
   return value.sort === "relevance" || value.sort === "recent";
 }
 
+const withLabels = (item: SavedSearch): SavedSearch => ({ ...item, filters: { ...item.filters, labels: item.filters.labels ?? [] } });
+
 export function parseSavedSearches(raw: string | null): SavedSearchParse {
   if (raw === null) return { ok: true, document: { version: 1, items: [] } };
   if (utf8Bytes(raw) > SAVED_SEARCH_DOCUMENT_BYTES) return { ok: false };
@@ -74,17 +84,18 @@ export function parseSavedSearches(raw: string | null): SavedSearchParse {
     const value: unknown = JSON.parse(raw);
     if (!isObject(value) || !hasExactKeys(value, ["version", "items"]) || value.version !== 1
       || !Array.isArray(value.items) || value.items.length > SAVED_SEARCH_LIMIT || !value.items.every(validSearch)) return { ok: false };
+    const items = value.items.map(withLabels);
     const ids = new Set<string>();
-    if (value.items.some(item => { if (ids.has(item.id)) return true; ids.add(item.id); return false; })) return { ok: false };
-    if (hasDuplicateDefinition(value.items)) return { ok: false };
-    return { ok: true, document: value as unknown as SavedSearchDocument };
+    if (items.some(item => { if (ids.has(item.id)) return true; ids.add(item.id); return false; })) return { ok: false };
+    if (hasDuplicateDefinition(items)) return { ok: false };
+    return { ok: true, document: { version: 1, items } };
   } catch { return { ok: false }; }
 }
 
 export function savedSearchIdentity(search: Pick<SavedSearch, "name" | "query" | "filters" | "sort">) {
   const filters = search.filters;
   return JSON.stringify([search.name, search.query, filters.project, filters.agent, filters.starredOnly,
-    filters.includeArchived, filters.dateFrom, filters.dateThrough, filters.model, filters.host, search.sort]);
+    filters.includeArchived, filters.dateFrom, filters.dateThrough, filters.model, filters.host, search.sort, filters.labels ?? []]);
 }
 
 const hasDuplicateDefinition = (items: SavedSearch[]) => {

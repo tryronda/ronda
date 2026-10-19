@@ -24,11 +24,12 @@ import { contextEligible, contextId, type ContextSelection } from "./context-bun
 import { TranscriptNavigation } from "./TranscriptNavigation";
 import { ResumeReadiness } from "./ResumeReadiness";
 import { SessionConnections } from "./SessionConnections";
+import { LabelManager, SessionLabelEditor } from "./SessionLabels";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
   type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
-  type WorkbenchBackend, type BookmarkView, type LibraryOptions, type WorkbenchLocation, type ProjectContext,
+  type WorkbenchBackend, type BookmarkView, type LibraryOptions, type SessionLabel, type WorkbenchLocation, type ProjectContext,
 } from "./api";
 import { scanSummary } from "./scan-summary";
 import { canRevealSource } from "./source-reveal";
@@ -207,6 +208,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   },[detail,isActive]);
   const [agent, setAgent] = useState<AgentId | null>(null);
   const [starredOnly, setStarredOnly] = useState(false);
+  const [labelId, setLabelId] = useState("");
+  const [labels, setLabels] = useState<SessionLabel[]>([]);
+  const [labelsLoaded, setLabelsLoaded] = useState(false);
+  /** A restored or replayed label id that is not in the catalog stays exact (matching nothing) until cleared. */
+  const staleLabel = labelsLoaded && !!labelId && !labels.some(label => label.id === labelId);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateThrough, setDateThrough] = useState("");
@@ -218,7 +224,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     catch (cause) { return {range:{},error:cause instanceof Error ? cause.message : String(cause)}; }
   }, [dateFrom,dateThrough]);
   const clearFilters = () => {
-    setProject(null); setAgent(null); setStarredOnly(false); setIncludeArchived(false);
+    setProject(null); setAgent(null); setStarredOnly(false); setLabelId(""); setIncludeArchived(false);
     setDateFrom(""); setDateThrough(""); setModel(""); setHost("");
   };
   const [search, setSearch] = useState("");
@@ -257,18 +263,18 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       if (preferenceTouched.current) return;
       const saved=restoredFilters(raw);
       if (!saved) return;
-      setProject(saved.project); setAgent(saved.agent); setStarredOnly(saved.starredOnly); setIncludeArchived(saved.includeArchived);
+      setProject(saved.project); setAgent(saved.agent); setStarredOnly(saved.starredOnly); setLabelId(saved.labelId); setIncludeArchived(saved.includeArchived);
       setDateFrom(saved.dateFrom); setDateThrough(saved.dateThrough); setModel(saved.model); setHost(saved.host); setSearchSort(saved.searchSort);
     }).catch(cause=>{if (!cancelled) setError(`Could not restore filters: ${String(cause)}`);});
     return ()=>{cancelled=true;};
   },[api]);
   useEffect(() => {
     if (!preferencesLoaded || dates.error) return;
-    const value=JSON.stringify({project,agent,starredOnly,includeArchived,dateFrom,dateThrough,model,host,searchSort});
+    const value=JSON.stringify({project,agent,starredOnly,labelId,includeArchived,dateFrom,dateThrough,model,host,searchSort});
     // Serialize writes so an older preference cannot finish after a newer choice.
     preferenceWrite.current=preferenceWrite.current.catch(()=>{}).then(()=>api.setPref("library_filters",value))
       .catch(cause=>setError(`Could not save filters: ${String(cause)}`));
-  },[api,preferencesLoaded,project,agent,starredOnly,includeArchived,dateFrom,dateThrough,model,host,searchSort,dates.error]);
+  },[api,preferencesLoaded,project,agent,starredOnly,labelId,includeArchived,dateFrom,dateThrough,model,host,searchSort,dates.error]);
   const savedSearchReadRun = useRef(0);
   const restoreSavedSearches = useCallback(async () => {
     const run = ++savedSearchReadRun.current;
@@ -437,9 +443,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   }, [isActive, terminalShown]);
 
   const filter = useMemo<SessionQuery>(() => ({ ...queryDefaults, agent,
-    project_path: project, starred_only: starredOnly, include_archived: includeArchived,
+    project_path: project, starred_only: starredOnly, label_id: labelId || null, include_archived: includeArchived,
     ...dates.range, model:model || null, host:host.startsWith("remote:") ? host.slice(7) : null, local_only:host === "local" }),
-    [agent, project, starredOnly, includeArchived, dates, model, host]);
+    [agent, project, starredOnly, labelId, includeArchived, dates, model, host]);
 
   useEffect(() => {
     pageGeneration.current++;
@@ -457,12 +463,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     browseBusy.current = false; setLoadingMore(false); setLoading(true);
     if (dates.error) { setLoading(false); return; }
     try {
-      const [page, nextOptions] = await Promise.all([api.sessionPage(filter,0,100), api.libraryOptions()]);
+      const [page, nextOptions, nextLabels] = await Promise.all([api.sessionPage(filter,0,100), api.libraryOptions(), api.listSessionLabels()]);
       if (run !== reloadRun.current) return;
       if (sessionListRef.current) sessionListRef.current.scrollTop = 0;
       setSessions(page.items); setSessionTotal(page.total); browseOffset.current = page.offset + page.items.length;
       setProjects(nextOptions.projects);
       setOptions(nextOptions);
+      setLabels(nextLabels); setLabelsLoaded(true);
       setRevision(value => value + 1);
       setError(null);
     } catch (cause) { if (run === reloadRun.current) setError(String(cause)); }
@@ -516,7 +523,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     if (agent && (session?.agent ?? bookmark.agent) !== agent) return false;
     if (project && (session?.project_path ?? bookmark.project_path) !== project) return false;
     const metadataFilter = {...filter,agent:null,project_path:null,include_archived:true,starred_only:false};
-    if ((host || model || dateFrom || dateThrough) && (!session || !matchesSession(session,metadataFilter))) return false;
+    if ((host || model || dateFrom || dateThrough || labelId) && (!session || !matchesSession(session,metadataFilter))) return false;
     const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
     return search.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term => text.includes(term));
   });
@@ -701,7 +708,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setNotice("Continued from saved position");
   };
   const currentSavedSearchFilters = (): SavedSearchFilters => ({ project, agent, starredOnly, includeArchived,
-    dateFrom, dateThrough, model, host });
+    dateFrom, dateThrough, model, host, labels: labelId ? [labelId] : [] });
   const saveCurrentSearch = () => {
     const validation = validateSavedSearchInput(newSavedSearchName, search);
     if (validation) { setSavedSearchFeedback(validation); return; }
@@ -721,7 +728,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   };
   const replaySavedSearch = (item: SavedSearch) => {
     setSearch(item.query); setProject(item.filters.project); setAgent(item.filters.agent);
-    setStarredOnly(item.filters.starredOnly); setIncludeArchived(item.filters.includeArchived);
+    setStarredOnly(item.filters.starredOnly); setLabelId(item.filters.labels[0] ?? ""); setIncludeArchived(item.filters.includeArchived);
     setDateFrom(item.filters.dateFrom); setDateThrough(item.filters.dateThrough);
     setModel(item.filters.model); setHost(item.filters.host); setSearchSort(item.sort);
     setBookmarksOnly(false); setSavedSearchFeedback(""); setShowSaveSearch(false);
@@ -746,9 +753,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     const modelMissing = !!model && !options.models.includes(model);
     const remoteHost = host.startsWith("remote:") ? host.slice(7) : "";
     const hostMissing = !!remoteHost && !options.hosts.includes(remoteHost);
+    const labelMissing = staleLabel;
     if (projectMissing) setProject(null);
     if (modelMissing) setModel("");
     if (hostMissing) setHost("");
+    if (labelMissing) setLabelId("");
     setHasReplayedSavedSearch(false);
     setSavedSearchFeedback("Unavailable filters cleared from this search");
   };
@@ -886,8 +895,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     project: project && !options.projects.some(option => option.path === project) ? project : null,
     model: model && !options.models.includes(model) ? model : "",
     host: remoteHost && !options.hosts.includes(remoteHost) ? remoteHost : "",
+    label: staleLabel,
   } : null;
-  const hasUnavailableSavedScope = !!savedScopeIssue && !!(savedScopeIssue.project || savedScopeIssue.model || savedScopeIssue.host);
+  const hasUnavailableSavedScope = !!savedScopeIssue && !!(savedScopeIssue.project || savedScopeIssue.model || savedScopeIssue.host || savedScopeIssue.label);
 
   return <div ref={scopeRef} onChangeCapture={()=>{preferenceTouched.current=true;}} onClickCapture={()=>{preferenceTouched.current=true;}} className={cn("workbench-layout relative flex h-full min-h-0 min-w-0", mobileDetail && "detail-open")}>
     <aside aria-label={t.library} aria-hidden={!sidebarOpen} inert={!sidebarOpen}
@@ -895,7 +905,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         sidebarOpen ? "w-[240px] px-2 pt-2 pb-3 opacity-100 max-[1100px]:w-[200px]" : "invisible w-0 border-r-0 p-0 opacity-0")}>
       <div className={sectionHeading}>{t.library}</div>
       <SharedLayoutBg inset={0} className="gap-px" pillClassName="rounded-none bg-chip/70">
-        <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !agent && !host && !model && !dateFrom && !dateThrough && !includeArchived)} type="button"
+        <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !labelId && !agent && !host && !model && !dateFrom && !dateThrough && !includeArchived)} type="button"
           onClick={() => { clearFilters(); setBookmarksOnly(false); if(detail.kind==="project")navigateDetail({kind:"home"}); }}>
           <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />{t.all}<span className="label-mono ml-auto text-muted-foreground">{sessionTotal}</span>
         </button>
@@ -911,6 +921,12 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           <HugeiconsIcon icon={Archive01Icon} size={16} strokeWidth={1.8} />{t.includeArchived}
         </button>}
       </SharedLayoutBg>
+      {labels.length > 0 && !bookmarksOnly && <><div className={sectionHeading}>Labels</div>
+        <div className="max-h-[20vh] overflow-y-auto">
+          {labels.map(label => <button className={navClass(labelId === label.id)} key={label.id} type="button" aria-pressed={labelId === label.id}
+            title={label.name} onClick={() => setLabelId(value => value === label.id ? "" : label.id)}>
+            <div className="flex w-full min-w-0 items-center gap-2.5"><span className="min-w-0 truncate">{label.name}</span></div></button>)}
+        </div></>}
       <div className={sectionHeading}>{t.projects}</div>
       <div className="max-h-[31vh] overflow-y-auto">
         {projectOptions.map(item => <button className={navClass(project === item.path)}
@@ -975,8 +991,20 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <option value="">All hosts</option><option value="local">Local sessions</option>
               {[...new Set([...options.hosts,...(host.startsWith("remote:") ? [host.slice(7)] : [])])].map(value=><option value={`remote:${value}`} key={value}>{value}</option>)}
             </select></label>
+            <label>Label<select aria-label="Filter by label" value={labelId} onChange={event=>setLabelId(event.target.value)} className="mt-1 w-full min-w-0 bg-chip p-1">
+              <option value="">All labels</option>{labels.map(label=><option value={label.id} key={label.id}>{label.name}</option>)}
+              {staleLabel && <option value={labelId}>Unavailable label</option>}
+            </select></label>
             <button type="button" className="text-left underline" onClick={()=>{clearFilters();if(detail.kind==="project")navigateDetail({kind:"home"});}}>Clear filters</button>
           </div>
+          <LabelManager api={api} labels={labels} onCatalog={setLabels}
+            onDeleted={id=>{
+              setSessions(current=>current.map(item=>item.labels?.includes(id) ? {...item,labels:item.labels.filter(value=>value!==id)} : item));
+              setHits(current=>current.map(hit=>hit.session.labels?.includes(id) ? {...hit,session:{...hit.session,labels:hit.session.labels.filter(value=>value!==id)}} : hit));
+              setOpened(current=>current?.labels?.includes(id) ? {...current,labels:current.labels.filter(value=>value!==id)} : current);
+              if(labelId===id){setLabelId("");setNotice("Label deleted; label filter cleared");}
+              else if(labelId)void reload();
+            }} />
           <p className="mt-2 text-muted-foreground">Dates use session update time in your local time zone, including the entire end day.</p>
         </details>
         {dates.error && <p role="alert" className="mt-2 text-destructive">{dates.error}</p>}
@@ -1034,8 +1062,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {savedScopeIssue.project && <span>Project: {basename(savedScopeIssue.project)}</span>}
             {savedScopeIssue.model && <span>Model: {savedScopeIssue.model}</span>}
             {savedScopeIssue.host && <span>Host: {savedScopeIssue.host}</span>}
+            {savedScopeIssue.label && <span>Label: unavailable</span>}
           </div>
           <button type="button" className="mt-1 underline" onClick={clearUnavailableScopes}>Clear unavailable filters</button>
+        </div>}
+        {staleLabel && !hasReplayedSavedSearch && <div role="status" className="mt-2 border-l-2 border-olive pl-2 text-[12px]">
+          <p>The selected label no longer exists. This view keeps that exact filter, so no sessions match.</p>
+          <button type="button" className="mt-1 underline" onClick={() => setLabelId("")}>Clear label filter</button>
         </div>}
         {savedSearchWriteStatus === "pending" && <p role="status" className="mt-1 text-[11px] text-muted-foreground">Saving saved searches…</p>}
         {savedSearchWriteStatus === "failed" && <p role="alert" className="mt-1 text-[11px] text-destructive">Latest saved-search change is not saved. Make another change to retry.</p>}
@@ -1091,6 +1124,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{group ? <SearchHighlight text={plainTitle(session.title)} query={searchContext.query} /> : plainTitle(session.title)}</strong>
             <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
               <HugeiconsIcon icon={Folder01Icon} size={12} className="flex-none" /><span className="truncate">{session.project_path ? basename(session.project_path) : t.unknown}</span></div>
+            {!!session.labels?.length && <p className="mt-1 truncate text-[12px] text-muted-foreground">
+              {labels.filter(label => session.labels?.includes(label.id)).map(label => label.name).join(" · ")}</p>}
             {group && <p className="mt-1 text-[12px] text-muted-foreground">
               {group.title_match && "Title match · "}{group.message_matches} matching message{group.message_matches === 1 ? "" : "s"}
             </p>}
@@ -1157,6 +1192,14 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
           </div>
         </header>
+        <SessionLabelEditor api={api} session={selected} labels={labels} onError={message=>setError(message,null)}
+          onChange={ids=>{
+            const apply=(item:SessionMeta)=>item.key===selected.key ? {...item,labels:ids} : item;
+            setSessions(current=>current.map(apply));
+            setHits(current=>current.map(hit=>hit.session.key===selected.key ? {...hit,session:apply(hit.session)} : hit));
+            setOpened(current=>current ? apply(current) : current);
+            if(labelId)void reload();
+          }} />
         <ResumeReadiness api={api} session={selected} active={isActive} running={!!terminals[selected.key]?.running} onResume={()=>void resume()} />
         <SessionConnections api={api} session={selected} active={isActive} onOpen={session=>choose(session,0)} />
         {readingPositionResolution?.status === "stale" && <p role="status" className="bg-chip px-5 py-2 text-sm">{t.readingStale}</p>}

@@ -251,6 +251,7 @@ mod tests {
             can_delete: false,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         };
         db.conn().execute_batch("BEGIN").unwrap();
         let insert = |meta: &SessionMeta| {

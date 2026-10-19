@@ -9,6 +9,7 @@ export function matchesSession(session: SessionMeta, query: SessionQuery) {
     && (query.updated_from_ms == null || session.updated_at >= query.updated_from_ms)
     && (query.updated_before_ms == null || session.updated_at < query.updated_before_ms)
     && (!query.starred_only || session.starred)
+    && (!query.label_id || !!session.labels?.includes(query.label_id))
     && (query.include_archived || !session.archived);
 }
 
@@ -38,6 +39,8 @@ export function calendarRange(from: string, through: string) {
 }
 
 
+export const validLabelId = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{32}$/.test(value);
+
 export function restoredFilters(raw: string | null) {
   if (!raw) return null;
   try {
@@ -48,7 +51,7 @@ export function restoredFilters(raw: string | null) {
     const dateFrom=text("dateFrom"), dateThrough=text("dateThrough");
     calendarRange(dateFrom,dateThrough);
     const host=text("host");
-    return {agent,project:text("project") || null,starredOnly:value.starredOnly === true,includeArchived:value.includeArchived === true,
+    return {agent,project:text("project") || null,starredOnly:value.starredOnly === true,labelId:validLabelId(value.labelId) ? value.labelId : "",includeArchived:value.includeArchived === true,
       dateFrom,dateThrough,model:text("model"),host:host === "local" || host.startsWith("remote:") ? host : "",
       searchSort:(value.searchSort === "recent" ? "recent" : "relevance") as SearchSort};
   } catch { return null; }

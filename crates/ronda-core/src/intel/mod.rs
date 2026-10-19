@@ -341,6 +341,7 @@ mod tests {
             can_delete: true,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         }
     }
     fn user(seq: i64, t: i64, text: &str) -> TranscriptMessage {

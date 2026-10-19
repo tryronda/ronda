@@ -28,3 +28,18 @@ test("calendar ranges include the end day, validate dates, and respect local DST
     expect((range.updated_before_ms!-range.updated_from_ms!)/3_600_000).toBe(23);
   }
 });
+
+test("label filters match assigned ids exactly and persisted choices must be well-formed ids", async () => {
+  const { matchesSession } = await import("./library-filters");
+  const id = "0123456789abcdef0123456789abcdef";
+  const session = { key: "k", agent: "codex", host: null, project_path: null, model: null, updated_at: 1, starred: false, archived: false, labels: [id] } as never;
+  const bare = { ...(session as object), labels: undefined } as never;
+  expect(matchesSession(session, { label_id: id } as never)).toBe(true);
+  expect(matchesSession(session, { label_id: "f".repeat(32) } as never)).toBe(false);
+  expect(matchesSession(bare, { label_id: id } as never)).toBe(false);
+  expect(matchesSession(bare, { label_id: null } as never)).toBe(true);
+  expect(matchesSession(bare, {} as never)).toBe(true);
+  expect(restoredFilters(JSON.stringify({ labelId: id }))?.labelId).toBe(id);
+  for (const labelId of ["ABCDEF0123456789abcdef0123456789", "short", 7, null, ["x"]]) expect(restoredFilters(JSON.stringify({ labelId }))?.labelId).toBe("");
+  expect(restoredFilters("{}")?.labelId).toBe("");
+});

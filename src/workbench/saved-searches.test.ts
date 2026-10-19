@@ -7,7 +7,7 @@ import {
 const saved: SavedSearch = {
   id: "123e4567-e89b-42d3-a456-426614174000", name: "Connection failures", query: "ECONNRESET",
   filters: { project: "/projects/demo", agent: "codex", starredOnly: false, includeArchived: true,
-    dateFrom: "2026-01-01", dateThrough: "2026-01-31", model: "gpt-5", host: "remote:buildbox" }, sort: "recent",
+    dateFrom: "2026-01-01", dateThrough: "2026-01-31", model: "gpt-5", host: "remote:buildbox", labels: [] }, sort: "recent",
 };
 
 test("saved-search document accepts only the complete supported versioned shape", () => {
@@ -45,6 +45,7 @@ test("exact duplicate identity includes name, query, every scope and sort", () =
     host: saved.filters.host, model: saved.filters.model, dateThrough: saved.filters.dateThrough,
     dateFrom: saved.filters.dateFrom, includeArchived: saved.filters.includeArchived,
     starredOnly: saved.filters.starredOnly, agent: saved.filters.agent, project: saved.filters.project,
+    labels: saved.filters.labels,
   } };
   expect(savedSearchIdentity(saved)).toBe(savedSearchIdentity(reordered));
   expect(savedSearchIdentity(saved)).not.toBe(savedSearchIdentity({ ...saved, query: "timeout" }));
@@ -52,4 +53,31 @@ test("exact duplicate identity includes name, query, every scope and sort", () =
   expect(savedSearchIdentity(saved)).not.toBe(savedSearchIdentity({ ...saved, sort: "relevance" }));
   const duplicate = { id: "123e4567-e89b-42d3-a456-426614174001", name: saved.name, query: saved.query, sort: saved.sort, filters: reordered.filters };
   expect(parseSavedSearches(JSON.stringify({ version: 1, items: [saved, duplicate] })).ok).toBe(false);
+});
+
+const LABEL = "0123456789abcdef0123456789abcdef";
+const legacyFilters = (({ labels: _labels, ...rest }) => rest)(saved.filters);
+
+test("version 1 documents saved before labels replay with no label filter and stay valid", () => {
+  const legacy = JSON.stringify({ version: 1, items: [{ ...saved, filters: legacyFilters }] });
+  const parsed = parseSavedSearches(legacy);
+  expect(parsed.ok && parsed.document.items[0].filters.labels).toEqual([]);
+  expect(parsed.ok && parsed.document.items[0]).toEqual(saved);
+  // The legacy and normalized spellings are the same definition.
+  const twin = { ...saved, id: "123e4567-e89b-42d3-a456-426614174001" };
+  expect(parseSavedSearches(JSON.stringify({ version: 1, items: [{ ...saved, filters: legacyFilters }, twin] })).ok).toBe(false);
+});
+
+test("a saved label scope is exactly one allowed id and part of the duplicate identity", () => {
+  const labelled = { ...saved, filters: { ...saved.filters, labels: [LABEL] } };
+  const raw = serializeSavedSearches([labelled])!;
+  const parsed = parseSavedSearches(raw);
+  expect(parsed.ok && parsed.document.items[0].filters.labels).toEqual([LABEL]);
+  expect(savedSearchIdentity(labelled)).not.toBe(savedSearchIdentity(saved));
+  expect(parseSavedSearches(JSON.stringify({ version: 1, items: [saved, { ...labelled, id: "123e4567-e89b-42d3-a456-426614174002" }] })).ok).toBe(true);
+  for (const labels of [[LABEL, "fedcba9876543210fedcba9876543210"], ["not-a-label-id"], [""], LABEL, null, [7]]) {
+    expect(parseSavedSearches(JSON.stringify({ version: 1, items: [{ ...saved, filters: { ...saved.filters, labels } }] })).ok).toBe(false);
+  }
+  expect(parseSavedSearches(JSON.stringify({ version: 1, items: [{ ...saved, filters: { ...saved.filters, labels: [], extra: 1 } }] })).ok).toBe(false);
+  expect(parseSavedSearches(JSON.stringify({ version: 2, items: [labelled] })).ok).toBe(false);
 });

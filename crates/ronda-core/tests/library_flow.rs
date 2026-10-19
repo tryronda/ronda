@@ -363,6 +363,7 @@ fn synthetic_session(key: &str, source_path: &str) -> ParsedSession {
             can_delete: false,
             starred: false,
             pinned: false,
+            labels: Vec::new(),
         },
         messages: Vec::new(),
     }
