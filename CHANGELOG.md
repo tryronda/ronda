@@ -10,6 +10,7 @@ All notable changes to Ronda are recorded here.
 - **Library sort options** let you order the session list by recently updated (the default), least recently updated, newest created, or most tokens from a compact **Sort sessions** control. Pinned sessions stay at the top, ties break consistently, your choice is remembered with your filters, and changing it clears any bulk selection. Search keeps its own relevance/recent sort.
 - **Keyboard shortcuts help** opens with `?` and lists every shortcut in the app.
 - **Bookmarks export to Markdown** saves a readable notes file grouped by session, next to the existing JSON backup.
+- **Insights** can show every row of a leaderboard and copy a Markdown summary of your totals and the current board.
 
 ### Privacy
 - Tool output can contain secrets. It is included only when you opt in, and a note says so; nothing is sent anywhere.
