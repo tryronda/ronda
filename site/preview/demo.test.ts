@@ -330,3 +330,23 @@ test("preview bookmark rows follow the labels of their linked sessions", async (
   expect(filtered.length).toBeLessThan(all.length);
   expect(await backend.listBookmarks("", { ...queryDefaults, label_id: "f".repeat(32) })).toEqual([]);
 });
+
+test("preview session Markdown honors the export options, fences safely, and refuses oversized copies", async () => {
+  installDemoBackend();
+  const key = "claude-code:demo-0";
+  const plain = await backend.sessionMarkdown(key, { includeTools: false, includeThinking: false });
+  expect(plain).toMatch(/^# .+\n\nAgent: claude-code\nProject: .+\n\n## User · 0\n\n/);
+  expect(plain).toBe(await backend.sessionMarkdown(key));
+  expect(plain).not.toContain("Reference: ronda://");
+  const messages = await backend.getTranscript(key);
+  messages[1].thinking = "plan ```` inside";
+  messages[1].tool_calls = [{ id: "t", name: "Bash", input: "echo ``` hi", output: "secret-output", is_error: true }];
+  const detailed = await backend.sessionMarkdown(key, { includeTools: true, includeThinking: true });
+  expect(detailed).toContain("Reference: ronda://session/" + key + "#1");
+  expect(detailed).toContain("- Tool: Bash (recorded error)\n\nInput:\n\n````\necho ``` hi\n````");
+  expect(detailed).toContain("Thinking:\n\n`````\nplan ```` inside\n`````");
+  expect(await backend.sessionMarkdown(key, { includeTools: false, includeThinking: true })).not.toContain("secret-output");
+  messages[0].text = "x".repeat(100_001);
+  await expect(backend.sessionMarkdown(key)).rejects.toThrow("Nothing was copied or truncated");
+  await expect(backend.sessionMarkdown("missing")).rejects.toThrow("unknown session");
+});

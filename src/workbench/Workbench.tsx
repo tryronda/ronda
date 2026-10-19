@@ -6,7 +6,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Archive01Icon, ArrowLeft01Icon, ArrowRight01Icon, Delete02Icon, FileSearchIcon, Folder01Icon, PinIcon, ReloadIcon,
-  Search01Icon, StarIcon, Download01Icon, Cancel01Icon, Bookmark01Icon,
+  Search01Icon, StarIcon, Cancel01Icon, Bookmark01Icon,
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Loader } from "@/components/motion/loader";
@@ -25,11 +25,12 @@ import { TranscriptNavigation } from "./TranscriptNavigation";
 import { ResumeReadiness } from "./ResumeReadiness";
 import { SessionConnections } from "./SessionConnections";
 import { LabelManager, SessionLabelEditor } from "./SessionLabels";
+import { ExportMenu } from "./ExportMenu";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
   type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
-  type WorkbenchBackend, type BookmarkView, type LibraryOptions, type SessionLabel, type WorkbenchLocation, type ProjectContext,
+  type WorkbenchBackend, type ExportOptions, type BookmarkView, type LibraryOptions, type SessionLabel, type WorkbenchLocation, type ProjectContext,
 } from "./api";
 import { scanSummary } from "./scan-summary";
 import { canRevealSource } from "./source-reveal";
@@ -870,13 +871,19 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     } catch (cause) { setError(String(cause)); }
   };
 
-  const exportMarkdown = async () => {
+  const exportMarkdown = async (exportOptions: ExportOptions) => {
     if (!selected) return;
     try {
       const destination = await save({ defaultPath: `${selected.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "session"}.md`,
         filters: [{ name: "Markdown", extensions: ["md"] }] });
-      if (destination) { await api.exportSession(selected.key, destination); setNotice(t.exported); }
+      if (destination) { await api.exportSession(selected.key, destination, exportOptions); setNotice(t.exported); }
     } catch (cause) { setError(String(cause)); }
+  };
+
+  const copySession = async (exportOptions: ExportOptions) => {
+    if (!selected) return;
+    try { await navigator.clipboard.writeText(await api.sessionMarkdown(selected.key, exportOptions)); setError(null); setNotice("Session copied as Markdown"); }
+    catch (cause) { setError(`Could not copy session: ${cause instanceof Error ? cause.message : String(cause)}`, null); }
   };
 
   const trash = async () => {
@@ -1176,7 +1183,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <IconButton icon={FileSearchIcon} title={t.revealSource} onClick={() => void revealSourceFile()} />}
             <IconButton icon={StarIcon} title={selected.starred ? t.unstar : t.star} active={selected.starred} onClick={() => void flag("starred")} />
             <IconButton icon={PinIcon} title={selected.pinned ? t.unpin : t.pin} active={selected.pinned} onClick={() => void flag("pinned")} />
-            <IconButton icon={Download01Icon} title={t.export} onClick={() => void exportMarkdown()} />
+            <ExportMenu onExport={exportMarkdown} onCopy={copySession} />
             {readingPositionResolution?.status === "resolved" && !terminalShown[selected.key] && <button type="button" className="label-mono ml-2 bg-chip px-3 py-2 text-[12px] hover:bg-foreground hover:text-background"
               onClick={continueReading}>{t.continueReading}</button>}
             {selected.can_delete && !selected.host && !selected.parent_key && <IconButton icon={Delete02Icon} title={t.trash} onClick={() => void trash()} />}

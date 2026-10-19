@@ -30,6 +30,12 @@ Interactive UI checks use the real site Workbench with fixed synthetic data and 
 
 **Release record:** v1.0.18 / `v1.0.18`, PR [#20](https://github.com/tryronda/ronda/pull/20), reviewed source `658fb3c8650dcb22574c671b7b135c4e4504456f`, merged as `3dddfe7fb23f2fca52c76b7af16bedbc903e2d12`. Published release: https://github.com/tryronda/ronda/releases/tag/v1.0.18. PR, main, release, and Pages runs 37335985889, 37337216781, 37338324205, and 37339216044 succeeded. Production behavior and the sole arm64 DMG/checksum were independently verified; DMG SHA-256 `0883e50b4552b29093c06f85142706868d8fe8279a621a792f0f9ab2f25a960b`.
 
+## Follow-up 22: session export options — selected for v1.0.22
+
+**Scope:** The session export control opens a popover with **Include tool input and output** and **Include thinking** (both off by default, with a "Tool output may contain secrets." note when tools are on) and two actions: **Export Markdown…** (the existing save flow, no size cap) and **Copy as Markdown** (clipboard, capped at the 100,000-character context limit, failing with a message that suggests file export rather than truncating). With both options off the file is byte-identical to the previous export, pinned by a Rust regression test. No CLI/MCP contract changes and no new dependencies.
+
+**Implementation note:** One Rust formatter, `render_session_markdown` in `src-tauri/src/lib.rs`, serves both actions. `ExportOptions` (`#[serde(default)]`, camelCase) is an optional argument of `export_session`; the new `session_markdown` command returns the string and enforces the copy cap. Either option adds a timestamp and `ronda://session/<key>#<seq>` reference per message; included tool input/output/thinking use a backtick fence longer than any run inside the content. The browser preview mirrors this with a synthetic-data `session_markdown`. Option choices are not persisted. Remaining before release: exact-head Apple silicon DMG/sidecar CI and a fresh remote tag/release check, which are not performed in this branch.
+
 ## Ranked unallocated backlog
 
 These candidates remain ordered product plans with no allocated release versions. Recheck `origin/main`, the latest GitHub release, open PRs, and annotated `vX.Y.Z` tags immediately before allocating each patch; a hotfix can take the next number and shift later labels. Keep each release a small compatible patch on a `ronda/` branch.
@@ -39,6 +45,13 @@ These candidates remain ordered product plans with no allocated release versions
 3. **Bulk session triage** on `ronda/bulk-session-triage`. Size S.
 4. **Bookmark labels — lower priority.** Message bookmarks already store a note, excerpt, and library search. A second label vocabulary on bookmarks overlaps session labels; revisit only if session labels prove insufficient for bookmark retrieval.
 5. **Recover a session moved to system Trash — exploratory.** No release target until exact original items restore safely across macOS, Windows, and Linux, including multi-file sessions and name collisions.
+
+Updated ranking after session labels (v1.0.21) and session export options (v1.0.22):
+
+1. **Bulk session triage** on `ronda/bulk-session-triage`. Size S.
+2. **Library sort options** on `ronda/library-sort`. Size S. Sort the browse list by updated (default), oldest, created, or tokens, with pinned sessions floating first; add an optional `sort` field to `SessionQuery` with a serde default that preserves current ordering.
+3. **Local session titles** on `ronda/local-session-titles`. Size S/M.
+4. **Older transcript-message paging** on `ronda/transcript-paging`. Size M. Ship last.
 
 ## Candidate: session labels / lightweight collections
 

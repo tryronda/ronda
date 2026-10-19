@@ -4,6 +4,14 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.22] - 2026-10-19
+
+### Added
+- **Session export options** add a popover to the session export control with **Include tool input and output** and **Include thinking**, both off by default, and a new **Copy as Markdown** action beside **Export Markdown…**. Included tool input, tool output, and thinking appear in fences that outgrow any backticks inside them, with timestamps and `ronda://` message references. Copying refuses sessions over 100,000 characters with a message suggesting file export instead of truncating. With both options off, the exported file is unchanged.
+
+### Privacy
+- Tool output can contain secrets. It is included only when you opt in, and a note says so; nothing is sent anywhere.
+
 ## [1.0.21] - 2026-10-19
 
 ### Added

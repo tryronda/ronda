@@ -126,6 +126,36 @@ let bookmarks: MessageBookmark[] = [];
 let bookmarkSeed = Promise.resolve();
 let sessions: SessionMeta[] = [];
 const transcripts = new Map<string, TranscriptMessage[]>();
+
+const COPY_LIMIT = 100_000;
+const fenced = (text: string) => {
+  const fence = "`".repeat((text.match(/`+/g) ?? []).reduce((longest, run) => Math.max(longest, run.length + 1), 3));
+  return `${fence}\n${text}\n${fence}`;
+};
+
+/** Browser-preview twin of the desktop exporter, over synthetic sample sessions only. */
+export function sessionMarkdown(key: string, options: { includeTools?: boolean; includeThinking?: boolean }) {
+  const session = sessions.find(item => item.key === key);
+  if (!session) throw new Error("unknown session");
+  const detailed = !!(options.includeTools || options.includeThinking);
+  let out = `# ${session.title}\n\nAgent: ${session.agent}\nProject: ${session.project_path ?? "Unknown"}\n\n`;
+  for (const message of transcripts.get(key) ?? []) {
+    out += `## ${message.role[0].toUpperCase()}${message.role.slice(1)} · ${message.seq}\n\n${message.text}\n\n`;
+    if (detailed) out += `Timestamp: ${message.timestamp === null ? "Not recorded" : new Date(message.timestamp).toISOString()}\nReference: ronda://session/${key}#${message.seq}\n\n`;
+    if (options.includeThinking && message.thinking !== null) out += `Thinking:\n\n${fenced(message.thinking)}\n\n`;
+    for (const tool of message.tool_calls) {
+      out += `- Tool: ${tool.name}${options.includeTools && tool.is_error ? " (recorded error)" : ""}\n`;
+      if (options.includeTools) {
+        if (tool.input !== null) out += `\nInput:\n\n${fenced(tool.input)}\n`;
+        if (tool.output !== null) out += `\nOutput:\n\n${fenced(tool.output)}\n`;
+        out += "\n";
+      }
+    }
+  }
+  const length = Array.from(out).length;
+  if (length > COPY_LIMIT) throw new Error(`Session Markdown is ${length} characters, over the 100,000 character copy limit. Nothing was copied or truncated; use Export Markdown to save it to a file.`);
+  return out;
+}
 let prefs = new Map<string, string>();
 let hosts: { host: string; enabled: boolean; last_sync_ms: number | null; last_error: string | null }[] = [];
 let scanCount = 0;
@@ -736,6 +766,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "open_project_folder": throw new Error("Desktop required: sample sessions cannot open a project folder.");
     case "reveal_source_file": throw new Error("Desktop required: sample sessions cannot reveal a source file.");
     case "export_session": return null;
+    case "session_markdown": return sessionMarkdown(args.key as string, (args.options ?? {}) as { includeTools?: boolean; includeThinking?: boolean });
     case "get_insights": return insights();
     case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);
     case "get_session": return sessions.find(session => session.key === args.key) ?? null;

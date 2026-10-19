@@ -141,6 +141,9 @@ export interface BookmarkImport { imported: number; unchanged: number; conflicts
 export type ResumeReason = "unsupported_agent"|"unsupported_child"|"unknown_project"|"missing_folder"|"missing_executable"|"inspection_unknown"|"remote_environment_unchecked";
 export interface ResumeReadiness {supported:boolean;ready:boolean;host:string|null;original_directory:string|null;directory:string|null;program:string|null;args:string[];command:string|null;reasons:ResumeReason[];sample?:boolean;}
 
+/** Both default to off; off reproduces the original export exactly. */
+export type ExportOptions = { includeTools: boolean; includeThinking: boolean };
+
 export interface WorkbenchBackend {
   getPref(key: string): Promise<string | null>;
   setPref(key: string, value: string): Promise<void>;
@@ -172,7 +175,8 @@ export interface WorkbenchBackend {
   revealSourceFile(key:string):Promise<void>;
   setResumeFolder(key:string,folder:string):Promise<ResumeReadiness>;
   resumeSession(key: string): Promise<string>;
-  exportSession(key: string, destination: string): Promise<void>;
+  exportSession(key: string, destination: string, options?: ExportOptions): Promise<void>;
+  sessionMarkdown(key: string, options?: ExportOptions): Promise<string>;
   trashSession(key: string): Promise<void>;
   onLibraryChanged(callback: () => void): Promise<() => void>;
 }
@@ -208,7 +212,8 @@ export const backend: WorkbenchBackend = {
   revealSourceFile:key=>invoke("reveal_source_file",{key}),
   setResumeFolder:(key,folder)=>invoke("set_resume_folder",{key,folder}),
   resumeSession: (key) => invoke("resume_session", { key }),
-  exportSession: (key, destination) => invoke("export_session", { key, destination }),
+  exportSession: (key, destination, options) => invoke("export_session", { key, destination, options }),
+  sessionMarkdown: (key, options) => invoke("session_markdown", { key, options }),
   trashSession: (key) => invoke("trash_session", { key }),
   onLibraryChanged: async (callback) => listen("library-changed", callback),
 };
