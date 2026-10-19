@@ -299,10 +299,19 @@ function validateFilter(query: SessionQuery) {
 }
 
 
+function sortOrder(sort: SessionQuery["sort"], a: SessionMeta, b: SessionMeta) {
+  switch (sort) {
+    case "updated_asc": return a.updated_at - b.updated_at;
+    case "created_desc": return b.created_at - a.created_at;
+    case "tokens_desc": return (b.tokens ?? -1) - (a.tokens ?? -1);
+    default: return b.updated_at - a.updated_at;
+  }
+}
+
 function listSessions(query: SessionQuery) {
   validateFilter(query);
   const matched = sessions.filter(session => matchesSession(session, query))
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at - a.updated_at || a.key.localeCompare(b.key));
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || sortOrder(query.sort, a, b) || a.key.localeCompare(b.key));
   return query.limit == null ? matched : matched.slice(0, query.limit);
 }
 

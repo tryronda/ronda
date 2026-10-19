@@ -46,11 +46,12 @@ These candidates remain ordered product plans with no allocated release versions
 4. **Bookmark labels — lower priority.** Message bookmarks already store a note, excerpt, and library search. A second label vocabulary on bookmarks overlaps session labels; revisit only if session labels prove insufficient for bookmark retrieval.
 5. **Recover a session moved to system Trash — exploratory.** No release target until exact original items restore safely across macOS, Windows, and Linux, including multi-file sessions and name collisions.
 
-Updated ranking after session labels (v1.0.21), session export options (v1.0.22), and bulk session triage (v1.0.23):
+Updated ranking after session labels (v1.0.21), session export options (v1.0.22), bulk session triage (v1.0.23), and library sort options (v1.0.24):
 
-1. **Library sort options** on `ronda/library-sort`. Size S. Sort the browse list by updated (default), oldest, created, or tokens, with pinned sessions floating first; add an optional `sort` field to `SessionQuery` with a serde default that preserves current ordering.
-2. **Local session titles** on `ronda/local-session-titles`. Size S/M.
-3. **Older transcript-message paging** on `ronda/transcript-paging`. Size M. Ship last.
+1. **Local session titles** on `ronda/local-session-titles`. Size S/M. Top remaining candidate.
+2. **Older transcript-message paging** on `ronda/transcript-paging`. Size M. Ship last.
+
+Library sort options (`ronda/library-sort`, size S) are **Selected for v1.0.24**; see the implementation note below.
 
 ## Candidate: session labels / lightweight collections
 
@@ -101,6 +102,14 @@ Updated ranking after session labels (v1.0.21), session export options (v1.0.22)
 **Implementation note (v1.0.23):** `Store::set_flags_bulk` applies `(key, starred, pinned)` triples in one transaction, skips keys that no longer exist, and returns the number of sessions updated; the `set_session_flags_bulk` Tauri command wraps it and caps a batch at 1,000. `BulkTriage.tsx` holds the selection helpers and the labelled toolbar; `Workbench.tsx` owns the selection set, range anchor, and in-memory undo. Selection clears when the search, filters, sort, or bookmark view change (which includes saved-search replay), and keys that leave the loaded list are pruned. Escape clears the selection and the result is announced through a polite status region. A **Select visible** control was not added. The browser preview keeps flags in memory. Remaining before release: exact-head Apple silicon DMG/sidecar CI and a fresh remote tag/release check, which are not performed in this branch.
 
 **Risks and size:** Main risks are selecting sessions outside the current filter, implying bulk delete, partial bulk writes, and colliding with context-bundle checkboxes. **Size:** S. Allocate a patch only after this feature is selected and a fresh tag/release check.
+
+## Candidate: library sort options — selected for v1.0.24
+
+**Problem:** `list_sessions` and `session_page` hard-wired pinned-first then `updated_at` descending; only grouped search had a sort.
+
+**Implementation note (v1.0.24):** `SessionQuery` gains an optional `sort` (`LibrarySort`: `updated_desc` default, `updated_asc`, `created_desc`, `tokens_desc`) with a serde default, so payloads that omit it keep the previous order exactly; unknown values are rejected. `LibrarySort::compare` orders pinned sessions first, then the chosen field, then key; sessions without a token count sort after counted ones. Because `list_sessions` already filters and orders the full metadata set in memory, no SQL ORDER BY or `json_extract` was needed, no schema changed, and the CLI and MCP contracts are untouched. The browse list shows a **Sort sessions** control only when no search is active; the choice is stored as `librarySort` in the `library_filters` preference, and a missing or malformed value restores the default. Saved searches and grouped-search sort are unchanged. Changing the sort clears the bulk selection through the existing filter-reset path. The browser preview honors the sort.
+
+**Measurement:** On a synthetic 5,000-session in-memory fixture in a debug build (`cargo test -p ronda-core --lib library_sort_timing -- --ignored --nocapture`), a 100-row `session_page` took about 100-110 ms for every option, so the sort itself adds no measurable cost over the existing metadata scan, which dominates. This is a debug-build probe, not a release benchmark or a UI paint measurement. Remaining before release: exact-head Apple silicon DMG/sidecar CI and a fresh remote tag/release check, which are not performed in this branch.
 
 ## Candidate: local session titles
 

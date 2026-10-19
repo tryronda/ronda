@@ -59,6 +59,12 @@ export interface TranscriptSnapshot {
   fingerprints: string[];
 }
 
+export type LibrarySort = "updated_desc" | "updated_asc" | "created_desc" | "tokens_desc";
+export const librarySorts: { value: LibrarySort; label: string }[] = [
+  { value: "updated_desc", label: "Recently updated" }, { value: "updated_asc", label: "Least recently updated" },
+  { value: "created_desc", label: "Newest created" }, { value: "tokens_desc", label: "Most tokens" },
+];
+
 export interface SessionQuery {
   agent: AgentId | null;
   project_path: string | null;
@@ -71,6 +77,7 @@ export interface SessionQuery {
   model?: string | null;
   local_only?: boolean;
   label_id?: string | null;
+  sort?: LibrarySort;
 }
 
 export interface LibraryOptions { agents: AgentId[]; models: string[]; hosts: string[]; projects: ProjectInfo[] }

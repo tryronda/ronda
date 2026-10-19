@@ -1,4 +1,4 @@
-import {agentIds, type AgentId, type SearchSort, type SessionMeta, type SessionQuery } from "./api";
+import {agentIds, librarySorts, type AgentId, type LibrarySort, type SearchSort, type SessionMeta, type SessionQuery } from "./api";
 
 export function matchesSession(session: SessionMeta, query: SessionQuery) {
   return (!query.agent || session.agent === query.agent)
@@ -53,6 +53,7 @@ export function restoredFilters(raw: string | null) {
     const host=text("host");
     return {agent,project:text("project") || null,starredOnly:value.starredOnly === true,labelId:validLabelId(value.labelId) ? value.labelId : "",includeArchived:value.includeArchived === true,
       dateFrom,dateThrough,model:text("model"),host:host === "local" || host.startsWith("remote:") ? host : "",
+      librarySort:(librarySorts.find(option=>option.value === value.librarySort)?.value ?? "updated_desc") as LibrarySort,
       searchSort:(value.searchSort === "recent" ? "recent" : "relevance") as SearchSort};
   } catch { return null; }
 }

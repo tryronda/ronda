@@ -373,12 +373,7 @@ impl Store {
             .map(|row| -> Result<_> { self.overlay_flags(serde_json::from_str(&row?)?) })
             .collect::<Result<_>>()?;
         sessions.retain(|session| filter.matches(session));
-        sessions.sort_by(|a, b| {
-            b.pinned
-                .cmp(&a.pinned)
-                .then(b.updated_at.cmp(&a.updated_at))
-                .then(a.key.cmp(&b.key))
-        });
+        sessions.sort_by(|a, b| filter.sort.compare(a, b));
         if let Some(limit) = filter.limit {
             sessions.truncate(limit);
         }
@@ -957,6 +952,7 @@ impl Store {
 #[cfg(test)]
 mod search_tests {
     use super::*;
+    use crate::LibrarySort;
 
     #[test]
     fn local_source_root_match_uses_path_components_and_host_scope() {
@@ -1047,6 +1043,140 @@ mod search_tests {
         assert_eq!(flags(&store, "c"), (false, false));
         assert_eq!(flags(&store, "b"), (true, false));
         assert_eq!(store.set_flags_bulk(&[]).unwrap(), 0);
+    }
+
+    fn sort_fixture(rows: &[(&str, i64, i64, Option<i64>)]) -> Store {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for (key, created, updated, tokens) in rows {
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+                "title":key,"project_path":"/p","source_path":"/missing-fixture","created_at":created,"updated_at":updated,
+                "model":null,"source":null,"tokens":tokens,"archived":false,"metadata_only":false,"can_delete":true
+            }))
+            .unwrap();
+            store
+                .upsert(
+                    &ParsedSession {
+                        meta,
+                        messages: vec![],
+                    },
+                    "1",
+                )
+                .unwrap();
+        }
+        store
+    }
+
+    #[test]
+    fn library_sort_orders_each_option_with_pins_first_and_key_ties() {
+        let store = sort_fixture(&[
+            ("a", 10, 50, Some(5)),
+            ("b", 40, 50, Some(500)),
+            ("c", 30, 10, None),
+            ("d", 20, 90, Some(500)),
+            ("e", 40, 70, Some(1)),
+        ]);
+        store.set_flags("c", false, true).unwrap();
+        let keys = |sort: LibrarySort| -> Vec<String> {
+            store
+                .list_sessions(&SessionQuery {
+                    sort,
+                    ..Default::default()
+                })
+                .unwrap()
+                .into_iter()
+                .map(|s| s.key)
+                .collect()
+        };
+        assert_eq!(keys(LibrarySort::UpdatedDesc), ["c", "d", "e", "a", "b"]);
+        assert_eq!(keys(LibrarySort::UpdatedAsc), ["c", "a", "b", "e", "d"]);
+        assert_eq!(keys(LibrarySort::CreatedDesc), ["c", "b", "e", "d", "a"]);
+        assert_eq!(keys(LibrarySort::TokensDesc), ["c", "b", "d", "a", "e"]);
+        store.set_flags("a", false, true).unwrap();
+        assert_eq!(keys(LibrarySort::TokensDesc), ["a", "c", "b", "d", "e"]);
+        assert_eq!(keys(LibrarySort::UpdatedAsc)[..2], ["c", "a"]);
+        // A second pinned session without a token count still sorts after counted pins.
+        store.set_flags("c", false, false).unwrap();
+        assert_eq!(keys(LibrarySort::TokensDesc)[..2], ["a", "b"]);
+    }
+
+    #[test]
+    fn legacy_queries_without_sort_keep_recent_first_and_pages_stay_stable() {
+        let rows: Vec<(String, i64, i64, Option<i64>)> = (0..250)
+            .map(|i| (format!("k{i:03}"), i, (i % 40) * 10, Some((i * 7) % 13)))
+            .collect();
+        let borrowed: Vec<(&str, i64, i64, Option<i64>)> = rows
+            .iter()
+            .map(|(k, c, u, t)| (k.as_str(), *c, *u, *t))
+            .collect();
+        let store = sort_fixture(&borrowed);
+        let legacy: SessionQuery =
+            serde_json::from_str(r#"{"include_archived":false,"limit":null}"#).unwrap();
+        assert_eq!(legacy.sort, LibrarySort::UpdatedDesc);
+        let explicit = SessionQuery {
+            sort: LibrarySort::UpdatedDesc,
+            ..Default::default()
+        };
+        let a = store.session_page(&legacy, 0, 100).unwrap();
+        let b = store.session_page(&explicit, 0, 100).unwrap();
+        let ka: Vec<_> = a.items.iter().map(|s| s.key.clone()).collect();
+        assert_eq!(
+            ka,
+            b.items.iter().map(|s| s.key.clone()).collect::<Vec<_>>()
+        );
+        assert!(a
+            .items
+            .windows(2)
+            .all(|w| w[0].updated_at >= w[1].updated_at));
+        let tokens: SessionQuery = serde_json::from_str(r#"{"sort":"tokens_desc"}"#).unwrap();
+        let mut seen = Vec::new();
+        for offset in [0, 100, 200] {
+            let page = store.session_page(&tokens, offset, 100).unwrap();
+            assert_eq!(page.total, 250);
+            seen.extend(page.items.into_iter().map(|s| (s.tokens, s.key)));
+        }
+        assert_eq!(seen.len(), 250);
+        assert!(seen
+            .windows(2)
+            .all(|w| w[0].0 > w[1].0 || (w[0].0 == w[1].0 && w[0].1 < w[1].1)));
+        assert_eq!(seen.iter().map(|s| &s.1).collect::<HashSet<_>>().len(), 250);
+        assert!(serde_json::from_str::<SessionQuery>(r#"{"sort":"bogus"}"#).is_err());
+    }
+
+    #[test]
+    #[ignore = "timing probe: cargo test -p ronda-core library_sort_timing -- --ignored --nocapture"]
+    fn library_sort_timing_5000_sessions() {
+        let rows: Vec<(String, i64, i64, Option<i64>)> = (0..5000)
+            .map(|i| {
+                (
+                    format!("k{i:04}"),
+                    i,
+                    (i * 37) % 9001,
+                    Some((i * 7919) % 100_000),
+                )
+            })
+            .collect();
+        let borrowed: Vec<(&str, i64, i64, Option<i64>)> = rows
+            .iter()
+            .map(|(k, c, u, t)| (k.as_str(), *c, *u, *t))
+            .collect();
+        let store = sort_fixture(&borrowed);
+        for sort in [
+            LibrarySort::UpdatedDesc,
+            LibrarySort::UpdatedAsc,
+            LibrarySort::CreatedDesc,
+            LibrarySort::TokensDesc,
+        ] {
+            let query = SessionQuery {
+                sort,
+                ..Default::default()
+            };
+            let start = std::time::Instant::now();
+            for _ in 0..5 {
+                store.session_page(&query, 0, 100).unwrap();
+            }
+            println!("{sort:?}: {:?} per page", start.elapsed() / 5);
+        }
     }
 
     #[test]

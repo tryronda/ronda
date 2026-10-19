@@ -30,7 +30,7 @@ import { BulkTriageBar, bulkMessages, flagsOf, nextFlags, rangeKeys, sessionCoun
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
-  type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
+  type LibrarySort, librarySorts, type SearchGroup, type SearchSort, type SessionMeta, type SessionQuery, type TranscriptMessage,
   type WorkbenchBackend, type ExportOptions, type BookmarkView, type LibraryOptions, type SessionLabel, type WorkbenchLocation, type ProjectContext,
 } from "./api";
 import { scanSummary } from "./scan-summary";
@@ -249,6 +249,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [detailHeaderHeight, setDetailHeaderHeight] = useState(88);
   const [hits, setHits] = useState<SearchGroup[]>([]);
   const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
+  const [librarySort, setLibrarySort] = useState<LibrarySort>("updated_desc");
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [readingPositionRecords, setReadingPositionRecords] = useState<ReadingPositionRecord[]>([]);
   const readingPositionRecordsRef = useRef(readingPositionRecords);
@@ -266,17 +267,17 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       const saved=restoredFilters(raw);
       if (!saved) return;
       setProject(saved.project); setAgent(saved.agent); setStarredOnly(saved.starredOnly); setLabelId(saved.labelId); setIncludeArchived(saved.includeArchived);
-      setDateFrom(saved.dateFrom); setDateThrough(saved.dateThrough); setModel(saved.model); setHost(saved.host); setSearchSort(saved.searchSort);
+      setDateFrom(saved.dateFrom); setDateThrough(saved.dateThrough); setModel(saved.model); setHost(saved.host); setSearchSort(saved.searchSort); setLibrarySort(saved.librarySort);
     }).catch(cause=>{if (!cancelled) setError(`Could not restore filters: ${String(cause)}`);});
     return ()=>{cancelled=true;};
   },[api]);
   useEffect(() => {
     if (!preferencesLoaded || dates.error) return;
-    const value=JSON.stringify({project,agent,starredOnly,labelId,includeArchived,dateFrom,dateThrough,model,host,searchSort});
+    const value=JSON.stringify({project,agent,starredOnly,labelId,includeArchived,dateFrom,dateThrough,model,host,searchSort,librarySort});
     // Serialize writes so an older preference cannot finish after a newer choice.
     preferenceWrite.current=preferenceWrite.current.catch(()=>{}).then(()=>api.setPref("library_filters",value))
       .catch(cause=>setError(`Could not save filters: ${String(cause)}`));
-  },[api,preferencesLoaded,project,agent,starredOnly,labelId,includeArchived,dateFrom,dateThrough,model,host,searchSort,dates.error]);
+  },[api,preferencesLoaded,project,agent,starredOnly,labelId,includeArchived,dateFrom,dateThrough,model,host,searchSort,librarySort,dates.error]);
   const savedSearchReadRun = useRef(0);
   const restoreSavedSearches = useCallback(async () => {
     const run = ++savedSearchReadRun.current;
@@ -446,8 +447,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
   const filter = useMemo<SessionQuery>(() => ({ ...queryDefaults, agent,
     project_path: project, starred_only: starredOnly, label_id: labelId || null, include_archived: includeArchived,
-    ...dates.range, model:model || null, host:host.startsWith("remote:") ? host.slice(7) : null, local_only:host === "local" }),
-    [agent, project, starredOnly, labelId, includeArchived, dates, model, host]);
+    ...dates.range, model:model || null, host:host.startsWith("remote:") ? host.slice(7) : null, local_only:host === "local", sort:librarySort }),
+    [agent, project, starredOnly, labelId, includeArchived, dates, model, host, librarySort]);
 
   useEffect(() => {
     pageGeneration.current++;
@@ -1080,6 +1081,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           <p className="mt-2 text-muted-foreground">Dates use session update time in your local time zone, including the entire end day.</p>
         </details>
         {dates.error && <p role="alert" className="mt-2 text-destructive">{dates.error}</p>}
+        {!bookmarksOnly && !search.trim() && <label className="label-mono mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+          Sort sessions
+          <select aria-label="Sort sessions" value={librarySort} className="min-w-0 bg-paper p-1 text-foreground"
+            onChange={event => setLibrarySort(event.target.value as LibrarySort)}>
+            {librarySorts.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>}
         {!bookmarksOnly && search.trim() && <label className="label-mono mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           Sort results
           <select aria-label="Sort search results" value={searchSort} className="min-w-0 bg-paper p-1 text-foreground"

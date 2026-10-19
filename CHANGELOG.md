@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-10-19
+
+### Added
+- **Library sort options** let you order the session list by recently updated (the default), least recently updated, newest created, or most tokens from a compact **Sort sessions** control. Pinned sessions stay at the top, ties break consistently, your choice is remembered with your filters, and changing it clears any bulk selection. Search keeps its own relevance/recent sort.
+
 ## [1.0.23] - 2026-10-19
 
 ### Added

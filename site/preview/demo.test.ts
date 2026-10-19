@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, test, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { backend, queryDefaults, type BookmarkBackup, type BookmarkImport } from "@/workbench/api";
+import { backend, queryDefaults, type BookmarkBackup, type SessionQuery, type BookmarkImport } from "@/workbench/api";
 import { appendDemoMessage, changeFirstDemoAssistantReply, installDemoBackend, insertEarlierDemoMessage, uninstallDemoBackend } from "./demo";
 import { captureReadingPosition, resolveReadingPosition } from "@/workbench/reading-position";
 
@@ -370,4 +370,29 @@ test("bulk triage preview changes only the requested flag, skips unknown keys, a
   uninstallDemoBackend();
   installDemoBackend();
   expect((await backend.getSession(a.key))!.starred).toBe(!!a.starred);
+});
+
+test("library sort options order pages with pins first and deterministic ties", async () => {
+  installDemoBackend();
+  const base = {...queryDefaults, limit:null};
+  const rows = (await backend.listSessions(base)).filter(session=>!session.parent_key);
+  const pinned = rows.filter(session=>session.pinned).length;
+  expect(pinned).toBeGreaterThan(0);
+  const keys = async (sort?: SessionQuery["sort"]) => {
+    const out: string[] = [];
+    for (let offset=0;offset<rows.length;offset+=37) out.push(...(await backend.sessionPage({...base,sort},offset,37)).items.map(session=>session.key));
+    return out;
+  };
+  expect(await keys()).toEqual(rows.map(session=>session.key));
+  expect(await keys("updated_desc")).toEqual(await keys());
+  for (const sort of ["updated_asc","created_desc","tokens_desc"] as const) {
+    const got = await keys(sort);
+    expect(new Set(got).size).toBe(rows.length);
+    const byKey = new Map(rows.map(session=>[session.key,session]));
+    expect(got.slice(0,pinned).every(key=>byKey.get(key)!.pinned)).toBe(true);
+    expect(got.slice(pinned).every(key=>!byKey.get(key)!.pinned)).toBe(true);
+    const value = (key: string) => { const session = byKey.get(key)!; return sort==="updated_asc" ? -session.updated_at : sort==="created_desc" ? session.created_at : session.tokens ?? -1; };
+    const rest = got.slice(pinned);
+    expect(rest.every((key,index)=>index===0 || value(rest[index-1])>value(key) || (value(rest[index-1])===value(key) && rest[index-1]<key))).toBe(true);
+  }
 });
