@@ -50,6 +50,8 @@ const copy = {
   loading: 'Loading settings…', working: 'Working…',
 } as const;
 
+const trimSlashes = (path: string) => path.length > 1 ? path.replace(/[\\/]+$/, '') || path.slice(0, 1) : path;
+
 function shellQuote(value: string) { return `'${value.replaceAll("'", "'\\''")}'`; }
 
 export function SettingsView({ embedded = false }: { embedded?: boolean }) {
@@ -149,8 +151,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     if (!path || !(path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\'))) {
       setError(t.missingPath); return;
     }
-    if (locations.some(row => row.agent === locationAgent && row.path === path)) {
-      setLocationPath(''); return;
+    const duplicate = locations.find(row => row.agent === locationAgent && trimSlashes(row.path) === trimSlashes(path));
+    if (duplicate) {
+      setError('');
+      setNotice(`Already configured: ${duplicate.agent} · ${duplicate.path} (${duplicate.enabled ? 'enabled' : 'disabled; turn it on with its switch in the list above'})`);
+      return;
     }
     const custom = { ...customRoots, [locationAgent]: [...(customRoots[locationAgent] ?? []), path] };
     void act(async () => { await saveLocations(custom, disabledRoots); setLocationPath(''); }, t.saved);
