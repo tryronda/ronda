@@ -7,6 +7,8 @@ All notable changes to Ronda are recorded here.
 ### Added
 - **Copy reference** on each saved bookmark in the library.
 
+### Fixed
+- **Export Markdown…** in the browser preview now downloads the sample Markdown instead of doing nothing.
 
 ## [1.2.0] - 2026-10-19
 

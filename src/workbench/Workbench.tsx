@@ -1041,7 +1041,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const exportMarkdown = async (exportOptions: ExportOptions) => {
     if (!selected) return;
     try {
-      const destination = await save({ defaultPath: `${selected.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "session"}.md`,
+      const fileName = `${selected.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "session"}.md`;
+      if (!inTauri() || embedded) {
+        const url = URL.createObjectURL(new Blob([await api.sessionMarkdown(selected.key, exportOptions)], { type: "text/markdown;charset=utf-8" }));
+        const link = document.createElement("a"); link.href = url; link.download = fileName; link.click(); URL.revokeObjectURL(url);
+        setError(null); setNotice(t.exported); return;
+      }
+      const destination = await save({ defaultPath: fileName,
         filters: [{ name: "Markdown", extensions: ["md"] }] });
       if (destination) { await api.exportSession(selected.key, destination, exportOptions); setNotice(t.exported); }
     } catch (cause) { setError(String(cause)); }
