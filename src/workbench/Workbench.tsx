@@ -26,6 +26,7 @@ import { ResumeReadiness } from "./ResumeReadiness";
 import { SessionConnections } from "./SessionConnections";
 import { LabelManager, SessionLabelEditor } from "./SessionLabels";
 import { ExportMenu } from "./ExportMenu";
+import { BulkTriageBar, bulkMessages, flagsOf, nextFlags, rangeKeys, sessionCount, type BulkAction, type BulkUndo } from "./BulkTriage";
 import { SearchExcerpts, SearchHighlight } from "./SearchExcerpts";
 import {
   backend as defaultBackend, queryDefaults, type AgentId, type ProjectInfo,
@@ -780,6 +781,70 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setMobileDetail(true);
   };
 
+  // Bulk triage: selection covers loaded rows only and never survives a change of the matching set.
+  const [selection, setSelection] = useState<Set<string>>(() => new Set());
+  const selectionAnchor = useRef<string | null>(null);
+  const bulkGeneration = useRef(0);
+  const [bulkUndo, setBulkUndo] = useState<BulkUndo | null>(null);
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => {
+    bulkGeneration.current++; selectionAnchor.current = null;
+    setSelection(current => current.size ? new Set() : current); setBulkUndo(null); setBulkStatus("");
+  }, [filter, search, searchSort, bookmarksOnly]);
+  const rowOrder = visible.map(row => row.session.key);
+  useEffect(() => {
+    if (!selection.size) return;
+    const loaded = new Set(rowOrder);
+    if ([...selection].some(key => !loaded.has(key))) setSelection(current => new Set([...current].filter(key => loaded.has(key))));
+  });
+  const toggleRow = (key: string) => {
+    selectionAnchor.current = key;
+    setSelection(current => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next; });
+  };
+  const extendRows = (key: string) => {
+    const anchor = selectionAnchor.current ?? (selectedKey && rowOrder.includes(selectedKey) ? selectedKey : null);
+    selectionAnchor.current = anchor ?? key;
+    const range = rangeKeys(rowOrder, anchor, key);
+    setSelection(current => new Set([...current, ...range]));
+  };
+  const clearSelection = () => { selectionAnchor.current = null; setSelection(new Set()); };
+  const patchFlags = (updates: [string, boolean, boolean][]) => {
+    const byKey = new Map(updates.map(([key, starred, pinned]) => [key, { starred, pinned }]));
+    setSessions(current => current.map(s => byKey.has(s.key) ? { ...s, ...byKey.get(s.key) } : s));
+    setHits(current => current.map(h => byKey.has(h.session.key) ? { ...h, session: { ...h.session, ...byKey.get(h.session.key) } } : h));
+  };
+  const writeBulk = async (updates: [string, boolean, boolean][]) => {
+    const applied = await api.setSessionFlagsBulk(updates);
+    patchFlags(updates);
+    if (applied < updates.length) void reload();
+    return applied;
+  };
+  const applyBulk = async (action: BulkAction) => {
+    if (bulkBusy) return;
+    const rows = visible.map(row => row.session).filter(row => selection.has(row.key));
+    if (!rows.length) return;
+    const generation = bulkGeneration.current;
+    const updates = rows.map((row): [string, boolean, boolean] => { const next = nextFlags(action, flagsOf(row)); return [row.key, next.starred, next.pinned]; });
+    const previous = rows.map((row): [string, boolean, boolean] => [row.key, !!row.starred, !!row.pinned]);
+    setBulkBusy(true);
+    try {
+      const applied = await writeBulk(updates);
+      setError(null); setBulkStatus(`${bulkMessages[action]} ${sessionCount(applied)}`);
+      if (generation === bulkGeneration.current) setBulkUndo({ label: bulkMessages[action], previous });
+    } catch (cause) { setError(String(cause)); setBulkStatus("Bulk update failed"); }
+    finally { setBulkBusy(false); }
+  };
+  const undoBulk = async () => {
+    if (bulkBusy || !bulkUndo) return;
+    setBulkBusy(true);
+    try {
+      const applied = await writeBulk(bulkUndo.previous);
+      setError(null); setBulkStatus(`Undid ${bulkUndo.label.toLowerCase()} for ${sessionCount(applied)}`); setBulkUndo(null);
+    } catch (cause) { setError(String(cause)); setBulkStatus("Undo failed"); }
+    finally { setBulkBusy(false); }
+  };
+
   const flag = async (kind: "starred" | "pinned") => {
     if (!selected) return;
     const starred = kind === "starred" ? !selected.starred : selected.starred;
@@ -1081,15 +1146,28 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         {savedSearchWriteStatus === "failed" && <p role="alert" className="mt-1 text-[11px] text-destructive">Latest saved-search change is not saved. Make another change to retry.</p>}
         {savedSearchFeedback && <p role="status" className="mt-1 text-[11px] text-muted-foreground">{savedSearchFeedback}</p>}
       </div>
+      <BulkTriageBar selected={selection.size} status={bulkStatus} busy={bulkBusy} canUndo={!!bulkUndo}
+        onAction={action=>void applyBulk(action)} onUndo={()=>void undoBulk()} onClear={clearSelection} />
       <div ref={sessionListRef} className="session-list min-h-0 flex-1 overflow-y-auto p-2" aria-label={t.recent} aria-busy={loading || loadingMore || searching || scanning}
         onKeyDown={event => {
           if (event.target instanceof HTMLElement && event.target.closest("textarea,input,[contenteditable='true']")) return;
+          const card = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-session-key]") : null;
+          if (event.key === " " && card && !bookmarksOnly) { event.preventDefault(); toggleRow(card.dataset.sessionKey!); return; }
+          if (event.key === "Escape" && selection.size) { event.preventDefault(); clearSelection(); return; }
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           const cards = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".session-card"));
           const index = cards.indexOf(document.activeElement as HTMLButtonElement);
           const next = cards[index + (event.key === "ArrowDown" ? 1 : -1)];
-          if (next) { event.preventDefault(); next.focus(); }
-        }}>
+          if (next) {
+            event.preventDefault();
+            if (event.shiftKey && card && next.dataset.sessionKey) {
+              if (selectionAnchor.current === null) selectionAnchor.current = card.dataset.sessionKey!;
+              extendRows(next.dataset.sessionKey);
+            }
+            next.focus();
+          }
+        }}
+        onKeyUp={event => { if (event.key === " " && event.target instanceof HTMLElement && event.target.closest("[data-session-key]")) event.preventDefault(); }}>
         {bookmarksOnly ? <>
           {visibleBookmarks.length === 0 && <p className="m-5 text-muted-foreground">No matching bookmarks. Save a message from a transcript to keep its excerpt and add a note.</p>}
           {visibleBookmarks.map(view => <div key={`${view.bookmark.session_key}:${view.bookmark.seq}`} className="border-b border-border p-3">
@@ -1115,12 +1193,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             : <PixelField cols={4} rows={4} cell={9} seed={3} className="size-9" />}
           <strong className="text-[14px] font-medium text-foreground">{loading ? t.loading : search.trim() ? searching ? t.searching : t.searchEmpty : t.noSessions}</strong>
           {!search.trim() && <p className="m-0 text-[12px] leading-relaxed">{options.agents.length ? "Try clearing filters or including archived sessions." : t.noSessionsHint}</p>}</div> : visible.map(({ session, group }, index) =>
-          <div key={session.key}><button type="button"
-            aria-current={selectedKey === session.key ? "true" : undefined}
+          <div key={session.key}><button type="button" data-session-key={session.key}
+            aria-current={selectedKey === session.key ? "true" : undefined} aria-pressed={selection.has(session.key)}
             className={cn("session-card relative mb-1 block w-full px-3 py-3 text-left transition-[background-color,border-color,box-shadow] duration-100 [contain-intrinsic-size:auto_86px] [content-visibility:auto]",
               !reduce && index < 16 && "animate-in fade-in fill-mode-both duration-150",
-              selectedKey === session.key ? "selected bg-paper shadow-lift" : "hover:bg-chip/70")}
-            onClick={() => choose(session)}>
+              selectedKey === session.key ? "selected bg-paper shadow-lift" : "hover:bg-chip/70",
+              selection.has(session.key) && "bg-chip outline outline-1 outline-sky-deep")}
+            onClick={event => event.shiftKey ? extendRows(session.key) : event.metaKey || event.ctrlKey ? toggleRow(session.key) : choose(session)}>
             {selectedKey === session.key && <motion.span layoutId="session-marker" className="absolute top-0 bottom-0 left-0 w-[3px] bg-sky-deep"
               transition={{ type: "spring", stiffness: 700, damping: 45 }} />}
             <div className="label-mono flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
@@ -1136,6 +1215,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {group && <p className="mt-1 text-[12px] text-muted-foreground">
               {group.title_match && "Title match · "}{group.message_matches} matching message{group.message_matches === 1 ? "" : "s"}
             </p>}
+            {selection.has(session.key) && <span className="absolute right-3 top-8 text-[11px] text-sky-deep">✓ Selected</span>}
             {session.starred && <span className="absolute right-3 bottom-3 text-[12px] text-olive" aria-label={t.favorites}>★</span>}
           </button>{group && <SearchExcerpts
             key={`${session.key}-${searchContext.query}-${searchContext.revision}-${JSON.stringify(searchContext.filter)}`}

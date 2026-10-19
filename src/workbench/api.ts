@@ -165,6 +165,8 @@ export interface WorkbenchBackend {
   sessionRelationships(key:string):Promise<SessionRelationships>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
+  /** Apply [key, starred, pinned] triples in one transaction; resolves with how many existing sessions changed. */
+  setSessionFlagsBulk(updates: [string, boolean, boolean][]): Promise<number>;
   listSessionLabels(): Promise<SessionLabel[]>;
   createSessionLabel(name: string): Promise<SessionLabel>;
   renameSessionLabel(id: string, name: string): Promise<SessionLabel>;
@@ -202,6 +204,7 @@ export const backend: WorkbenchBackend = {
   sessionRelationships:key=>invoke("get_session_relationships",{key}),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
+  setSessionFlagsBulk: updates => invoke("set_session_flags_bulk", { updates }),
   listSessionLabels: () => invoke("list_session_labels"),
   createSessionLabel: name => invoke("create_session_label", { name }),
   renameSessionLabel: (id, name) => invoke("rename_session_label", { id, name }),

@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.23] - 2026-10-19
+
+### Added
+- **Bulk session triage** lets you select several loaded sessions with ⌘/Ctrl-click, Shift-click, Space, or Shift+arrow keys, then star, unstar, pin, or unpin them together from a compact bar. Each action changes only its own flag, the result is announced, and **Undo** restores the previous values of the last bulk action. Changing the search, filters, or sort clears the selection. Nothing is deleted, archived, or labeled in bulk.
+
 ## [1.0.22] - 2026-10-19
 
 ### Added

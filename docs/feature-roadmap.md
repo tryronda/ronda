@@ -42,16 +42,15 @@ These candidates remain ordered product plans with no allocated release versions
 
 1. **Session labels / lightweight collections** on `ronda/session-labels`. Size M. **Selected for v1.0.21** (see the implementation note below).
 2. **Older transcript-message paging** on `ronda/transcript-paging`. Size M.
-3. **Bulk session triage** on `ronda/bulk-session-triage`. Size S.
+3. **Bulk session triage** on `ronda/bulk-session-triage`. Size S. **Selected for v1.0.23** (see its implementation note below).
 4. **Bookmark labels — lower priority.** Message bookmarks already store a note, excerpt, and library search. A second label vocabulary on bookmarks overlaps session labels; revisit only if session labels prove insufficient for bookmark retrieval.
 5. **Recover a session moved to system Trash — exploratory.** No release target until exact original items restore safely across macOS, Windows, and Linux, including multi-file sessions and name collisions.
 
-Updated ranking after session labels (v1.0.21) and session export options (v1.0.22):
+Updated ranking after session labels (v1.0.21), session export options (v1.0.22), and bulk session triage (v1.0.23):
 
-1. **Bulk session triage** on `ronda/bulk-session-triage`. Size S.
-2. **Library sort options** on `ronda/library-sort`. Size S. Sort the browse list by updated (default), oldest, created, or tokens, with pinned sessions floating first; add an optional `sort` field to `SessionQuery` with a serde default that preserves current ordering.
-3. **Local session titles** on `ronda/local-session-titles`. Size S/M.
-4. **Older transcript-message paging** on `ronda/transcript-paging`. Size M. Ship last.
+1. **Library sort options** on `ronda/library-sort`. Size S. Sort the browse list by updated (default), oldest, created, or tokens, with pinned sessions floating first; add an optional `sort` field to `SessionQuery` with a serde default that preserves current ordering.
+2. **Local session titles** on `ronda/local-session-titles`. Size S/M.
+3. **Older transcript-message paging** on `ronda/transcript-paging`. Size M. Ship last.
 
 ## Candidate: session labels / lightweight collections
 
@@ -85,7 +84,7 @@ Updated ranking after session labels (v1.0.21) and session export options (v1.0.
 
 **Risks and size:** Main risks are losing the visible anchor on prepend, failing to load a jump target, breaking Continue-reading exact resolution, regressing live append, and still fingerprinting full histories. **Size:** M. Allocate a patch only after this feature is selected and a fresh tag/release check.
 
-## Candidate: bulk session triage
+## Candidate: bulk session triage — selected for v1.0.23
 
 **Problem:** Star and pin are single-session header actions through `set_session_flags` / `Store::set_flags`. Clearing a backlog of sessions to favorite or pin requires repeating that toggle. Context-bundle checkboxes already multi-select *messages*; the session list is single-select (`selectedKey`). Bulk destructive trash would collide with unresolved cross-platform restore, so this release stays reversible flag edits.
 
@@ -98,6 +97,8 @@ Updated ranking after session labels (v1.0.21) and session export options (v1.0.
 **Privacy and data behavior:** Bulk triage writes only existing star/pin bits in `user_data`. Undo stays process-local and is discarded on restart. Notices and errors use counts, not titles, paths, or queries. Diagnostics and bookmark JSON remain free of selection state.
 
 **Acceptance and verification:** Cover modifier and keyboard range selection; count accuracy; clear; star/unstar/pin/unpin leaving the opposite flag unchanged; undo restoring previous pairs; skipped missing keys; filtered-selection drop on query/filter/sort/saved-search replay; select-visible limited to loaded rows; load-more not auto-selecting; outside-filter open session excluded; no trash control in the bulk bar; accessibility names and collapsed-sidebar behavior. Exercise multi-select, flag changes, undo, and reload reset with synthetic preview data. Run frontend/Rust/release/site gates and exact-head Apple silicon DMG/sidecar CI with static metadata/checksum verification; no local app/Finder smoke. Recheck remote tags before allocating the next version.
+
+**Implementation note (v1.0.23):** `Store::set_flags_bulk` applies `(key, starred, pinned)` triples in one transaction, skips keys that no longer exist, and returns the number of sessions updated; the `set_session_flags_bulk` Tauri command wraps it and caps a batch at 1,000. `BulkTriage.tsx` holds the selection helpers and the labelled toolbar; `Workbench.tsx` owns the selection set, range anchor, and in-memory undo. Selection clears when the search, filters, sort, or bookmark view change (which includes saved-search replay), and keys that leave the loaded list are pruned. Escape clears the selection and the result is announced through a polite status region. A **Select visible** control was not added. The browser preview keeps flags in memory. Remaining before release: exact-head Apple silicon DMG/sidecar CI and a fresh remote tag/release check, which are not performed in this branch.
 
 **Risks and size:** Main risks are selecting sessions outside the current filter, implying bulk delete, partial bulk writes, and colliding with context-bundle checkboxes. **Size:** S. Allocate a patch only after this feature is selected and a fresh tag/release check.
 

@@ -350,3 +350,24 @@ test("preview session Markdown honors the export options, fences safely, and ref
   await expect(backend.sessionMarkdown(key)).rejects.toThrow("Nothing was copied or truncated");
   await expect(backend.sessionMarkdown("missing")).rejects.toThrow("unknown session");
 });
+
+test("bulk triage preview changes only the requested flag, skips unknown keys, and restores exactly", async () => {
+  installDemoBackend();
+  const { items } = await backend.sessionPage(queryDefaults, 0, 100);
+  const [a, b, c] = items;
+  const before = [a, b, c].map(item => [item.key, !!item.starred, !!item.pinned] as [string, boolean, boolean]);
+  const applied = await backend.setSessionFlagsBulk([
+    [a.key, true, !!a.pinned], [b.key, !!b.starred, true], ["demo:missing", true, true], [c.key, !c.starred, !c.pinned],
+  ]);
+  expect(applied).toBe(3);
+  const after = await Promise.all([a, b, c].map(item => backend.getSession(item.key)));
+  expect([after[0]!.starred, after[0]!.pinned]).toEqual([true, !!a.pinned]);
+  expect([after[1]!.starred, after[1]!.pinned]).toEqual([!!b.starred, true]);
+  expect([after[2]!.starred, after[2]!.pinned]).toEqual([!c.starred, !c.pinned]);
+  expect(await backend.setSessionFlagsBulk(before)).toBe(3);
+  const restored = await Promise.all([a, b, c].map(item => backend.getSession(item.key)));
+  expect(restored.map(item => [item!.key, !!item!.starred, !!item!.pinned])).toEqual(before);
+  uninstallDemoBackend();
+  installDemoBackend();
+  expect((await backend.getSession(a.key))!.starred).toBe(!!a.starred);
+});

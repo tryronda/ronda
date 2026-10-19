@@ -734,6 +734,17 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "set_session_flags":
       sessions = sessions.map(session => session.key === args.key ? { ...session, starred: args.starred as boolean, pinned: args.pinned as boolean } : session);
       return null;
+    case "set_session_flags_bulk": {
+      const updates = new Map((args.updates as [string, boolean, boolean][]).map(([key, starred, pinned]) => [key, { starred, pinned }]));
+      let applied = 0;
+      sessions = sessions.map(session => {
+        const update = updates.get(session.key);
+        if (!update) return session;
+        applied++;
+        return { ...session, ...update };
+      });
+      return applied;
+    }
     case "list_session_labels": return structuredClone(labelCatalog);
     case "create_session_label": return createLabel(args.name);
     case "rename_session_label": return renameLabel(args.id as string, args.name);

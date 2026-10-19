@@ -395,6 +395,31 @@ impl Store {
         Ok(())
     }
 
+    /// Apply star/pin pairs in one transaction. Keys that no longer exist are skipped;
+    /// returns how many distinct sessions were updated. Later duplicates win.
+    pub fn set_flags_bulk(&mut self, updates: &[(String, bool, bool)]) -> Result<usize> {
+        let tx = self.conn.transaction()?;
+        let mut applied = HashSet::new();
+        for (key, starred, pinned) in updates {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sessions WHERE key=?1)",
+                [key],
+                |r| r.get(0),
+            )?;
+            if !exists {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO user_data(session_key,starred,pinned) VALUES(?1,?2,?3) \
+                ON CONFLICT(session_key) DO UPDATE SET starred=excluded.starred,pinned=excluded.pinned",
+                params![key, starred, pinned],
+            )?;
+            applied.insert(key.as_str());
+        }
+        tx.commit()?;
+        Ok(applied.len())
+    }
+
     pub fn session_page(
         &self,
         filter: &SessionQuery,
@@ -974,6 +999,56 @@ mod search_tests {
             assert!(snippet.len() <= 264);
         }
     }
+    #[test]
+    fn bulk_flags_apply_in_one_pass_skip_missing_keys_and_keep_the_other_flag() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for key in ["a", "b", "c"] {
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+                "title":key,"project_path":"/p","source_path":"/missing-fixture","created_at":0,"updated_at":1,
+                "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
+            }))
+            .unwrap();
+            store
+                .upsert(
+                    &ParsedSession {
+                        meta,
+                        messages: vec![],
+                    },
+                    "1",
+                )
+                .unwrap();
+        }
+        store.set_flags("a", false, true).unwrap();
+        store.set_flags("b", true, false).unwrap();
+        let flags = |store: &Store, key: &str| {
+            let meta = store.get_session(key).unwrap().unwrap();
+            (meta.starred, meta.pinned)
+        };
+        let applied = store
+            .set_flags_bulk(&[
+                ("a".into(), true, true),
+                ("b".into(), true, false),
+                ("ghost".into(), true, true),
+                ("c".into(), true, false),
+            ])
+            .unwrap();
+        assert_eq!(applied, 3);
+        assert_eq!(flags(&store, "a"), (true, true));
+        assert_eq!(flags(&store, "b"), (true, false));
+        assert_eq!(flags(&store, "c"), (true, false));
+        assert!(store.get_session("ghost").unwrap().is_none());
+        // Restoring previous pairs is exact, and an empty batch changes nothing.
+        let applied = store
+            .set_flags_bulk(&[("a".into(), false, true), ("c".into(), false, false)])
+            .unwrap();
+        assert_eq!(applied, 2);
+        assert_eq!(flags(&store, "a"), (false, true));
+        assert_eq!(flags(&store, "c"), (false, false));
+        assert_eq!(flags(&store, "b"), (true, false));
+        assert_eq!(store.set_flags_bulk(&[]).unwrap(), 0);
+    }
+
     #[test]
     fn library_pages_and_search_share_filters_without_losing_large_libraries() {
         let mut store = Store::open(Path::new(":memory:")).unwrap();

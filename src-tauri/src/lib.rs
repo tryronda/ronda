@@ -484,6 +484,25 @@ async fn set_session_flags(
 }
 
 #[tauri::command]
+async fn set_session_flags_bulk(
+    state: State<'_, Shared>,
+    updates: Vec<(String, bool, bool)>,
+) -> CommandResult<usize> {
+    if updates.len() > 1000 {
+        return Err("Too many sessions in one bulk update".into());
+    }
+    off_main(state, move |state| {
+        state
+            .store
+            .lock()
+            .map_err(error)?
+            .set_flags_bulk(&updates)
+            .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn list_session_labels(
     state: State<'_, Shared>,
 ) -> CommandResult<Vec<ronda_core::labels::SessionLabel>> {
@@ -1647,6 +1666,7 @@ pub fn run() {
             get_local_source_refresh_health,
             scan,
             set_session_flags,
+            set_session_flags_bulk,
             list_session_labels,
             create_session_label,
             rename_session_label,
