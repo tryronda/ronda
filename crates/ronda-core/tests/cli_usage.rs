@@ -2,11 +2,14 @@ use ronda_core::Store;
 use std::process::{Command, Output};
 
 fn db() -> std::path::PathBuf {
-    let n = std::time::SystemTime::now()
+    // Parallel tests share a process id and can read the same clock tick, so add a counter.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("ronda-usage-{}-{n}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ronda-usage-{}-{t}-{n}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("ronda.db");
     Store::open(&path).unwrap();
