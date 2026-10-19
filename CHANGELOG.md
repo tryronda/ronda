@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- `ronda-cli` notes on stderr when `--limit` or `show` size options are clamped.
+
 ## [1.2.0] - 2026-10-19
 
 ### Added

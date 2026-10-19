@@ -175,6 +175,12 @@ fn setup(db: &std::path::Path) -> String {
         exe.display(), db.display(), exe.display(), exe.display(), exe.display(), mcp.display())
 }
 
+fn note_clamp(flag: &str, value: Option<usize>, bounds: (usize, usize)) {
+    if let Some(note) = query::clamp_note(flag, value, bounds) {
+        eprintln!("ronda-cli: {note}");
+    }
+}
+
 fn run() -> Result<String, (u8, String)> {
     let args: Vec<_> = env::args().skip(1).collect();
     let (db, args) = take_global(args).map_err(|e| (2, e))?;
@@ -229,6 +235,7 @@ fn run() -> Result<String, (u8, String)> {
             }
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
+            note_clamp("--limit", filter.limit, query::SEARCH_LIMIT);
             query::search(
                 &store,
                 &SearchArgs {
@@ -242,10 +249,18 @@ fn run() -> Result<String, (u8, String)> {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
+            note_clamp("--limit", filter.limit, query::SESSIONS_LIMIT);
             query::list_sessions(&store, &filter).map_err(|e| (1, e.to_string()))
         }
         "show" => {
             let show = parse_show(rest).map_err(|e| (2, e))?;
+            note_clamp("--messages", show.max_messages, query::SHOW_MESSAGES);
+            note_clamp("--chars", show.max_chars, query::SHOW_CHARS);
+            note_clamp(
+                "--message-chars",
+                show.max_message_chars,
+                query::SHOW_MESSAGE_CHARS,
+            );
             query::get_session(&store, &show).map_err(|e| (1, e.to_string()))
         }
         "projects" => {
@@ -258,6 +273,7 @@ fn run() -> Result<String, (u8, String)> {
                 return Err((2, "projects only accepts --since and --limit".into()));
             }
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
+            note_clamp("--limit", filter.limit, query::PROJECTS_LIMIT);
             query::list_projects(&store, filter.since.as_deref(), filter.limit)
                 .map_err(|e| (1, e.to_string()))
         }
