@@ -8,7 +8,7 @@ vi.mock("@/lib/tauri", () => ({ invoke: (...args: unknown[]) => invoke(...args),
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 vi.mock("./DiagnosticsExport", () => ({ DiagnosticsExport: () => null }));
 vi.mock("./BookmarkData", () => ({ BookmarkData: () => null }));
-import { SettingsView } from "./SettingsView";
+import { SettingsView, validSshHost } from "./SettingsView";
 
 afterEach(() => { document.body.innerHTML = ""; invoke.mockReset(); });
 
@@ -167,5 +167,27 @@ test("adding an already configured location explains it, keeps the path, and sav
     await attempt("gemini", "/Users/me/.gemini/tmp");
     expect(host.querySelector('.panel-notice')?.textContent).toMatch(/\(disabled; turn it on with its switch/);
     expect(invoke.mock.calls.some(call => call[0] === "set_pref")).toBe(false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("validSshHost mirrors the core rules", () => {
+  for (const ok of ["box", "me@box.example.com", "a_b-c.d", "user@10.0.0.1"]) expect(validSshHost(ok)).toBe(true);
+  for (const bad of ["", "-oProxyCommand=x", "a b", "host;rm", "bøx", "a/b"]) expect(validSshHost(bad)).toBe(false);
+});
+
+test("remote host entry rejects invalid and duplicate names without calling the backend", async () => {
+  const { host, root } = await mountSettings([], [{ host: "box", enabled: false, last_sync_ms: null, last_error: null }], "Remote hosts");
+  try {
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="SSH host or alias"]')!;
+    const add = () => Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-form button")).find(b => b.textContent === "Add")!;
+    await typeInto(input, "-oProxyCommand=x");
+    await act(async () => { add().click(); await Promise.resolve(); });
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Use letters, numbers, @ . _ - only; cannot start with -");
+    await typeInto(input, "box");
+    await act(async () => { add().click(); await Promise.resolve(); });
+    expect(host.querySelector('.panel-notice')?.textContent).toBe("Already configured: box");
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(invoke.mock.calls.some(call => call[0] === "set_remote_host")).toBe(false);
+    expect(input.value).toBe("box");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

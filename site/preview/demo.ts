@@ -805,6 +805,8 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "get_local_source_refresh_health": return structuredClone(localSourceHealth);
     case "list_remote_hosts": return hosts;
     case "set_remote_host": {
+      const name = args.host as string;
+      if (!name || name.startsWith("-") || !/^[A-Za-z0-9@._-]+$/.test(name)) throw new Error("invalid SSH host");
       const existing = hosts.find(item => item.host === args.host);
       if (existing) existing.enabled = args.enabled as boolean;
       else hosts.push({ host: args.host as string, enabled: true, last_sync_ms: null, last_error: null });

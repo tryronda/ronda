@@ -396,3 +396,11 @@ test("library sort options order pages with pins first and deterministic ties", 
     expect(rest.every((key,index)=>index===0 || value(rest[index-1])>value(key) || (value(rest[index-1])===value(key) && rest[index-1]<key))).toBe(true);
   }
 });
+
+test("preview remote hosts reject names the desktop core would refuse", async () => {
+  installDemoBackend();
+  for (const bad of ["", "-oProxyCommand=x", "a b", "host;rm", "a/b"]) await expect(invoke("set_remote_host", { host: bad, enabled: true })).rejects.toThrow("invalid SSH host");
+  await invoke("set_remote_host", { host: "me@box.example.com", enabled: true });
+  expect((await invoke<{ host: string }[]>("list_remote_hosts")).map(item => item.host)).toContain("me@box.example.com");
+  uninstallDemoBackend();
+});

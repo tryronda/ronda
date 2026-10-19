@@ -9,6 +9,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Adding a location that is already configured now says so instead of silently clearing the field.
+- Remote host entry explains invalid or duplicate host names.
 
 ## [1.2.0] - 2026-10-19
 

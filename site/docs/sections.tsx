@@ -201,7 +201,7 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
   {
     id: "remote", title: "Remote hosts",
     body: <>
-      <P>Add an SSH alias or `user@host` under **Settings → Remote hosts**. SSH must connect without prompts, and `rsync` must be installed on both machines.</P>
+      <P>Add an SSH alias or `user@host` under **Settings → Remote hosts**. SSH must connect without prompts, and `rsync` must be installed on both machines. Host names may use letters, numbers, `@`, `.`, `_`, and `-` only and cannot start with `-`; Ronda explains invalid or duplicate entries.</P>
       <P>Ronda mirrors an allowlist of session paths into its own data directory and indexes that mirror. Remote sessions can't be moved to Trash. **Resume** connects to the host over `ssh -t` in Ronda's terminal and starts the agent there. Removing a host removes its mirror.</P>
     </>,
   },

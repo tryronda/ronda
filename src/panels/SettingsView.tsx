@@ -35,6 +35,7 @@ const copy = {
   atLeast: 'at least',
   enabled: 'Enabled', disabled: 'Disabled', default: 'Default', custom: 'Custom',
   addLocation: 'Add location', agent: 'Agent', path: 'Absolute folder path', add: 'Add', remove: 'Remove',
+  invalidHost: 'Use letters, numbers, @ . _ - only; cannot start with -', alreadyHost: 'Already configured',
   missingPath: 'Enter an absolute folder path.', noLocations: 'No locations found.',
   remoteHelp: 'Sync another machine over SSH. The host must already connect without prompts.',
   sshHost: 'SSH host or alias', sync: 'Sync now', lastSync: 'Last sync', never: 'Never',
@@ -51,6 +52,11 @@ const copy = {
 } as const;
 
 const trimSlashes = (path: string) => path.length > 1 ? path.replace(/[\\/]+$/, '') || path.slice(0, 1) : path;
+
+/** Mirrors the core rule: non-empty, no leading '-', only ASCII letters, digits and @ . _ - */
+export function validSshHost(host: string): boolean {
+  return /^[A-Za-z0-9@._][A-Za-z0-9@._-]*$/.test(host);
+}
 
 function shellQuote(value: string) { return `'${value.replaceAll("'", "'\\''")}'`; }
 
@@ -176,6 +182,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   function addHost() {
     const host = hostInput.trim(); if (!host) return;
+    if (!validSshHost(host)) { setNotice(''); setError(t.invalidHost); return; }
+    if (hosts.some(item => item.host === host)) { setError(''); setNotice(`${t.alreadyHost}: ${host}`); return; }
     void act(async () => { await invoke('set_remote_host', { host, enabled: true });
       await loadHosts(); setHostInput(''); }, t.saved);
   }
