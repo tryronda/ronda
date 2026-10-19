@@ -53,3 +53,17 @@ test("Prompts only explains an empty result and offers all messages", async () =
     expect(host.textContent).not.toContain("No prompts in this session.");
   } finally { await unmount(); }
 });
+
+test("Copy reference writes the ronda link, including for tool-only messages", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const toolOnly: TranscriptMessage = { ...message(3, "assistant", ""), tool_calls: [{ id: "t", name: "Bash", input: "ls", output: null, is_error: false }] };
+  const { host, unmount } = await mount(base, [message(0, "user", "Hi"), toolOnly]);
+  try {
+    await click(host, "Copy reference 0");
+    expect(writeText).toHaveBeenLastCalledWith("ronda://session/codex:one#0");
+    expect(host.textContent).toContain("Reference copied");
+    await click(host, "Copy reference 3");
+    expect(writeText).toHaveBeenLastCalledWith("ronda://session/codex:one#3");
+  } finally { await unmount(); vi.restoreAllMocks(); }
+});

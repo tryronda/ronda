@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- **Copy reference** on each message copies its `ronda://` link for use with `ronda-cli show`.
+
 ### Fixed
 - **Prompts only** no longer shows a blank transcript when a session has no prompts; it explains and offers **Show all messages**.
 

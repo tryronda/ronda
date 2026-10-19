@@ -20,7 +20,7 @@ import { calendarRange, matchesSession, restoredFilters } from "./library-filter
 import { LibraryHome } from "./LibraryHome";
 import { BookmarkControl, emptyBookmarkEditor, type BookmarkEditorState } from "./BookmarkControl";
 import { ContextBundle } from "./ContextBundle";
-import { contextEligible, contextId, type ContextSelection } from "./context-bundle";
+import { contextEligible, contextId, sessionReference, type ContextSelection } from "./context-bundle";
 import { TranscriptNavigation } from "./TranscriptNavigation";
 import { ToolPre } from "./ToolPre";
 import { ResumeReadiness } from "./ResumeReadiness";
@@ -113,7 +113,7 @@ function IconButton({ icon, title, onClick, active, disabled }: {
   </motion.button>;
 }
 
-function Message({ message, animate, children, onFindError, onCopyMessage }: { message: TranscriptMessage; animate: boolean; children?: ReactNode; onFindError:(text:string)=>void; onCopyMessage:(text:string)=>void }) {
+function Message({ message, animate, children, onFindError, onCopyMessage, onCopyReference }: { message: TranscriptMessage; animate: boolean; children?: ReactNode; onFindError:(text:string)=>void; onCopyMessage:(text:string)=>void; onCopyReference:(seq:number)=>void }) {
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
@@ -135,6 +135,7 @@ function Message({ message, animate, children, onFindError, onCopyMessage }: { m
         <Streamdown mode="static" dir="auto" className="markdown mt-1">{message.text}</Streamdown></Suspense></div>}
       {message.kind === "text" && (message.role === "user" || message.role === "assistant") && message.text.trim() !== "" &&
         <button type="button" className="mt-2 text-[13px] underline" aria-label={`Copy message ${message.seq}`} onClick={() => onCopyMessage(message.text)}>Copy message</button>}
+      <button type="button" className="mt-2 ml-3 text-[13px] underline" aria-label={`Copy reference ${message.seq}`} onClick={() => onCopyReference(message.seq)}>Copy reference</button>
       {message.images.length > 0 && <div className="my-3 flex flex-wrap gap-2.5">
         {message.images.map((image, index) => <img key={index} className="max-h-[300px] max-w-[min(100%,420px)] object-contain shadow-lift"
           src={`data:${image.media_type};base64,${image.data_base64}`}
@@ -407,6 +408,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const copyMessage = async (text: string) => {
     try { await navigator.clipboard.writeText(text); setError(null); setNotice("Message copied"); }
     catch (cause) { setError(`Could not copy message: ${String(cause)}`); }
+  };
+  const copyReference = async (key: string, seq: number) => {
+    try { await navigator.clipboard.writeText(sessionReference(key, seq)); setError(null); setNotice("Reference copied"); }
+    catch (cause) { setError(`Could not copy reference: ${String(cause)}`); }
   };
   const [jumpTo, setJumpTo] = useState<number | null>(null);
   const [opened, setOpened] = useState<SessionMeta | null>(null);
@@ -1420,7 +1425,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <div className="flex flex-col items-center gap-3 py-16 text-[13px] text-muted-foreground" role="status">
                 <p className="m-0">No prompts in this session.</p>
                 <button type="button" className="underline hover:text-foreground" onClick={() => setPromptsOnlyForNavigation(false)}>Show all messages</button></div>}
-            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)} onCopyMessage={text=>void copyMessage(text)}>
+            {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)} onCopyMessage={text=>void copyMessage(text)} onCopyReference={seq=>void copyReference(selected.key,seq)}>
               {contextEligible(message) && <label className="mt-3 block text-[13px]"><input type="checkbox" disabled={unavailable} checked={contextSelected.has(contextId({key:selected.key,seq:message.seq}))}
                 onChange={()=>toggleContext({key:selected.key,seq:message.seq})} /> Select message {message.seq} for context</label>}
               <BookmarkControl api={api} sessionKey={selected.key} seq={message.seq} view={bookmarkByMessage.get(`${selected.key}:${message.seq}`)}
