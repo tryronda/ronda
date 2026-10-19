@@ -259,3 +259,11 @@ test("the Filters summary counts active filters and Clear resets them without to
     expect(host.querySelector<HTMLInputElement>('input[aria-label="Updated from"]')!.value).toBe("");
   } finally { await unmount(); }
 });
+
+test("archived sessions show an Archived chip in the list", async () => {
+  const { api } = fakeApi(rows => rows.map((row, index) => index === 3 ? { ...row, archived: true } : row));
+  const { host, unmount } = await mount(api);
+  try {
+    expect(cards(host).map(card => card.textContent!.includes("Archived"))).toEqual([false, false, false, true, false]);
+  } finally { await unmount(); }
+});

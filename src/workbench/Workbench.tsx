@@ -86,11 +86,14 @@ const SessionTerminal = lazy(() => import("./SessionTerminal").then(module => ({
 type TerminalEntry = { run: number; running: boolean; code: number | null; directory?:string };
 const Streamdown = lazy(() => loadStreamdown().then(module => ({ default: module.Streamdown })));
 
-function timeLabel(ms: number) {
+/** Short date and time; the year appears only when it differs from the current year. */
+export function timeLabel(ms: number) {
   if (!ms) return "";
+  const date = new Date(ms);
   return new Intl.DateTimeFormat("en-US", {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  }).format(new Date(ms));
+    month: "short", day: "numeric", ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+    hour: "2-digit", minute: "2-digit",
+  }).format(date);
 }
 
 function basename(path: string) {
@@ -1309,6 +1312,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               <span className={`agent-dot agent-${session.agent}`} /><span className="whitespace-nowrap">{agentNames[session.agent]}</span>
               {session.host && <span>@{session.host}</span>}
               {session.pinned && <HugeiconsIcon icon={PinIcon} size={12} />}
+              {session.archived && <span className="eyebrow-chip px-1.5 pt-0.5 pb-1 text-[11px]">{t.archived}</span>}
               <time className="ml-auto whitespace-nowrap">{timeLabel(session.updated_at)}</time></div>
             <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{group ? <SearchHighlight text={titleFor(session)} query={searchContext.query} /> : titleFor(session)}</strong>
             {hasAlias(aliases, session.key) && <span className="block truncate text-[11px] text-muted-foreground" title={plainTitle(session.title)}>Original: {plainTitle(session.title)}</span>}
