@@ -9,6 +9,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - **Export Markdown…** in the browser preview now downloads the sample Markdown instead of doing nothing.
+- Switching views with the keyboard now moves focus into the new view.
 
 ## [1.2.0] - 2026-10-19
 
