@@ -178,6 +178,7 @@ export const docs: DocSection[] = [
       <P>`ronda-cli` ships beside the desktop app and reads the same index.</P>
       <Code>{`ronda-cli index                    # create an index if none exists
 ronda-cli sessions --project "$PWD"
+ronda-cli sessions --since 14d --until 7d   # a time window: 7d, 2w, 2026-01-31, or an ISO time
 ronda-cli search 'useEffect('
 ronda-cli show 'codex:SESSION_ID'
 ronda-cli show 'claude-code:SESSION_ID' --subagent '*'
