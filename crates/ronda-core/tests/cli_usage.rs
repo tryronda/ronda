@@ -76,3 +76,27 @@ fn show_size_options_note_when_clamped() {
     assert!(err.contains("ronda-cli: --chars 5 clamped to 200\n"));
     assert!(err.contains("ronda-cli: --message-chars 60000 clamped to 50000\n"));
 }
+
+#[test]
+fn unknown_agent_exits_2_and_lists_valid_ids() {
+    let db = db();
+    for cmd in [vec!["sessions"], vec!["search", "x"]] {
+        let mut args = cmd.clone();
+        args.extend(["--agent", "bogus"]);
+        let o = cli(&db, &args);
+        assert_eq!(o.status.code(), Some(2));
+        let err = stderr(&o);
+        assert!(err.contains("unknown agent: bogus"), "{err}");
+        assert!(
+            err.contains("claude-code") && err.contains("codex"),
+            "{err}"
+        );
+    }
+}
+
+#[test]
+fn agent_alias_still_works() {
+    let db = db();
+    let o = cli(&db, &["sessions", "--agent", "claude"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+}

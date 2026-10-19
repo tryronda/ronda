@@ -7,6 +7,9 @@ All notable changes to Ronda are recorded here.
 ### Changed
 - `ronda-cli` notes on stderr when `--limit` or `show` size options are clamped.
 
+### Fixed
+- `ronda-cli` exits with status 2 and lists valid agent ids when `--agent` is unknown.
+
 ## [1.2.0] - 2026-10-19
 
 ### Added

@@ -82,6 +82,23 @@ fn selected_agents(raw: &[String]) -> Result<Vec<AgentId>> {
         .collect()
 }
 
+/// Rejects unknown agent ids up front, listing the valid ones.
+pub fn validate_agents(raw: &[String]) -> Result<()> {
+    selected_agents(raw).map(|_| ()).map_err(|_| {
+        let bad: Vec<&str> = raw
+            .iter()
+            .flat_map(|s| s.split(','))
+            .filter(|s| agent_id(s).is_none())
+            .collect();
+        let valid: Vec<&str> = AgentId::ALL.iter().map(|a| a.as_str()).collect();
+        anyhow!(
+            "unknown agent: {}; valid agents: {}",
+            bad.join(", "),
+            valid.join(", ")
+        )
+    })
+}
+
 fn since_ms(raw: Option<&str>) -> Result<Option<i64>> {
     time_ms(raw, "since")
 }
