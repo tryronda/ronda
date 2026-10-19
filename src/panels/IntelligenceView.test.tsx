@@ -50,3 +50,42 @@ test("renders the report, filters by range, and opens evidence", async () => {
   expect(invoke).toHaveBeenCalledWith("get_intelligence", expect.objectContaining({ project: "/repo" }));
   await act(async () => { root.unmount(); });
 });
+
+test("shows every recurring error and stack row and copies a Markdown summary", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const big: Intelligence = {
+    ...report,
+    recurring: Array.from({ length: 11 }, (_, i) => ({ ...report.recurring[0], signature: `s${i}`, message: i === 0 ? "bad | pipe\nline" : `Error ${i}` })),
+    stack: Array.from({ length: 12 }, (_, i) => ({ tech: `Tech${i}`, sessions: 1, share: 10, new: false })),
+  };
+  invoke.mockImplementation(async (command: string) => command === "list_projects" ? [{ path: "/repo" }] : big);
+  const writeText = vi.fn(async (_text: string) => {});
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<IntelligenceView />); });
+
+  expect(host.querySelectorAll(".intel-bug")).toHaveLength(8);
+  expect(host.querySelectorAll(".insight-bar")).toHaveLength(10);
+  const button = (name: string) => [...host.querySelectorAll("button")].find(b => b.textContent?.startsWith(name))!;
+  await act(async () => { button("Show all (11)").click(); });
+  expect(host.querySelectorAll(".intel-bug")).toHaveLength(11);
+  await act(async () => { button("Show all (12)").click(); });
+  expect(host.querySelectorAll(".insight-bar")).toHaveLength(12);
+  await act(async () => { button("Show top 8").click(); });
+  expect(host.querySelectorAll(".intel-bug")).toHaveLength(8);
+
+  await act(async () => { button("Copy summary").click(); });
+  const text = writeText.mock.calls[0][0];
+  expect(text).toContain("- Range: 30 days");
+  expect(text).toContain("- Project: All projects");
+  expect(text).toContain("bad \\| pipe line");
+  expect(text).toContain("Error 10");
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("Summary copied");
+
+  writeText.mockRejectedValueOnce(new Error("denied"));
+  await act(async () => { button("Copy summary").click(); });
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("denied");
+  await act(async () => { root.unmount(); });
+});

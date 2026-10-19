@@ -428,7 +428,7 @@ function intelligence(args: Args) {
   };
   return {
     since: args.since ?? null, project,
-    totals: { sessions: n(142), active_ms: ms(61), recovery_ms: ms(8.5), tool_calls: n(4_310), tool_errors: n(212), failed_sessions: n(18), recurring_bugs: n(7) },
+    totals: { sessions: n(142), active_ms: ms(61), recovery_ms: ms(8.5), tool_calls: n(4_310), tool_errors: n(212), failed_sessions: n(18), recurring_bugs: n(10) },
     time: [
       { category: "features", label: "Building features", sessions: n(51), active_ms: ms(23.2) },
       { category: "bugs", label: "Fixing bugs", sessions: n(38), active_ms: ms(16.5) },
@@ -446,11 +446,16 @@ function intelligence(args: Args) {
       { signature: "a1", message: "Error: Hydration failed because the server rendered HTML didn't match the client", sessions: n(4), agents: ["claude-code", "cursor"], projects: [projects.web], first_seen: now - 20 * DAY, last_seen: now - 9 * HOUR, came_back: true, evidence: [evidence(2, 1)] },
       { signature: "a2", message: "SqliteFailure(Error { code: DatabaseBusy }, Some(\"database is locked\"))", sessions: n(3), agents: ["claude-code", "pi"], projects: [projects.ronda], first_seen: now - 12 * DAY, last_seen: now - 2 * DAY, came_back: false, evidence: [evidence(5, 1)] },
       { signature: "a3", message: "Error: Command not found: plugin:updater|check", sessions: n(3), agents: ["codex", "claude-code"], projects: [projects.ronda], first_seen: now - 9 * DAY, last_seen: now - 4 * DAY, came_back: false, evidence: [evidence(7, 1)] },
-    ].slice(0, project ? 1 : 3),
+      ...["Error: ENOENT: no such file or directory, open 'src-tauri/sidecars/ronda-cli'", "TypeError: Cannot read properties of undefined (reading 'map')", "error[E0382]: borrow of moved value: `session`", "Error: Request failed with status code 429", "FAIL src/panels/InsightsView.test.tsx > copies the summary", "Error: EADDRINUSE: address already in use :::1420", "warning: unused import: `std::path::Path`"]
+        .map((message, index) => ({ signature: `s${index}`, message, sessions: n(2), agents: ["claude-code"], projects: [projects.web], first_seen: now - (15 - index) * DAY, last_seen: now - (index + 3) * DAY, came_back: false, evidence: [evidence(index % 8, 1)] })),
+    ].slice(0, project ? 1 : 10),
     stack: [
       { tech: "TypeScript", sessions: n(102), share: 72, new: false }, { tech: "Rust", sessions: n(58), share: 41, new: false },
       { tech: "React", sessions: n(54), share: 38, new: false }, { tech: "SQLite", sessions: n(31), share: 22, new: false },
       { tech: "Bun", sessions: n(17), share: 12, new: false }, { tech: "Tauri", sessions: n(9), share: 6, new: span < 1 },
+      { tech: "Vite", sessions: n(8), share: 5, new: false }, { tech: "Vitest", sessions: n(7), share: 5, new: false },
+      { tech: "Tailwind", sessions: n(6), share: 4, new: false }, { tech: "GitHub Actions", sessions: n(5), share: 3, new: false },
+      { tech: "Python", sessions: n(3), share: 2, new: false },
     ],
     outcomes: [
       { outcome: "committed", label: "committed", sessions: n(82), active_ms: ms(31) },

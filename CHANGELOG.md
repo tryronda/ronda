@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- **Intelligence** can show every recurring error and stack row and copy a Markdown summary of the current range.
+
 ## [1.1.0] - 2026-10-19
 
 ### Added
