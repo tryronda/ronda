@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Inline } from "../Inline";
 import { ASSETS, REPO_URL, RELEASES_URL } from "../release";
+import { shortcuts } from "@/lib/shortcuts";
 
 export type DocSection = { id: string; title: string; body: ReactNode };
 
@@ -13,20 +14,6 @@ const agents = ["Claude Code", "Codex", "Grok Build", "DeepSeek Harness", "Curso
 
 const downloads: [string, string][] = [
   ["macOS, Apple silicon", `[Ronda-macos-arm64.dmg](${ASSETS.macArm})`],
-];
-
-const shortcuts: [string, string][] = [
-  ["⌘1 / ⌘2 / ⌘3 / ⌘4", "Sessions, Insights, Intelligence, Settings"],
-  ["⌘K", "Search the library"],
-  ["⌘F", "Find in the active transcript"],
-  ["Enter / Shift+Enter", "Next / previous match in transcript find"],
-  ["[ / ]", "Jump to the previous / next prompt while the transcript is focused"],
-  ["⌘B", "Toggle the library sidebar"],
-  ["Alt ← / Alt →", "Back and forward through views"],
-  ["↑ / ↓", "Move through the session list"],
-  ["⌘-click / Ctrl-click, Space", "Add or remove the clicked or focused session from the selection"],
-  ["Shift-click, Shift+↑ / Shift+↓", "Select a range of loaded sessions"],
-  ["Esc", "Clear a session selection, close transcript find, or clear and leave library search"],
 ];
 
 export const docs: DocSection[] = [
@@ -62,6 +49,7 @@ export const docs: DocSection[] = [
   {
     id: "shortcuts", title: "Keyboard shortcuts",
     body: <>
+      <P>Press **?** anywhere in the app, or choose the keyboard button in the header, to see this list.</P>
       <table className="docs-table"><tbody>
         {shortcuts.map(([keys, action]) => <tr key={keys}><td><kbd>{keys}</kbd></td><td>{action}</td></tr>)}
       </tbody></table>
@@ -105,8 +93,8 @@ export const docs: DocSection[] = [
       <P>Choose **Bookmark message** on a transcript message to save its excerpt. Write a plain-text note of up to 4,000 characters and choose **Save note**. Unsaved note drafts stay available while you browse sessions, filter Bookmarks, or switch transcript views, including after a failed save. Closing the editor keeps its draft; **Cancel note** or Escape discards it. Drafts last only for the current app session and are lost when you close the app or reload the preview. Only **Save note** stores the note. Stars and pins still apply to whole sessions.</P>
       <P>Open **Bookmarks** in the library to search saved notes, excerpts, and session titles. Project and agent filters also apply. Most recently updated bookmarks appear first. Click an available excerpt to open its message in the full transcript.</P>
       <P>If the source changes, **Changed since bookmarking** keeps the original excerpt and note visible. **Update saved excerpt to this message** explicitly replaces the snapshot. If the message disappears, its saved excerpt and note remain available to read, edit, or remove.</P>
-      <P>Bookmarks live in your index database and survive rescans and derived-fact rebuilds. They cannot be reconstructed from agent files. Before deleting or moving that database, choose **Settings → Data → Export bookmarks** to save a versioned JSON backup. **Import bookmarks** validates the entire file before applying it and keeps conflicting notes. Review both versions before choosing **Replace with imported bookmark**.</P>
-      <P>The browser preview uses synthetic bookmarks. Export downloads sample JSON; Import opens a file picker. All changes reset when you reload the preview.</P>
+      <P>Bookmarks live in your index database and survive rescans and derived-fact rebuilds. They cannot be reconstructed from agent files. Before deleting or moving that database, choose **Settings → Data → Export bookmarks** to save a versioned JSON backup. **Import bookmarks** validates the entire file before applying it and keeps conflicting notes. Review both versions before choosing **Replace with imported bookmark**. **Export as Markdown** saves a readable notes file grouped by session with each excerpt and note; excerpts may contain secrets, so review it before sharing.</P>
+      <P>The browser preview uses synthetic bookmarks. Export downloads sample JSON or Markdown; Import opens a file picker. All changes reset when you reload the preview.</P>
     </>,
   },
   {
@@ -170,7 +158,7 @@ export const docs: DocSection[] = [
       <P>**Find error history** sits below global search, in project overviews, and beside message/tool output. It pre-fills the recorded wording but runs only when you choose **Look up previous occurrences**. Paste a multiline error up to 20,000 Unicode characters, choose a full project path and All hosts, Local sessions or a named remote host. Scope applies before counting and twenty-session paging; repeated events in one session count once. Archived sources are included; removed sources are excluded.</P>
       <P>The canonical error and each original message link show agent, host, full project path and recorded outcome. **Commit command observed** does not mean a fix was verified. Tool-data coverage names the indexed sessions that can contribute evidence. A no-match result may reflect missing tool output or different wording. Use **Search wording in current transcript** to search literal prose and tool output instead; with no transcript open, open a session and use **Find in transcript**. Missing analytics shows an error without changing your pasted text; submit again to retry.</P>
       <P>The preview has 28 explicitly synthetic occurrences of `Error: SYNTHETIC_PROJECT_CHECK failed`. Paste that line to load twenty results and then the remaining eight; either Local sessions or buildbox narrows it to fourteen. Preview lookup accepts fixed recorded sample lines; the desktop, CLI and MCP share the existing Rust normalizer for paths, line numbers and volatile values.</P>
-      <P>**Insights** (⌘2) covers the rest: a year of activity, and which agents, projects, and models your sessions, prompts, and tokens go to.</P>
+      <P>**Insights** (⌘2) covers the rest: a year of activity, and which agents, projects, and models your sessions, prompts, and tokens go to. Leaderboards show the top ten rows; choose **Show all** to see every row, or **Copy summary** to copy a Markdown summary of your totals and the current board.</P>
     </>,
   },
   {

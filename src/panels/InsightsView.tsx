@@ -27,7 +27,8 @@ const labels = {
   prompts: 'Prompts', tokens: 'Tokens', activity: 'Activity', lastYear: 'Last 12 months',
   less: 'Less', more: 'More', weekday: 'Weekdays', month: 'Months', hour: 'Hours',
   agents: 'Agents', projects: 'Projects', models: 'Models', empty: 'No sessions indexed yet.',
-  retry: 'Retry', noData: 'No data yet',
+  retry: 'Retry', noData: 'No data yet', showAll: 'Show all', showTop: 'Show top 10',
+  copySummary: 'Copy summary', copied: 'Summary copied', copyFailed: 'Could not copy the summary',
 } as const;
 
 function dayKey(date: Date) {
@@ -38,9 +39,28 @@ function shortNumber(value: number) {
   return new Intl.NumberFormat(undefined, { notation: value >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
 }
 
-function Bars({ rows, metric, empty }: { rows: Row[]; metric: Metric; empty: string }) {
+const LIMIT = 10;
+const sortRows = (rows: Row[], metric: Metric) => [...rows].sort((a, b) => b[metric] - a[metric]);
+
+/** Markdown for the totals plus the current leaderboard (every row, not just the visible ones). */
+export function insightsSummary(data: Insights, board: Board, metric: Metric): string {
+  const cell = (text: string) => text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\s+/g, ' ');
+  const rows = sortRows(data[board], metric);
+  return [
+    '# Ronda insights', '',
+    `- Sessions: ${data.sessions.toLocaleString('en-US')}`,
+    `- Prompts: ${data.prompts.toLocaleString('en-US')}`,
+    `- Tokens: ${data.tokens.toLocaleString('en-US')}`, '',
+    `## ${labels[board]} by ${metric}`, '',
+    ...(rows.length ? ['| Rank | Name | Sessions | Prompts | Tokens |', '| --- | --- | ---: | ---: | ---: |',
+      ...rows.map((row, index) => `| ${index + 1} | ${cell(row.label)} | ${row.sessions} | ${row.prompts} | ${row.tokens} |`)] : ['No data yet.']),
+    '',
+  ].join('\n');
+}
+
+function Bars({ rows, metric, empty, all }: { rows: Row[]; metric: Metric; empty: string; all: boolean }) {
   const reduce = useReducedMotion();
-  const sorted = [...rows].sort((a, b) => b[metric] - a[metric]).slice(0, 10);
+  const sorted = sortRows(rows, metric).slice(0, all ? undefined : LIMIT);
   const max = sorted[0]?.[metric] ?? 0;
   if (!sorted.length) return <p className="panel-empty">{empty}</p>;
   return <div className="insight-bars">
@@ -60,6 +80,8 @@ export function InsightsView({ active = true }: { active?: boolean }) {
   const [reload, setReload] = useState(0);
   const [metric, setMetric] = useState<Metric>('sessions');
   const [board, setBoard] = useState<Board>('agents');
+  const [expanded, setExpanded] = useState<Record<Board, boolean>>({ agents: false, projects: false, models: false });
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
   useLibraryRefresh(() => {
     let live = true;
@@ -93,6 +115,12 @@ export function InsightsView({ active = true }: { active?: boolean }) {
     for (const [date, count] of data?.activity ?? []) values[Number(date.slice(5, 7)) - 1] += count;
     return values;
   }, [data]);
+
+  const copySummary = async () => {
+    if (!data) return;
+    try { await navigator.clipboard.writeText(insightsSummary(data, board, metric)); setFeedback({ ok: true, text: t.copied }); }
+    catch (reason) { setFeedback({ ok: false, text: `${t.copyFailed}: ${String(reason)}` }); }
+  };
 
   if (!data && !error) return <div className="ronda-panel insights-panel" role="status" aria-label={t.title} aria-busy="true">
     <header className="panel-header"><span className="eyebrow-chip">{t.eyebrow}</span><h1>{t.title}</h1><p>{t.subtitle}</p><PixelStrip cols={48} seed={9} className="panel-strip" /></header>
@@ -128,7 +156,13 @@ export function InsightsView({ active = true }: { active?: boolean }) {
         <Segment label="Leaderboard group" value={board} onChange={setBoard} options={(['agents','projects','models'] as const).map(key => [key, t[key]])} />
       </div>
       <Segment label="Leaderboard metric" className="insight-metric" value={metric} onChange={setMetric} options={(['sessions','prompts','tokens'] as const).map(key => [key, t[key]])} />
-      <Bars rows={data?.[board] ?? []} metric={metric} empty={t.noData} />
+      <Bars rows={data?.[board] ?? []} metric={metric} empty={t.noData} all={expanded[board]} />
+      <div className="insight-actions mt-3 flex flex-wrap items-center gap-3">
+        {(data?.[board].length ?? 0) > LIMIT && <button type="button" aria-expanded={expanded[board]}
+          onClick={() => setExpanded(current => ({ ...current, [board]: !current[board] }))}>{expanded[board] ? t.showTop : `${t.showAll} (${data?.[board].length})`}</button>}
+        <button type="button" disabled={!data} onClick={() => void copySummary()}>{t.copySummary}</button>
+        {feedback && <span role={feedback.ok ? 'status' : 'alert'} className={feedback.ok ? 'panel-help' : 'text-destructive'}>{feedback.text}</span>}
+      </div>
     </section>
   </div>;
 }

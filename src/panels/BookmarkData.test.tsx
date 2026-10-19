@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { installDemoBackend, uninstallDemoBackend } from "../../site/preview/demo";
 import type { BookmarkBackup } from "@/workbench/api";
@@ -36,4 +36,30 @@ test("backup picker keeps conflicts until explicit replacement and rejects malfo
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("Invalid bookmark backup");
     expect(host.textContent).toContain("Changes reset when you reload");
   } finally {await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
+});
+
+test("Export as Markdown downloads a notes file built from the backup and warns about secrets", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  installDemoBackend();
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const blobs:Blob[]=[];const names:string[]=[];
+  const create=URL.createObjectURL,revoke=URL.revokeObjectURL;
+  URL.createObjectURL=(blob:Blob|MediaSource)=>{blobs.push(blob as Blob);return "blob:test";};
+  URL.revokeObjectURL=()=>{};
+  const click=HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click=function(this:HTMLAnchorElement){names.push(this.download);};
+  try {
+    await act(async()=>root.render(<BookmarkData embedded/>));
+    expect(host.textContent).toContain("may contain secrets");
+    await act(async()=>Array.from(host.querySelectorAll("button")).find(button=>button.textContent==="Export as Markdown")!.click());
+    await vi.waitFor(()=>expect(names).toEqual(["ronda-bookmarks.md"]));
+    const text=await blobs[0].text();
+    const backup=JSON.parse(await invoke<string>("get_bookmark_backup")) as BookmarkBackup;
+    expect(text).toMatch(/^# Ronda bookmarks/);
+    expect(text).toContain(`### #${backup.bookmarks[0].seq}`);
+    expect(host.textContent).toContain("Bookmarks exported as Markdown");
+  } finally {
+    URL.createObjectURL=create;URL.revokeObjectURL=revoke;HTMLAnchorElement.prototype.click=click;
+    await act(async()=>root.unmount());host.remove();uninstallDemoBackend();
+  }
 });
