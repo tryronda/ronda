@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod adapters;
 pub mod bookmarks;
 pub mod intel;
+pub mod labels;
 pub mod models;
 pub mod projects;
 pub mod query;

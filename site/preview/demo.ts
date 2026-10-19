@@ -4,7 +4,7 @@ import { searchSnippet } from "@/workbench/search-text";
 import { agentIds, type BookmarkBackup, type BookmarkView, type MessageBookmark, type BookmarkReplacement, type BookmarkImport, backend } from "@/workbench/api";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { queryDefaults } from "@/workbench/api";
-import type { AgentId, ProjectInfo, GroupedSearch, SearchExcerpt, SearchGroup, SearchHit, SearchSort, SessionMeta, SessionQuery, TranscriptMessage } from "@/workbench/api";
+import type { AgentId, ProjectInfo, SessionLabel, GroupedSearch, SearchExcerpt, SearchGroup, SearchHit, SearchSort, SessionMeta, SessionQuery, TranscriptMessage } from "@/workbench/api";
 
 /*
  * An in-memory stand-in for the Tauri backend so the real Ronda interface can
@@ -119,6 +119,9 @@ const extraTitles: [string, AgentId, string][] = [
   ["Nightly cost report for the GPU pool", "gemini", projects.infra],
 ];
 
+// Fixed synthetic label catalog; edits live in memory only and reset on reload.
+const LABEL_IDS = ["00000000000000000000000000000a01", "00000000000000000000000000000a02", "00000000000000000000000000000a03"];
+let labelCatalog: SessionLabel[] = [];
 let bookmarks: MessageBookmark[] = [];
 let bookmarkSeed = Promise.resolve();
 let sessions: SessionMeta[] = [];
@@ -169,6 +172,7 @@ function meta(key: string, title: string, agent: AgentId, project: string, model
 
 function reset() {
   sessions = [];
+  labelCatalog = ["Needs follow-up", "Reference", "Handoff"].map((name, index) => ({ id: LABEL_IDS[index], name, created_at: now - (3 - index) * DAY, updated_at: now - (3 - index) * DAY }));
   scanCount = 0;
   localSourceHealth = {
     version: 1,
@@ -206,6 +210,8 @@ function reset() {
     ]);
   });
   sessions.sort((a, b) => b.updated_at - a.updated_at);
+  sessions = sessions.map(session => session.key === "claude-code:demo-0" ? { ...session, labels: [LABEL_IDS[0], LABEL_IDS[1]] }
+    : session.key === "codex:demo-1" ? { ...session, labels: [LABEL_IDS[0]] } : session);
   // Clearly labelled, older sample sessions let the preview demonstrate both kinds of paging.
   for (let index = 0; index < 55; index++) {
     const key = `codex:pagination-${index}`;
@@ -551,7 +557,7 @@ async function listBookmarks(query: string, filter: SessionQuery): Promise<Bookm
     const session = sessions.find(session=>session.key===bookmark.session_key) ?? null;
     if ((filter.agent && filter.agent !== (session?.agent ?? bookmark.agent)) || (filter.project_path && filter.project_path !== (session?.project_path ?? bookmark.project_path))) continue;
     const metadataFilter = {...filter, agent:null, project_path:null, include_archived:true, starred_only:false};
-    const needsMetadata = filter.host || filter.local_only || filter.model || filter.updated_from_ms != null || filter.updated_before_ms != null;
+    const needsMetadata = filter.host || filter.local_only || filter.model || filter.updated_from_ms != null || filter.updated_before_ms != null || filter.label_id;
     if (needsMetadata && (!session || !matchesSession(session, metadataFilter))) continue;
     const text = `${session?.title ?? bookmark.title}\n${bookmark.note}\n${bookmark.excerpt}`.toLowerCase();
     if (!query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term=>text.includes(term))) continue;
@@ -611,6 +617,44 @@ function importBookmarks(json: string, replacements: BookmarkReplacement[]): Boo
   return result;
 }
 
+function cleanLabelName(raw: unknown) {
+  const name = typeof raw === "string" ? raw.trim() : "";
+  if (!name) throw new Error("Enter a label name");
+  if (Array.from(name).length > 40 || new TextEncoder().encode(name).length > 160) throw new Error("Label names are limited to 40 characters");
+  return name;
+}
+function uniqueLabelName(name: string, exceptId?: string) {
+  if (labelCatalog.some(label => label.id !== exceptId && label.name.toLowerCase() === name.toLowerCase())) throw new Error("A label with that name already exists");
+}
+function createLabel(raw: unknown) {
+  const name = cleanLabelName(raw);
+  if (labelCatalog.length >= 12) throw new Error("You can have at most 12 labels");
+  uniqueLabelName(name);
+  const stamp = Date.now();
+  const label: SessionLabel = { id: crypto.randomUUID().replaceAll("-", ""), name, created_at: stamp, updated_at: stamp };
+  labelCatalog = [...labelCatalog, label];
+  return label;
+}
+function renameLabel(id: string, raw: unknown) {
+  const name = cleanLabelName(raw);
+  const existing = labelCatalog.find(label => label.id === id);
+  if (!existing) throw new Error("That label no longer exists");
+  uniqueLabelName(name, id);
+  const renamed = { ...existing, name, updated_at: Math.max(Date.now(), existing.created_at) };
+  labelCatalog = labelCatalog.map(label => label.id === id ? renamed : label);
+  return renamed;
+}
+function setSessionLabel(key: string, id: string, assigned: boolean) {
+  const session = sessions.find(item => item.key === key);
+  if (!assigned) { sessions = sessions.map(item => item.key === key ? { ...item, labels: (item.labels ?? []).filter(value => value !== id) } : item); return; }
+  if (!session) throw new Error("unknown session");
+  if (!labelCatalog.some(label => label.id === id)) throw new Error("That label no longer exists");
+  const current = session.labels ?? [];
+  if (current.includes(id)) return;
+  if (current.length >= 4) throw new Error("A session can have at most 4 labels");
+  sessions = sessions.map(item => item.key === key ? { ...item, labels: [...current, id] } : item);
+}
+
 type Args = Record<string, unknown>;
 
 async function handle(command: string, args: Args = {}): Promise<unknown> {
@@ -660,6 +704,14 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "set_session_flags":
       sessions = sessions.map(session => session.key === args.key ? { ...session, starred: args.starred as boolean, pinned: args.pinned as boolean } : session);
       return null;
+    case "list_session_labels": return structuredClone(labelCatalog);
+    case "create_session_label": return createLabel(args.name);
+    case "rename_session_label": return renameLabel(args.id as string, args.name);
+    case "delete_session_label":
+      labelCatalog = labelCatalog.filter(label => label.id !== args.id);
+      sessions = sessions.map(session => session.labels?.includes(args.id as string) ? { ...session, labels: session.labels.filter(id => id !== args.id) } : session);
+      return null;
+    case "set_session_label": setSessionLabel(args.key as string, args.labelId as string, args.assigned as boolean); return null;
     case "trash_session": sessions = sessions.filter(session => session.key !== args.key); return null;
     case "inspect_resume": {
       const session=sessions.find(item=>item.key===args.key);if(!session)throw new Error("Unknown sample session");

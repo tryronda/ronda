@@ -4,6 +4,14 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.0.21] - 2026-10-19
+
+### Added
+- **Session labels** let you create, rename, and delete up to 12 named labels, assign up to four to the open session, and filter the library and search by one label alongside the existing filters. Saved searches can include a label; a deleted label stays an exact filter until you clear it.
+
+### Privacy
+- Label names and assignments stay in the local index and are excluded from diagnostics and bookmark exports.
+
 ## [1.0.20] - 2026-10-05
 
 ### Fixed

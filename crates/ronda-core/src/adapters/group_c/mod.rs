@@ -257,6 +257,7 @@ fn meta(
         source: None,
         starred: false,
         pinned: false,
+        labels: Vec::new(),
     }
 }
 fn select_ids(

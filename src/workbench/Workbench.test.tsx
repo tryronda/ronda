@@ -110,7 +110,7 @@ test("Continue is unavailable while the selected session is showing its terminal
     getPref: async key => key === "reading_positions_v1" ? JSON.stringify({ version: 1, records: [record] }) : null,
     inspectResume: async () => ({ supported: true, ready: true, host: null, original_directory: session.project_path,
       directory: session.project_path, program: "codex", args: [], command: "codex resume one", reasons: [] }),
-    setPref: async (key, value) => { prefWrites.push(`${key}:${value}`); },
+    setPref: async (key, value) => { prefWrites.push(`${key}:${value}`); }, listSessionLabels: async () => [],
     onLibraryChanged: async () => () => {} };
   api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
   const host = document.createElement("div"); document.body.append(host);

@@ -70,6 +70,7 @@ fn four_query_surfaces_have_identical_cli_and_mcp_text() {
         can_delete: false,
         starred: false,
         pinned: false,
+        labels: Vec::new(),
     };
     let msg = TranscriptMessage {
         seq: 0,

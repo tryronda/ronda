@@ -24,7 +24,14 @@ export interface SessionMeta {
   can_delete: boolean;
   starred: boolean;
   pinned: boolean;
+  /** Assigned session label ids; absent when the session has none. */
+  labels?: string[];
 }
+
+export interface SessionLabel { id: string; name: string; created_at: number; updated_at: number }
+export const MAX_SESSION_LABELS = 12;
+export const MAX_LABELS_PER_SESSION = 4;
+export const LABEL_NAME_LIMIT = 40;
 
 export interface ToolCall {
   id: string;
@@ -63,6 +70,7 @@ export interface SessionQuery {
   updated_before_ms?: number | null;
   model?: string | null;
   local_only?: boolean;
+  label_id?: string | null;
 }
 
 export interface LibraryOptions { agents: AgentId[]; models: string[]; hosts: string[]; projects: ProjectInfo[] }
@@ -154,6 +162,11 @@ export interface WorkbenchBackend {
   sessionRelationships(key:string):Promise<SessionRelationships>;
   scan(): Promise<ScanReport>;
   setSessionFlags(key: string, starred: boolean, pinned: boolean): Promise<void>;
+  listSessionLabels(): Promise<SessionLabel[]>;
+  createSessionLabel(name: string): Promise<SessionLabel>;
+  renameSessionLabel(id: string, name: string): Promise<SessionLabel>;
+  deleteSessionLabel(id: string): Promise<void>;
+  setSessionLabel(key: string, labelId: string, assigned: boolean): Promise<void>;
   inspectResume(key:string):Promise<ResumeReadiness>;
   openProjectFolder(key:string):Promise<void>;
   revealSourceFile(key:string):Promise<void>;
@@ -185,6 +198,11 @@ export const backend: WorkbenchBackend = {
   sessionRelationships:key=>invoke("get_session_relationships",{key}),
   scan: () => invoke("scan"),
   setSessionFlags: (key, starred, pinned) => invoke("set_session_flags", { key, starred, pinned }),
+  listSessionLabels: () => invoke("list_session_labels"),
+  createSessionLabel: name => invoke("create_session_label", { name }),
+  renameSessionLabel: (id, name) => invoke("rename_session_label", { id, name }),
+  deleteSessionLabel: id => invoke("delete_session_label", { id }),
+  setSessionLabel: (key, labelId, assigned) => invoke("set_session_label", { key, labelId, assigned }),
   inspectResume:key=>invoke("inspect_resume",{key}),
   openProjectFolder:key=>invoke("open_project_folder",{key}),
   revealSourceFile:key=>invoke("reveal_source_file",{key}),

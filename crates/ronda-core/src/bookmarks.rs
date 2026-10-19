@@ -292,7 +292,8 @@ impl Store {
             || filter.local_only
             || filter.model.is_some()
             || filter.updated_from_ms.is_some()
-            || filter.updated_before_ms.is_some();
+            || filter.updated_before_ms.is_some()
+            || filter.label_id.is_some();
         let terms: Vec<_> = query.split_whitespace().map(str::to_lowercase).collect();
         let mut views = Vec::new();
         // ponytail: scan small annotation collections; add indexed paging when measured bookmark browsing needs it.
