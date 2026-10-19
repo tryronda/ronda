@@ -1,3 +1,4 @@
+import { version as appVersion } from "../../package.json";
 import type { Intelligence } from "@/panels/IntelligenceView";
 import { matchesSession } from "@/workbench/library-filters";
 import { searchSnippet } from "@/workbench/search-text";
@@ -157,6 +158,29 @@ export function sessionMarkdown(key: string, options: { includeTools?: boolean; 
   return out;
 }
 let prefs = new Map<string, string>();
+const baseLocations = [
+  { agent: "claude-code", path: "/Users/you/.claude/projects", health_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", enabled: true, custom: false },
+  { agent: "codex", path: "/Users/you/.codex/sessions", health_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", enabled: true, custom: false },
+  { agent: "cursor", path: "/Users/you/.cursor/chats", health_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", enabled: true, custom: false },
+  { agent: "qoder", path: "/Users/you/.qoder/sessions", health_id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", enabled: true, custom: false },
+  { agent: "gemini", path: "/Users/you/.gemini/tmp", health_id: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", enabled: true, custom: false },
+];
+const defaultDisabledRoots = ["/Users/you/.gemini/tmp"];
+function prefList<T>(key: string, fallback: T): T {
+  try { const raw = prefs.get(key); return raw ? JSON.parse(raw) as T : fallback; } catch { return fallback; }
+}
+/** Base sample rows plus the custom_roots/disabled_roots preferences, so Settings edits show up in the preview. */
+function demoLocations() {
+  const disabled = prefList<string[]>("disabled_roots", defaultDisabledRoots);
+  const custom = prefList<Record<string, string[]>>("custom_roots", {});
+  const fakeId = (path: string) => Array.from(new TextEncoder().encode(path), byte => byte.toString(16).padStart(2, "0")).join("").padEnd(64, "0").slice(0, 64);
+  const rows = baseLocations.map(row => ({ ...row, enabled: !disabled.includes(row.path) }));
+  for (const [agent, paths] of Object.entries(custom)) for (const path of paths)
+    if (!rows.some(row => row.agent === agent && row.path === path))
+      rows.push({ agent, path, health_id: fakeId(`${agent}:${path}`), enabled: !disabled.includes(path), custom: true });
+  return rows;
+}
+
 let hosts: { host: string; enabled: boolean; last_sync_ms: number | null; last_error: string | null }[] = [];
 let scanCount = 0;
 let localSourceHealth = {
@@ -722,7 +746,7 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "save_bookmark": return saveBookmark(args);
     case "delete_bookmark": bookmarks = bookmarks.filter(bookmark=>bookmark.session_key!==args.key || bookmark.seq!==args.seq); libraryListeners.forEach(callback=>callback()); return null;
     case "get_bookmark_backup": return JSON.stringify({version:1,bookmarks},null,2);
-    case "get_diagnostics_report": return {format_version:1,app_version:"1.0.17",schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
+    case "get_diagnostics_report": return {format_version:1,app_version:appVersion,schema_version:1,generated_at:"2026-10-03T12:00:00Z",index_available:true,session_count:128,sources:{configured:12,enabled:10,available:9}};
     case "import_bookmarks": return importBookmarks(args.json as string, args.replacements as BookmarkReplacement[]);
     case "get_transcript": return transcripts.get(args.key as string) ?? [];
     case "get_transcript_snapshot": return sampleTranscriptSnapshot(args.key as string);
@@ -795,16 +819,12 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
     case "get_insights": return insights();
     case "get_intelligence": return args.project ? projectIntelligence(args) : intelligence(args);
     case "get_session": return sessions.find(session => session.key === args.key) ?? null;
-    case "list_locations": return [
-      { agent: "claude-code", path: "/Users/you/.claude/projects", health_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", enabled: true, custom: false },
-      { agent: "codex", path: "/Users/you/.codex/sessions", health_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", enabled: true, custom: false },
-      { agent: "cursor", path: "/Users/you/.cursor/chats", health_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", enabled: true, custom: false },
-      { agent: "qoder", path: "/Users/you/.qoder/sessions", health_id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", enabled: true, custom: false },
-      { agent: "gemini", path: "/Users/you/.gemini/tmp", health_id: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", enabled: false, custom: false },
-    ];
+    case "list_locations": return demoLocations();
     case "get_local_source_refresh_health": return structuredClone(localSourceHealth);
     case "list_remote_hosts": return hosts;
     case "set_remote_host": {
+      const name = args.host as string;
+      if (!name || name.startsWith("-") || !/^[A-Za-z0-9@._-]+$/.test(name)) throw new Error("invalid SSH host");
       const existing = hosts.find(item => item.host === args.host);
       if (existing) existing.enabled = args.enabled as boolean;
       else hosts.push({ host: args.host as string, enabled: true, last_sync_ms: null, last_error: null });
