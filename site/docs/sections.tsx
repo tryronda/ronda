@@ -191,7 +191,7 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
     id: "mcp", title: "MCP server",
     body: <>
       <P>`ronda-mcp` is a read-only stdio server that lets an agent search your past sessions. It exposes `ronda_search`, `ronda_list_sessions`, `ronda_get_session`, `ronda_list_projects`, `ronda_insights`, and `ronda_find_error`, which checks whether an error has been seen before and how those sessions ended. Desktop **Find error history** uses the same lookup with optional project/host scope and paged original evidence. Recorded commit commands do not prove a fix.</P>
-      <P>**Settings → Connect** shows the installed path and ready-to-copy setup for Claude Code, Codex, and other MCP clients. For Claude Code on macOS:</P>
+      <P>**Settings → Connect** shows the installed path and ready-to-copy setup for Claude Code, Codex, and other MCP clients, plus a command-line snippet to paste into AGENTS.md or CLAUDE.md. For Claude Code on macOS:</P>
       <Code>{`claude mcp add --scope user ronda -- '/Applications/Ronda.app/Contents/MacOS/ronda-mcp'`}</Code>
     </>,
   },

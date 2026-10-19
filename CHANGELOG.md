@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Added
 - **Intelligence** can show every recurring error and stack row and copy a Markdown summary of the current range.
+- **Settings → Connect** adds a command-line snippet you can paste into AGENTS.md or CLAUDE.md.
 
 ## [1.1.0] - 2026-10-19
 
