@@ -236,3 +236,26 @@ test("Cmd/Ctrl-A in the list selects every loaded row, is ignored in inputs, and
     expect(bar(host)).toBeNull();
   } finally { await unmount(); }
 });
+
+test("the Filters summary counts active filters and Clear resets them without toggling the disclosure", async () => {
+  const { api } = fakeApi();
+  const { host, unmount } = await mount(api);
+  try {
+    const summary = () => host.querySelector("details > summary")!;
+    const clear = () => Array.from(summary().querySelectorAll("button")).find(item => item.textContent === "Clear");
+    expect(summary().textContent).toBe("Filters");
+    expect(clear()).toBeUndefined();
+    await set(host, 'input[aria-label="Updated from"]', "2024-01-01", "input");
+    expect(summary().textContent).toContain("Filters (1)");
+    await set(host, 'select[aria-label="Filter by model"]', "gpt-5");
+    await click(Array.from(host.querySelectorAll("button")).find(item => item.getAttribute("aria-pressed") !== null && item.textContent === "Include archived")!);
+    expect(summary().textContent).toContain("Filters (3)");
+    expect(summary().querySelector("[aria-label]")!.getAttribute("aria-label")).toBe("Filters (3), 3 active");
+    // happy-dom does not implement summary toggling, so assert the default action is cancelled.
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(async () => { clear()!.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(summary().textContent).toBe("Filters");
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Updated from"]')!.value).toBe("");
+  } finally { await unmount(); }
+});

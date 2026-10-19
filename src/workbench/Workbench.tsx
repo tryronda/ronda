@@ -235,6 +235,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     setProject(null); setAgent(null); setStarredOnly(false); setLabelId(""); setIncludeArchived(false);
     setDateFrom(""); setDateThrough(""); setModel(""); setHost("");
   };
+  /** Everything `clearFilters` resets; library sort is not a filter. */
+  const activeFilterCount = [project, agent, dateFrom, dateThrough, model, host, labelId, starredOnly, includeArchived].filter(Boolean).length;
   const [search, setSearch] = useState("");
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const savedSearchesRef = useRef(savedSearches);
@@ -1137,7 +1139,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         <button type="button" className="my-2 text-[13px] underline" onClick={()=>findHistory(search,null)}>Find error history</button>
         <ContextBundle api={api} selection={contextSelection} clear={()=>setContextSelection([])} embedded={embedded} />
         <details className="mt-2 text-[13px]">
-          <summary className="cursor-pointer text-muted-foreground">Filters</summary>
+          <summary className="cursor-pointer text-muted-foreground">
+            <span aria-label={activeFilterCount ? `Filters (${activeFilterCount}), ${activeFilterCount} active` : undefined}>{activeFilterCount ? `Filters (${activeFilterCount})` : "Filters"}</span>
+            {activeFilterCount > 0 && <button type="button" className="ml-2 text-[12px] underline" aria-label="Clear active filters"
+              onClick={event=>{event.preventDefault();event.stopPropagation();clearFilters();if(detail.kind==="project")navigateDetail({kind:"home"});}}>Clear</button>}
+          </summary>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <label>Updated from<input aria-label="Updated from" type="date" value={dateFrom}
               onInput={event=>setDateFrom(event.currentTarget.value)} className="mt-1 w-full min-w-0 bg-chip p-1" /></label>
