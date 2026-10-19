@@ -10,6 +10,7 @@ export const shortcuts: [string, string][] = [
   ["↑ / ↓", "Move through the session list"],
   ["⌘-click / Ctrl-click, Space", "Add or remove the clicked or focused session from the selection"],
   ["Shift-click, Shift+↑ / Shift+↓", "Select a range of loaded sessions"],
+  ["⌘A / Ctrl+A", "Select all loaded sessions while the session list is focused"],
   ["?", "Show this list of keyboard shortcuts"],
   ["Esc", "Clear a session selection, close transcript find, or clear and leave library search"],
 ];

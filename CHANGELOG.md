@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- **Select all** loaded sessions with ⌘/Ctrl-A in the session list, ready for bulk star, pin, or label.
+
 ## [1.1.0] - 2026-10-19
 
 ### Added

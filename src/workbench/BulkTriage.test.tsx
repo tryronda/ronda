@@ -215,3 +215,24 @@ test("bulk label add skips sessions at the cap, announces the result, and undo r
     expect(fake.rows().slice(0, 2).map(row => row.labels)).toEqual([[LABEL], [LABEL]]);
   } finally { await unmount(); }
 });
+
+test("Cmd/Ctrl-A in the list selects every loaded row, is ignored in inputs, and Escape clears", async () => {
+  const { api } = fakeApi();
+  const { host, unmount } = await mount(api);
+  try {
+    const first = cards(host)[0]; first.focus();
+    await key(first, { key: "a", metaKey: true });
+    expect(pressed(host)).toEqual([true, true, true, true, true]);
+    expect(bar(host)!.textContent).toContain("5 selected");
+    await key(cards(host)[0], { key: "Escape" });
+    expect(bar(host)).toBeNull();
+    await key(first, { key: "a", ctrlKey: true });
+    expect(bar(host)!.textContent).toContain("5 selected");
+    await click(action(host, "Clear selection"));
+    const search = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await key(search, { key: "a", metaKey: true });
+    expect(bar(host)).toBeNull();
+    await key(first, { key: "a" });
+    expect(bar(host)).toBeNull();
+  } finally { await unmount(); }
+});

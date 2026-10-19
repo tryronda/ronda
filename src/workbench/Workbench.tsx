@@ -1247,6 +1247,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           if (event.target instanceof HTMLElement && event.target.closest("textarea,input,[contenteditable='true']")) return;
           const card = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-session-key]") : null;
           if (event.key === " " && card && !bookmarksOnly) { event.preventDefault(); toggleRow(card.dataset.sessionKey!); return; }
+          if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a" && !bookmarksOnly) {
+            event.preventDefault(); selectionAnchor.current = null; setSelection(new Set(rowOrder)); return;
+          }
           if (event.key === "Escape" && selection.size) { event.preventDefault(); clearSelection(); return; }
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           const cards = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".session-card"));
