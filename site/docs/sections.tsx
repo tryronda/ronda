@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Inline } from "../Inline";
 import { ASSETS, REPO_URL, RELEASES_URL } from "../release";
+import { shortcuts } from "@/lib/shortcuts";
 
 export type DocSection = { id: string; title: string; body: ReactNode };
 
@@ -13,19 +14,6 @@ const agents = ["Claude Code", "Codex", "Grok Build", "DeepSeek Harness", "Curso
 
 const downloads: [string, string][] = [
   ["macOS, Apple silicon", `[Ronda-macos-arm64.dmg](${ASSETS.macArm})`],
-];
-
-const shortcuts: [string, string][] = [
-  ["⌘1 / ⌘2 / ⌘3 / ⌘4", "Sessions, Insights, Intelligence, Settings"],
-  ["⌘K", "Search the library"],
-  ["⌘F", "Find in the active transcript"],
-  ["Enter / Shift+Enter", "Next / previous match in transcript find"],
-  ["⌘B", "Toggle the library sidebar"],
-  ["Alt ← / Alt →", "Back and forward through views"],
-  ["↑ / ↓", "Move through the session list"],
-  ["⌘-click / Ctrl-click, Space", "Add or remove the clicked or focused session from the selection"],
-  ["Shift-click, Shift+↑ / Shift+↓", "Select a range of loaded sessions"],
-  ["Esc", "Clear a session selection, close transcript find, or clear and leave library search"],
 ];
 
 export const docs: DocSection[] = [
@@ -61,6 +49,7 @@ export const docs: DocSection[] = [
   {
     id: "shortcuts", title: "Keyboard shortcuts",
     body: <>
+      <P>Press **?** anywhere in the app, or choose the keyboard button in the header, to see this list.</P>
       <table className="docs-table"><tbody>
         {shortcuts.map(([keys, action]) => <tr key={keys}><td><kbd>{keys}</kbd></td><td>{action}</td></tr>)}
       </tbody></table>
