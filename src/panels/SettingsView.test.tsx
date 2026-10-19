@@ -98,3 +98,27 @@ test("Locations renders saved per-root states, current disabled settings, and om
     expect(rowsText).not.toContain("old-id");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("Connect offers a command-line snippet with the CLI path and copies it", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const writeText = vi.fn(async (_text: string) => {});
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  invoke.mockImplementation((command: string) => {
+    if (command === "list_locations" || command === "list_remote_hosts") return Promise.resolve([]);
+    if (command === "app_paths") return Promise.resolve(["/opt/ronda/ronda-mcp", "/opt/ronda/ronda-cli", "index"]);
+    return Promise.resolve(null);
+  });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<SettingsView />));
+    const connect = Array.from(host.querySelectorAll<HTMLButtonElement>("nav button")).find(button => button.textContent?.includes("Connect"))!;
+    await act(async () => { connect.click(); await Promise.resolve(); });
+    const block = Array.from(host.querySelectorAll(".settings-snippet")).find(el => el.textContent?.includes("Command line"))!;
+    expect(block.textContent).toContain("Add to AGENTS.md or CLAUDE.md:");
+    expect(block.textContent).toContain('`/opt/ronda/ronda-cli sessions --project "$PWD"`');
+    expect(block.textContent).toContain("`/opt/ronda/ronda-cli search <query>`");
+    await act(async () => { block.querySelector("button")!.click(); await Promise.resolve(); });
+    expect(writeText.mock.calls[0][0]).toContain("`/opt/ronda/ronda-cli show <key>`");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

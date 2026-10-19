@@ -40,7 +40,7 @@ const copy = {
   sshHost: 'SSH host or alias', sync: 'Sync now', lastSync: 'Last sync', never: 'Never',
   remoteError: 'Last error', noHosts: 'No remote hosts configured.',
   connectHelp: 'Let an MCP client search and read your indexed sessions.',
-  claudeSetup: 'Claude Code', codexSetup: 'Codex', genericSetup: 'Other MCP clients',
+  claudeSetup: 'Claude Code', codexSetup: 'Codex', genericSetup: 'Other MCP clients', cliSetup: 'Command line',
   copy: 'Copy', copied: 'Copied', index: 'Index database', refresh: 'Rebuild index',
   dataHelp: 'Re-read local agent files and refresh Ronda’s searchable index. The result does not include remote sync health.',
   updateHelp: 'Check the latest release only when you ask.', check: 'Check for updates',
@@ -194,10 +194,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   }
 
   const mcp = paths?.[0] ?? 'ronda-mcp';
+  const cli = paths?.[1] || 'ronda-cli';
   const snippets = [
     [t.claudeSetup, `claude mcp add --scope user ronda -- ${shellQuote(mcp)}`],
     [t.codexSetup, `[mcp_servers.ronda]\ncommand = ${JSON.stringify(mcp)}`],
     [t.genericSetup, JSON.stringify({ mcpServers: { ronda: { command: mcp } } }, null, 2)],
+    [t.cliSetup, `Add to AGENTS.md or CLAUDE.md:\nBefore asking for repository history, run \`${cli} sessions --project "$PWD"\`, then \`${cli} show <key>\`. Search prior decisions with \`${cli} search <query>\`.`],
   ];
 
   return <div className="ronda-panel settings-panel">

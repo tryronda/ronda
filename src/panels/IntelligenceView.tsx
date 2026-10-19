@@ -38,7 +38,8 @@ const labels = {
   sessionsCount: (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'}`, newTech: 'new',
   none: 'Nothing in this range.', empty: 'No sessions in this range yet.', retry: 'Retry',
   noTools: (agents: string) => `No tool data from ${agents}, so failures, errors, stack, and outcomes leave them out.`,
-  lastSeen: 'last seen',
+  lastSeen: 'last seen', showAll: 'Show all', showTopBugs: 'Show top 8', showTopStack: 'Show top 10',
+  copySummary: 'Copy summary', copied: 'Summary copied', copyFailed: 'Could not copy the summary',
 } as const;
 
 const tone: Record<string, string> = {
@@ -56,6 +57,37 @@ export function hours(ms: number) {
 
 const day = (ms: number) => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(ms));
 
+const BUG_LIMIT = 8;
+const STACK_LIMIT = 10;
+
+/** Markdown for the current range: totals, time split, failures, and every recurring error. */
+export function intelligenceSummary(data: Intelligence, range: Range, project: string): string {
+  const cell = (text: string) => text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\s+/g, ' ');
+  const split = data.time.map(row => ({ label: row.label, ms: row.active_ms, sessions: row.sessions }));
+  if (data.totals.recovery_ms > 0) split.push({ label: labels.recovering, ms: data.totals.recovery_ms, sessions: 0 });
+  const rows = split.filter(row => row.ms > 0).sort((a, b) => b.ms - a.ms);
+  const failing = data.totals.sessions ? Math.round(data.totals.failed_sessions / data.totals.sessions * 100) : 0;
+  return [
+    '# Ronda intelligence', '',
+    `- Range: ${labels[range]}`,
+    `- Project: ${project || labels.allProjects}`,
+    `- Sessions: ${data.totals.sessions.toLocaleString('en-US')}`,
+    `- Active time: ${hours(data.totals.active_ms)}`,
+    `- Ended failing: ${failing}%`,
+    `- Recurring errors: ${data.totals.recurring_bugs.toLocaleString('en-US')}`, '',
+    `## ${labels.time}`, '',
+    ...(rows.length ? ['| Category | Time | Sessions |', '| --- | ---: | ---: |',
+      ...rows.map(row => `| ${cell(row.label)} | ${hours(row.ms)} | ${row.sessions} |`)] : [labels.none]), '',
+    `## ${labels.failures}`, '',
+    ...(data.failures.length ? ['| Pattern | Sessions |', '| --- | ---: |',
+      ...data.failures.map(row => `| ${cell(row.label)} | ${row.sessions} |`)] : [labels.none]), '',
+    `## ${labels.bugs}`, '',
+    ...(data.recurring.length ? ['| Error | Sessions | Agents |', '| --- | ---: | --- |',
+      ...data.recurring.map(bug => `| ${cell(bug.message)} | ${bug.sessions} | ${cell(bug.agents.join(', '))} |`)] : [labels.none]),
+    '',
+  ].join('\n');
+}
+
 export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (key: string, seq: number) => void; active?: boolean; scope?:ProjectContext }) {
   const t = labels;
   const reduce = useReducedMotion();
@@ -70,6 +102,15 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
   const data=dataScope===scopeKey ? storedData : null;
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
+  const [showAllBugs, setShowAllBugs] = useState(false);
+  const [showAllStack, setShowAllStack] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => { setFeedback(null); setShowAllBugs(false); setShowAllStack(false); }, [scopeKey]);
+  const copySummary = async () => {
+    if (!data) return;
+    try { await navigator.clipboard.writeText(intelligenceSummary(data, range, project)); setFeedback({ ok: true, text: t.copied }); }
+    catch (reason) { setFeedback({ ok: false, text: `${t.copyFailed}: ${String(reason)}` }); }
+  };
 
   useLibraryRefresh(() => {
     let live = true;
@@ -109,6 +150,8 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
           indicatorClassName="glass !bg-paper">{t[key]}</TabsTrigger>)}
       </TabsList>
     </Tabs>
+    <button type="button" disabled={!data} onClick={() => void copySummary()}>{t.copySummary}</button>
+    {feedback && <span role={feedback.ok ? 'status' : 'alert'} className={feedback.ok ? 'panel-help' : 'text-destructive'}>{feedback.text}</span>}
     <select className="intel-project" aria-label={t.project} value={project} onChange={event => setProject(event.target.value)}>
       <option value="">{t.allProjects}</option>
       {projects.map(path => <option key={path} value={path}>{path.split(/[\\/]/).filter(Boolean).pop() ?? path}</option>)}
@@ -176,7 +219,7 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
         <section className="panel-card">
           <div className="panel-section-head"><h2>{t.bugs}</h2><span>{data.totals.recurring_bugs}</span></div>
           {data.recurring.length ? <ul className="intel-bugs">
-            {data.recurring.slice(0, 8).map(bug => <li key={bug.signature}>
+            {data.recurring.slice(0, showAllBugs ? undefined : BUG_LIMIT).map(bug => <li key={bug.signature}>
               <button type="button" className="intel-bug" onClick={() => bug.evidence[0] && open(bug.evidence[0])} title={t.open}>
                 <code>{bug.message}</code>
                 <span className="intel-chips">
@@ -188,6 +231,8 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
               </button>
             </li>)}
           </ul> : <p className="panel-empty">{t.none}</p>}
+          {data.recurring.length > BUG_LIMIT && <button type="button" className="mt-3" aria-expanded={showAllBugs}
+            onClick={() => setShowAllBugs(value => !value)}>{showAllBugs ? t.showTopBugs : `${t.showAll} (${data.recurring.length})`}</button>}
         </section>
       </div>
 
@@ -195,12 +240,14 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
         <section className="panel-card">
           <div className="panel-section-head"><h2>{t.stack}</h2><span>{t.shareOfSessions}</span></div>
           {data.stack.length ? <div className="insight-bars">
-            {data.stack.slice(0, 10).map((row, index) => <div className="insight-bar" key={row.tech}>
+            {data.stack.slice(0, showAllStack ? undefined : STACK_LIMIT).map((row, index) => <div className="insight-bar" key={row.tech}>
               <span className="insight-bar-label" title={row.tech}>{row.tech}{row.new && <em className="intel-new">{t.newTech}</em>}</span>
               <div className="insight-bar-track"><motion.div {...grow(Math.max(2, row.share), index * 0.03)} /></div>
               <strong>{row.share}%</strong>
             </div>)}
           </div> : <p className="panel-empty">{t.none}</p>}
+          {data.stack.length > STACK_LIMIT && <button type="button" className="mt-3" aria-expanded={showAllStack}
+            onClick={() => setShowAllStack(value => !value)}>{showAllStack ? t.showTopStack : `${t.showAll} (${data.stack.length})`}</button>}
         </section>
 
         <section className="panel-card">

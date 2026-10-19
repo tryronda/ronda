@@ -9,6 +9,9 @@ All notable changes to Ronda are recorded here.
 - The library **Filters** control shows how many filters are active and offers a one-click **Clear**.
 - **Copy reference** on each message copies its `ronda://` link for use with `ronda-cli show`.
 - The transcript header shows when a session started and last changed and its token count, with **Copy session key**.
+- **Intelligence** can show every recurring error and stack row and copy a Markdown summary of the current range.
+- **Settings → Connect** adds a command-line snippet you can paste into AGENTS.md or CLAUDE.md.
+- `ronda-cli sessions` and `search` accept `--until` to bound results to a time window.
 
 ### Fixed
 - Session dates from earlier years now show the year, and archived sessions are marked in the library list.

@@ -11,8 +11,8 @@ use std::{
 };
 
 fn help() -> &'static str {
-    "ronda-cli search QUERY [--project PATH] [--agent ID] [--since WHEN] [--limit N]\n\
-     ronda-cli sessions [--project PATH] [--agent ID] [--since WHEN] [--starred] [--limit N]\n\
+    "ronda-cli search QUERY [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--limit N]\n\
+     ronda-cli sessions [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--starred] [--limit N]\n\
      ronda-cli show KEY [--subagent ID|*] [--from SEQ] [--messages N] [--chars N] [--message-chars N] [--tools] [--thinking]\n\
      ronda-cli projects [--since WHEN] [--limit N]\n\
      ronda-cli insights [--project PATH] [--since WHEN|all]  (default: 30d)\n\
@@ -76,12 +76,13 @@ fn parse_list(args: &[String], positional: bool) -> Result<(ListArgs, Vec<String
         }
         if !end {
             let mut matched = false;
-            for flag in ["--project", "--agent", "--since", "--limit"] {
+            for flag in ["--project", "--agent", "--since", "--until", "--limit"] {
                 if let Some(v) = option_value(args, &mut i, flag)? {
                     match flag {
                         "--project" => filter.project = Some(v),
                         "--agent" => filter.agents.push(v),
                         "--since" => filter.since = Some(v),
+                        "--until" => filter.until = Some(v),
                         _ => filter.limit = Some(usize_value(v, flag)?),
                     }
                     matched = true;
@@ -226,6 +227,7 @@ fn run() -> Result<String, (u8, String)> {
             if words.is_empty() {
                 return Err((2, "search needs a query".into()));
             }
+            query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::search(
                 &store,
                 &SearchArgs {
@@ -237,6 +239,7 @@ fn run() -> Result<String, (u8, String)> {
         }
         "sessions" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
+            query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::list_sessions(&store, &filter).map_err(|e| (1, e.to_string()))
         }
         "show" => {
@@ -245,7 +248,11 @@ fn run() -> Result<String, (u8, String)> {
         }
         "projects" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
-            if filter.project.is_some() || !filter.agents.is_empty() || filter.starred {
+            if filter.project.is_some()
+                || !filter.agents.is_empty()
+                || filter.starred
+                || filter.until.is_some()
+            {
                 return Err((2, "projects only accepts --since and --limit".into()));
             }
             query::list_projects(&store, filter.since.as_deref(), filter.limit)
@@ -253,7 +260,11 @@ fn run() -> Result<String, (u8, String)> {
         }
         "insights" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
-            if !filter.agents.is_empty() || filter.starred || filter.limit.is_some() {
+            if !filter.agents.is_empty()
+                || filter.starred
+                || filter.limit.is_some()
+                || filter.until.is_some()
+            {
                 return Err((2, "insights only accepts --project and --since".into()));
             }
             query::insights(
