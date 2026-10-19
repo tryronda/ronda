@@ -1416,6 +1416,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {[0, 1, 2].map(index => <div className="flex gap-4 border-b border-border pt-5 pb-7" key={index}><i className="skeleton size-6 flex-none" />
               <div className="grid flex-1 content-start gap-3"><i className="skeleton h-2.5 w-1/5" /><i className="skeleton h-2.5 w-[88%]" /><i className="skeleton h-2.5 w-3/5" /></div></div>)}
           </div> : messages.length ? <div className="transcript-messages mx-auto max-w-[780px] px-10 pt-6 pb-24 max-[1100px]:px-6">
+            {promptsOnly && !messages.some(message => message.role === "user" && message.kind === "text") &&
+              <div className="flex flex-col items-center gap-3 py-16 text-[13px] text-muted-foreground" role="status">
+                <p className="m-0">No prompts in this session.</p>
+                <button type="button" className="underline hover:text-foreground" onClick={() => setPromptsOnlyForNavigation(false)}>Show all messages</button></div>}
             {messages.filter(message => !promptsOnly || (message.role === "user" && message.kind === "text")).map((message, index) => <Message key={message.seq} message={message} animate={!reduce && index < 10} onFindError={text=>findHistory(text,selected.project_path ? {path:selected.project_path,host:selected.host,local_only:!selected.host} : null)} onCopyMessage={text=>void copyMessage(text)}>
               {contextEligible(message) && <label className="mt-3 block text-[13px]"><input type="checkbox" disabled={unavailable} checked={contextSelected.has(contextId({key:selected.key,seq:message.seq}))}
                 onChange={()=>toggleContext({key:selected.key,seq:message.seq})} /> Select message {message.seq} for context</label>}

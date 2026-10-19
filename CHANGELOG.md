@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- **Prompts only** no longer shows a blank transcript when a session has no prompts; it explains and offers **Show all messages**.
+
 ## [1.1.0] - 2026-10-19
 
 ### Added
