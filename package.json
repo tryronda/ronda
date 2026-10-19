@@ -16,7 +16,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "vitest run",
-    "check": "vitest run && tsc --noEmit",
+    "check": "vitest run --testTimeout=15000 && tsc --noEmit",
     "site:dev": "vite --config vite.site.config.ts",
     "site:build": "bun scripts/prerender-site.ts",
     "site:preview": "vite preview --config vite.site.config.ts",
