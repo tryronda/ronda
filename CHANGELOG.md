@@ -4,6 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- **Copy reference** on each saved bookmark in the library.
+
+
 ## [1.2.0] - 2026-10-19
 
 ### Added

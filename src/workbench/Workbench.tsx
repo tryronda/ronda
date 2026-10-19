@@ -1295,6 +1295,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             </button>
             <label className="my-2 block text-[13px]"><input type="checkbox" disabled={view.status === "unavailable" && !contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))} checked={contextSelected.has(contextId({key:view.bookmark.session_key,seq:view.bookmark.seq}))}
               onChange={()=>toggleContext({key:view.bookmark.session_key,seq:view.bookmark.seq})} /> Select bookmarked message {view.bookmark.seq} for context</label>
+            <button type="button" className="mr-3 text-[13px]" aria-label={`Copy reference ${view.bookmark.seq}`} onClick={()=>void copyReference(view.bookmark.session_key,view.bookmark.seq)}>Copy reference</button>
             {view.status === "unavailable" && <p className="text-[12px] text-muted-foreground">Original content unavailable; saved excerpts cannot substitute for the original message in context.</p>}
             <BookmarkControl api={api} sessionKey={view.bookmark.session_key} seq={view.bookmark.seq} view={view}
               editorState={bookmarkEditors[contextId({key:view.bookmark.session_key,seq:view.bookmark.seq})] ?? emptyBookmarkEditor}
