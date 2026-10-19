@@ -81,7 +81,7 @@ test("question mark opens the shortcuts help, Escape closes it, and typing in a 
   const dialog = host.querySelector("dialog")!;
   expect(dialog.textContent).toContain("Keyboard shortcuts");
   expect(dialog.textContent).toContain("Search the library");
-  expect(dialog.textContent).toContain("Jump to previous / next prompt");
+  expect(dialog.textContent).toContain("Jump to the previous / next prompt");
 
   await press(dialog, "Escape");
   expect(host.querySelector("dialog")).toBeNull();
