@@ -16,6 +16,7 @@ All notable changes to Ronda are recorded here.
 ### Fixed
 - Session dates from earlier years now show the year, and archived sessions are marked in the library list.
 - **Prompts only** no longer shows a blank transcript when a session has no prompts; it explains and offers **Show all messages**.
+- `ronda-cli sessions`, `search`, and `projects` now exit with status 2 for an invalid `--since` value, matching `--until` and other usage errors.
 
 ## [1.1.0] - 2026-10-19
 

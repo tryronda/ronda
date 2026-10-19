@@ -424,6 +424,9 @@ fn cli_until_bounds_sessions_and_search_to_a_window() {
         vec!["search", "x", "--until", "nope"],
         vec!["projects", "--until", "3d"],
         vec!["insights", "--until", "3d"],
+        vec!["sessions", "--since", "lastweekish"],
+        vec!["search", "x", "--since", "nope"],
+        vec!["projects", "--since", "nope"],
     ] {
         let out = run_cli(&database, &args);
         assert_eq!(out.status.code(), Some(2), "{args:?}");

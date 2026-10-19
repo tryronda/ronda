@@ -227,6 +227,7 @@ fn run() -> Result<String, (u8, String)> {
             if words.is_empty() {
                 return Err((2, "search needs a query".into()));
             }
+            query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::search(
                 &store,
@@ -239,6 +240,7 @@ fn run() -> Result<String, (u8, String)> {
         }
         "sessions" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
+            query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::list_sessions(&store, &filter).map_err(|e| (1, e.to_string()))
         }
@@ -255,6 +257,7 @@ fn run() -> Result<String, (u8, String)> {
             {
                 return Err((2, "projects only accepts --since and --limit".into()));
             }
+            query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::list_projects(&store, filter.since.as_deref(), filter.limit)
                 .map_err(|e| (1, e.to_string()))
         }
