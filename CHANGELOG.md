@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-19
+
 ### Added
 - **Select all** loaded sessions with ⌘/Ctrl-A in the session list, ready for bulk star, pin, or label.
 - The library **Filters** control shows how many filters are active and offers a one-click **Clear**.
