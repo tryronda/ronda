@@ -8,6 +8,7 @@ All notable changes to Ronda are recorded here.
 - Project overview dates match the library list, and counts use correct singular and plural forms.
 
 ### Fixed
+- Resume readiness no longer flashes back to “Checking…” when the library refreshes in the background.
 - The project overview heading shows the folder name for paths that use backslashes.
 
 ## [1.3.0] - 2026-10-19

@@ -32,3 +32,30 @@ test("readiness explains unavailable resumes, recovers sample folders, and never
     expect(host.textContent).toContain("Subagents cannot independently resume");expect(button("Resume")).toBeUndefined();
   }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
 });
+
+test("background library refreshes keep the Resume button and switching sessions clears it",async()=>{
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});installDemoBackend();
+  const session=(await backend.getSession("codex:related-search"))!;
+  const other=(await backend.sessionRelationships("claude-code:demo-0")).children[0];
+  const ready=async(key:string):Promise<Readiness>=>({...(await backend.inspectResume(key)),ready:true,reasons:[]});
+  let changed=()=>{};
+  const inspectResume=vi.fn(ready);
+  const api={...backend,inspectResume,onLibraryChanged:async(callback:()=>void)=>{changed=callback;return ()=>{};}};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const render=async(selected=session)=>act(async()=>root.render(<ResumeReadiness api={api} session={selected} active={true} running={false} onResume={vi.fn()} />));
+  const resumeButton=()=>Array.from(host.querySelectorAll("button")).find(item=>item.textContent==="Resume");
+  vi.useFakeTimers({toFake:["setTimeout","clearTimeout"]});
+  try{
+    await render();expect(resumeButton()).toBeDefined();expect(inspectResume).toHaveBeenCalledTimes(1);
+    inspectResume.mockImplementationOnce(()=>new Promise(()=>{}));
+    await act(async()=>{changed();vi.advanceTimersByTime(500);});
+    expect(inspectResume).toHaveBeenCalledTimes(2);
+    expect(resumeButton()).toBeDefined();expect(host.textContent).not.toContain("Checking resume readiness");
+    inspectResume.mockRejectedValueOnce(new Error("boom"));
+    await act(async()=>{changed();vi.advanceTimersByTime(500);});
+    expect(resumeButton()).toBeDefined();expect(host.textContent).toContain("boom");
+    inspectResume.mockImplementationOnce(()=>new Promise(()=>{}));
+    await render(other);
+    expect(resumeButton()).toBeUndefined();expect(host.textContent).toContain("Checking resume readiness");expect(host.textContent).not.toContain("boom");
+  }finally{vi.useRealTimers();await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
+});

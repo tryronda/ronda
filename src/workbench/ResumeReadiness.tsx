@@ -1,17 +1,26 @@
-import {useState} from "react";
+import {useRef,useState} from "react";
 import {open} from "@tauri-apps/plugin-dialog";
-import {useLibraryRefresh} from "@/lib/hooks/use-library-refresh";
+import {sameJson,useLibraryRefresh} from "@/lib/hooks/use-library-refresh";
 import type {ResumeReason,ResumeReadiness as Readiness,SessionMeta,WorkbenchBackend} from "./api";
 
 const reasons:Record<ResumeReason,string>={unsupported_agent:"Resume is unavailable for this agent.",unsupported_child:"Subagents cannot independently resume.",unknown_project:"Project directory is unknown.",missing_folder:"Project folder is missing or unavailable.",missing_executable:"Executable is missing from the launch environment.",inspection_unknown:"Launch environment could not be checked. Retry before resuming.",remote_environment_unchecked:"Remote folder and executable are unchecked. Launch can report SSH, authentication, or environment errors."};
 
 export function ResumeReadiness({api,session,active,running,onResume}:{api:WorkbenchBackend;session:SessionMeta;active:boolean;running:boolean;onResume:()=>void}) {
-  const [data,setData]=useState<Readiness|null>(null),[error,setError]=useState(""),[retry,setRetry]=useState(0),[busy,setBusy]=useState(false),[notice,setNotice]=useState("");
+  const [state,setState]=useState<{key:string;data:Readiness|null}>({key:session.key,data:null}),[error,setError]=useState(""),[retry,setRetry]=useState(0),[busy,setBusy]=useState(false),[notice,setNotice]=useState("");
+  // Readiness for another session is never shown; background refreshes replace the same session's data in place.
+  const data=state.key===session.key ? state.data : null;
+  const shown=useRef(session.key);
   useLibraryRefresh(()=>{
-    let live=true;setData(null);setError("");setNotice("");
-    void api.inspectResume(session.key).then(next=>{if(live)setData(next);}).catch(cause=>{if(live)setError(String(cause));});
+    let live=true;
+    if(shown.current!==session.key){shown.current=session.key;setError("");setNotice("");}
+    setState(current=>current.key===session.key ? current : {key:session.key,data:null});
+    void api.inspectResume(session.key).then(next=>{
+      if(!live)return;
+      setState(current=>current.key===session.key && sameJson(current.data,next) ? current : {key:session.key,data:next});setError("");
+    }).catch(cause=>{if(live)setError(String(cause));});
     return ()=>{live=false;};
   },[api,session.key,retry],active,400,api.onLibraryChanged);
+  const checkAgain=()=>{setState({key:session.key,data:null});setError("");setNotice("");setRetry(n=>n+1);};
   async function chooseFolder() {
     if(!data)return;setBusy(true);setError("");
     try {
@@ -31,7 +40,7 @@ export function ResumeReadiness({api,session,active,running,onResume}:{api:Workb
         <button type="button" className="underline" onClick={()=>void navigator.clipboard.writeText(data.command!).then(()=>setNotice("Command copied")).catch(cause=>setError(String(cause)))}>Copy resume command</button></details>}
       <p className="text-muted-foreground">Readiness checks do not start an agent. Opening a terminal does not verify agent startup.</p>
     </>}
-    <button type="button" className="underline" disabled={busy} onClick={()=>setRetry(n=>n+1)}>Check resume again</button>
+    <button type="button" className="underline" disabled={busy} onClick={checkAgain}>Check resume again</button>
     {notice && <p role="status">{notice}</p>}
   </section>;
 }
