@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Intelligence no longer misreads commit messages that mention --dry-run, or quoted git commands, when deciding whether work was committed.
+- Durations in Intelligence callouts and insights text are rounded the same way as in the app.
 
 ## [1.5.0] - 2026-10-19
 
