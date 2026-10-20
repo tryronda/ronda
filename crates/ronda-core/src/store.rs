@@ -268,6 +268,18 @@ impl Store {
             .optional()?)
     }
 
+    /// Returns `(fingerprint, source_path)` for a session in one query.
+    pub fn fingerprint_and_source(&self, key: &str) -> Result<Option<(String, String)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT fingerprint, source_path FROM sessions WHERE key=?1",
+                [key],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
+
     pub fn latest_activity(&self) -> Result<Option<i64>> {
         Ok(self
             .conn
@@ -452,15 +464,19 @@ impl Store {
     }
 
     pub fn prune_missing(&mut self, host: Option<&str>, seen: &HashSet<String>) -> Result<()> {
-        let rows: Vec<(String, String)> = self
+        // Host scoping happens in SQL (`IS` matches NULL for local sessions). Rows whose
+        // meta is not valid JSON are left alone rather than aborting the whole prune.
+        let keys: Vec<String> = self
             .conn
-            .prepare("SELECT key,meta FROM sessions")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .prepare(
+                "SELECT key FROM sessions WHERE json_valid(meta) \
+                 AND CASE WHEN json_valid(meta) THEN json_extract(meta,'$.host') END IS ?1",
+            )?
+            .query_map([host], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?;
         let tx = self.conn.transaction()?;
-        for (key, json) in rows {
-            let meta: SessionMeta = serde_json::from_str(&json)?;
-            if meta.host.as_deref() != host || seen.contains(&key) {
+        for key in keys {
+            if seen.contains(&key) {
                 continue;
             }
             tx.execute("DELETE FROM sessions WHERE key=?1", [&key])?;
@@ -953,6 +969,51 @@ impl Store {
 mod search_tests {
     use super::*;
     use crate::LibrarySort;
+
+    fn insert_raw(store: &Store, key: &str, meta: &str) {
+        store.conn.execute(
+            "INSERT INTO sessions(key,meta,fingerprint,source_path,agent,updated_at) VALUES(?1,?2,'fp',?3,'claude-code',0)",
+            params![key, meta, format!("/src/{key}")],
+        ).unwrap();
+    }
+
+    #[test]
+    fn fingerprint_and_source_is_one_lookup() {
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        insert_raw(&store, "a", r#"{"key":"a"}"#);
+        assert_eq!(
+            store.fingerprint_and_source("a").unwrap(),
+            Some(("fp".to_string(), "/src/a".to_string()))
+        );
+        assert_eq!(store.fingerprint_and_source("missing").unwrap(), None);
+    }
+
+    #[test]
+    fn prune_missing_is_host_scoped_and_survives_corrupt_meta() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        insert_raw(&store, "local-keep", r#"{"key":"local-keep"}"#);
+        insert_raw(&store, "local-gone", r#"{"key":"local-gone"}"#);
+        insert_raw(&store, "remote-keep", r#"{"key":"remote-keep","host":"h"}"#);
+        insert_raw(&store, "remote-gone", r#"{"key":"remote-gone","host":"h"}"#);
+        insert_raw(&store, "other-gone", r#"{"key":"other-gone","host":"o"}"#);
+        // The related-scope expression index rejects malformed meta; drop it to simulate
+        // a row that was damaged on disk.
+        store
+            .conn
+            .execute("DROP INDEX IF EXISTS sessions_related_scope", [])
+            .unwrap();
+        insert_raw(&store, "corrupt", "{not json");
+        let seen: HashSet<String> = ["local-keep", "remote-keep"].map(String::from).into();
+        store.prune_missing(None, &seen).unwrap();
+        let left = |s: &Store, k: &str| s.fingerprint(k).unwrap().is_some();
+        assert!(!left(&store, "local-gone"));
+        assert!(left(&store, "local-keep"));
+        assert!(left(&store, "remote-gone") && left(&store, "other-gone"));
+        assert!(left(&store, "corrupt"));
+        store.prune_missing(Some("h"), &seen).unwrap();
+        assert!(!left(&store, "remote-gone"));
+        assert!(left(&store, "remote-keep") && left(&store, "other-gone"));
+    }
 
     #[test]
     fn local_source_root_match_uses_path_components_and_host_scope() {

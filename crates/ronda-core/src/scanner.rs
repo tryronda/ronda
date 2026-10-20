@@ -216,16 +216,18 @@ impl Scanner {
                     .then(b.1.modified_ms.cmp(&a.1.modified_ms))
             });
             let mut parsed = None;
+            let mut errored = false;
+            let mut skipped = false;
             for (index, source, id) in candidates {
                 let adapter = &self.adapters[index];
                 let fingerprint = adapter.fingerprint(&source);
-                let same_source = store
-                    .get_session(&key)?
-                    .is_some_and(|m| m.source_path == source.path.to_string_lossy());
-                if !force
-                    && same_source
-                    && store.fingerprint(&key)?.as_deref() == Some(&fingerprint)
-                {
+                let unchanged = !force
+                    && store
+                        .fingerprint_and_source(&key)?
+                        .is_some_and(|(stored, path)| {
+                            path == source.path.to_string_lossy() && stored == fingerprint
+                        });
+                if unchanged {
                     report.unchanged += 1;
                     parsed = Some(());
                     break;
@@ -254,8 +256,11 @@ impl Scanner {
                         parsed = Some(());
                         break;
                     }
-                    Ok(None) => {}
+                    // An intentional skip (e.g. an empty transcript) is handled; the key
+                    // stays in `seen`, so an existing source's session is never pruned.
+                    Ok(None) => skipped = true,
                     Err(e) => {
+                        errored = true;
                         if let Some(root) = root_states.get_mut(&id) {
                             bump_count(&mut root.issues, &mut root.counts_truncated);
                         }
@@ -265,7 +270,7 @@ impl Scanner {
                     }
                 }
             }
-            if parsed.is_none() {
+            if parsed.is_none() && (errored || !skipped) {
                 complete = false;
             }
         }
