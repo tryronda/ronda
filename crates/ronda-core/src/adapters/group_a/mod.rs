@@ -813,9 +813,12 @@ fn parse_codex(rows: &[Value]) -> Parsed {
             }
             "event_msg" => match payload["type"].as_str().unwrap_or("") {
                 "token_count" => {
-                    out.tokens = payload
+                    if let Some(total) = payload
                         .pointer("/info/total_token_usage/total_tokens")
-                        .and_then(Value::as_i64);
+                        .and_then(Value::as_i64)
+                    {
+                        out.tokens = Some(total);
+                    }
                 }
                 "user_message" | "agent_message" => {
                     if let Some(s) = nonempty(&payload["message"]) {
@@ -1432,6 +1435,15 @@ mod tests {
         assert!(adapter.resume(&sub.meta).is_none());
         assert_eq!(fs::read_to_string(&child_path).unwrap(), child);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_token_total_survives_empty_usage_event() {
+        let rows = vec![
+            serde_json::json!({"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":42}}}}),
+            serde_json::json!({"type":"event_msg","payload":{"type":"token_count","info":null}}),
+        ];
+        assert_eq!(parse_codex(&rows).tokens, Some(42));
     }
 
     #[test]

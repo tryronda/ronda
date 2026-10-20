@@ -133,14 +133,21 @@ struct Fact {
     outcome: String,
 }
 
+/// Format a duration like the app's `hours()`: whole minutes (at least one for any positive
+/// duration) under an hour, one decimal up to ten hours, whole hours beyond. The unit is chosen
+/// from the unrounded duration, as the app does, so 59.6 minutes reads as `60 min`.
 pub fn hours(ms: i64) -> String {
+    if ms <= 0 {
+        return "0 min".into();
+    }
     let h = ms as f64 / 3_600_000.0;
     if h >= 10.0 {
-        format!("{h:.0} h")
+        format!("{} h", h.round())
     } else if h >= 1.0 {
-        format!("{h:.1} h")
+        format!("{:.1} h", (h * 10.0).round() / 10.0)
     } else {
-        format!("{} min", (ms / 60_000).max(if ms > 0 { 1 } else { 0 }))
+        let minutes = ((ms as f64 / 60_000.0).round() as i64).max(1);
+        format!("{minutes} min")
     }
 }
 
@@ -652,4 +659,35 @@ fn callouts(
         out.push(format!("New in this period: {}.", new.join(", ")));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hours;
+
+    #[test]
+    fn durations_round_to_the_nearest_minute() {
+        for (ms, expected) in [
+            (-5, "0 min"),
+            (0, "0 min"),
+            (1, "1 min"),
+            (29_999, "1 min"),
+            (60_000, "1 min"),
+            (89_999, "1 min"),
+            (90_000, "2 min"),
+            (119_000, "2 min"),
+            (59 * 60_000 + 29_000, "59 min"),
+            (59 * 60_000 + 30_000, "60 min"),
+            (3_600_000, "1.0 h"),
+            (5_400_000, "1.5 h"),
+            (4_500_000, "1.3 h"),
+            (9 * 3_600_000 + 54 * 60_000, "9.9 h"),
+            (599 * 60_000 + 29_000, "10.0 h"),
+            (600 * 60_000, "10 h"),
+            (10 * 3_600_000 + 1_800_000, "11 h"),
+            (25 * 3_600_000, "25 h"),
+        ] {
+            assert_eq!(hours(ms), expected, "{ms} ms");
+        }
+    }
 }
