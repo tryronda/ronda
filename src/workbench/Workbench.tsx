@@ -1,6 +1,7 @@
 import { ErrorHistory } from "./ErrorHistory";
 import type {ErrorHistoryRequest} from "./api";
 import { ProjectOverview } from "./ProjectOverview";
+import { SearchEmpty } from "./SearchEmpty";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -1331,6 +1332,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           {searching ? <Loader variant="dot-matrix" size={22} label={t.searching} className="text-foreground" />
             : <PixelField cols={4} rows={4} cell={9} seed={3} className="size-9" />}
           <strong className="text-[14px] font-medium text-foreground">{loading ? t.loading : search.trim() ? searching ? t.searching : t.searchEmpty : t.noSessions}</strong>
+          {search.trim() && !loading && !searching && !dates.error && <SearchEmpty activeFilterCount={activeFilterCount} includeArchived={includeArchived}
+            onClearFilters={()=>{clearFilters();if(detail.kind==="project")navigateDetail({kind:"home"});}} onIncludeArchived={()=>setIncludeArchived(true)} />}
           {!search.trim() && <p className="m-0 text-[12px] leading-relaxed">{options.agents.length ? "Try clearing filters or including archived sessions." : t.noSessionsHint}</p>}</div> : visible.map(({ session, group }, index) =>
           <div key={session.key}><button type="button" data-session-key={session.key}
             aria-current={selectedKey === session.key ? "true" : undefined} aria-pressed={selection.has(session.key)}

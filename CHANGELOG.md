@@ -4,6 +4,13 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Escape closes saved-search forms and returns focus to where you were.
+- Empty search results explain the active filters and offer to clear them.
+
+### Changed
+- Label rename cancels with Escape, and the delete confirmation names the label.
+
 ## [1.3.0] - 2026-10-19
 
 ### Added

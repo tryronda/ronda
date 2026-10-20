@@ -1238,3 +1238,33 @@ test("Escape closes saved-search forms and focus returns to the control that ope
     expect(document.activeElement).toBe(button("Save current search"));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("an empty search explains active filters and Clear filters restores results", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const searchGrouped = vi.fn(async (_query: string, filter: { starred_only?: boolean }) => filter.starred_only
+    ? { groups: [], total_sessions: 0, total_message_matches: 0 }
+    : { groups: [{ session, title_match: true, message_matches: 0, excerpts: [] }], total_sessions: 1, total_message_matches: 0 });
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [], listBookmarks: async () => [],
+    sessionPage: async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit }),
+    searchGrouped, onLibraryChanged: async () => () => {} };
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const button = (text: string) => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent?.trim() === text);
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent?.includes("Starred"))!.click());
+    const input = host.querySelector<HTMLInputElement>('[aria-label="Search all conversations"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "nothing here");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settle();
+    expect(host.textContent).toContain("No matching messages");
+    expect(host.textContent).toContain("1 filter is active");
+    expect(button("Include archived")).toBeDefined();
+    await act(async () => button("Clear filters")!.click());
+    await settle();
+    expect(host.textContent).not.toContain("No matching messages");
+    expect(host.querySelector(".session-card")).not.toBeNull();
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
