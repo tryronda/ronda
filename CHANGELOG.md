@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Intelligence no longer misreads commit messages that mention --dry-run, or quoted git commands, when deciding whether work was committed.
+
 ## [1.5.0] - 2026-10-19
 
 ### Added
