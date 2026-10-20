@@ -791,7 +791,12 @@ async function handle(command: string, args: Args = {}): Promise<unknown> {
       sessions = sessions.map(session => session.labels?.includes(args.id as string) ? { ...session, labels: session.labels.filter(id => id !== args.id) } : session);
       return null;
     case "set_session_label": setSessionLabel(args.key as string, args.labelId as string, args.assigned as boolean); return null;
-    case "trash_session": sessions = sessions.filter(session => session.key !== args.key); return null;
+    case "trash_session": {
+      const target = sessions.find(session => session.key === args.key);
+      if (!target) throw new Error("unknown session");
+      if (target.host || !target.can_delete) throw new Error("this session cannot be deleted");
+      sessions = sessions.filter(session => session.key !== args.key); libraryListeners.forEach(callback=>callback()); return null;
+    }
     case "inspect_resume": {
       const session=sessions.find(item=>item.key===args.key);if(!session)throw new Error("Unknown sample session");
       const program=({"claude-code":"claude",codex:"codex",cursor:"cursor-agent",qoder:"qoder",opencode:"opencode",pi:"pi"} as Record<string,string>)[session.agent];

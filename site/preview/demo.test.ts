@@ -434,3 +434,19 @@ test("preview diagnostics report the current app version", async () => {
   expect((await invoke<{ app_version: string }>("get_diagnostics_report")).app_version).toBe(appVersion);
   uninstallDemoBackend();
 });
+
+test("preview delete refuses remote and unknown samples like the desktop app and notifies on success", async () => {
+  installDemoBackend();
+  const changed = vi.fn();
+  const stop = await backend.onLibraryChanged(changed);
+  const remote = (await backend.listSessions({ ...queryDefaults, include_archived: true, limit: null })).find(session => session.host);
+  expect(remote).toBeTruthy();
+  await expect(invoke("trash_session", { key: remote!.key })).rejects.toThrow("this session cannot be deleted");
+  await expect(invoke("trash_session", { key: "missing:key" })).rejects.toThrow("unknown session");
+  expect(changed).not.toHaveBeenCalled();
+  await invoke("trash_session", { key: "claude-code:demo-0" });
+  expect(changed).toHaveBeenCalledTimes(1);
+  const left = await backend.listSessions({ ...queryDefaults, include_archived: true, limit: null });
+  expect(left.some(session => session.key === "claude-code:demo-0")).toBe(false);
+  stop();
+});
