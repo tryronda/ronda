@@ -146,6 +146,33 @@ static CONFIG_PATH: LazyLock<Regex> = LazyLock::new(|| {
 static COMMIT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\bgit\s+(-C\s+\S+\s+)?(commit|push)\b|\bgh\s+pr\s+(create|merge)\b").unwrap()
 });
+static COMMAND_BREAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&&|\|\||[;|\n]").unwrap());
+
+/// True when a shell command really commits or publishes work. `--dry-run` is excluded
+/// for `git commit` and `git push`, and `-n` too for push (for commit `-n` is `--no-verify`).
+/// Chained commands are judged per segment, so `git commit --dry-run && git commit` counts.
+fn commits_work(command: &str) -> bool {
+    COMMAND_BREAK.split(command).any(|segment| {
+        let Some(caps) = COMMIT.captures(segment) else {
+            return false;
+        };
+        let dry = |short_n: bool| {
+            segment.split_whitespace().any(|t| {
+                t == "--dry-run"
+                    || (short_n
+                        && t.starts_with('-')
+                        && !t.starts_with("--")
+                        && t[1..].chars().all(|c| c.is_ascii_alphabetic())
+                        && t.contains('n'))
+            })
+        };
+        match caps.get(2).map(|m| m.as_str()) {
+            Some("commit") => !dry(false),
+            Some("push") => !dry(true),
+            _ => true,
+        }
+    })
+}
 
 fn first_prompt(messages: &[TranscriptMessage]) -> String {
     messages
@@ -201,9 +228,7 @@ fn category(prompt: &str, tools: &[ToolEvent], early_errors: bool) -> Category {
 
 fn outcome(tools: &[ToolEvent], failures: &[(Pattern, i64)]) -> Outcome {
     let committed = tools.iter().any(|e| {
-        e.kind == ToolKind::Shell
-            && !e.is_error
-            && e.command.as_deref().is_some_and(|c| COMMIT.is_match(c))
+        e.kind == ToolKind::Shell && !e.is_error && e.command.as_deref().is_some_and(commits_work)
     });
     if committed {
         return Outcome::Committed;
@@ -294,8 +319,8 @@ pub fn derive(meta: &SessionMeta, messages: &[TranscriptMessage]) -> Derived {
                 .is_some_and(|c| TEST_COMMAND.is_match(c))
     });
     let facts = SessionFacts {
-        started_at: stamped.first().map(|s| s.0).unwrap_or(meta.created_at),
-        ended_at: stamped.last().map(|s| s.0).unwrap_or(meta.updated_at),
+        started_at: stamped.iter().map(|s| s.0).min().unwrap_or(meta.created_at),
+        ended_at: stamped.iter().map(|s| s.0).max().unwrap_or(meta.updated_at),
         active_ms,
         recovery_ms,
         prompts: messages
@@ -379,6 +404,51 @@ mod tests {
         }
     }
     const MIN: i64 = 60_000;
+
+    #[test]
+    fn dry_runs_are_not_committed_work() {
+        for (cmd, expected) in [
+            ("git commit -m fix", true),
+            ("git commit -n -m fix", true),
+            ("git commit --no-verify -m fix", true),
+            ("git commit --dry-run", false),
+            ("git push", true),
+            ("git push -u origin main", true),
+            ("git push --dry-run", false),
+            ("git push -n", false),
+            ("git -C /repo push --dry-run origin main", false),
+            ("git commit --dry-run && git push", true),
+            ("git commit --dry-run && git push --dry-run", false),
+            ("gh pr create --fill", true),
+            ("cargo test", false),
+        ] {
+            assert_eq!(commits_work(cmd), expected, "{cmd}");
+        }
+        let messages = vec![
+            user(0, 0, "Add a button"),
+            tool(
+                1,
+                MIN,
+                "Bash",
+                r#"{"command":"git push --dry-run"}"#,
+                "Everything up-to-date",
+                false,
+            ),
+        ];
+        assert_ne!(derive(&meta(), &messages).facts.outcome, Outcome::Committed);
+    }
+
+    #[test]
+    fn start_and_end_use_min_and_max_timestamps() {
+        let messages = vec![
+            user(0, 5 * MIN, "b"),
+            user(1, 9 * MIN, "c"),
+            user(2, 2 * MIN, "a"),
+            user(3, 7 * MIN, "d"),
+        ];
+        let d = derive(&meta(), &messages);
+        assert_eq!((d.facts.started_at, d.facts.ended_at), (2 * MIN, 9 * MIN));
+    }
 
     #[test]
     fn bug_fix_that_gets_committed() {

@@ -21,6 +21,9 @@ pub struct ListArgs {
     pub limit: Option<usize>,
     #[serde(default)]
     pub starred: bool,
+    /// List the oldest activity first. CLI only; applies to sessions and projects.
+    #[serde(default)]
+    pub reverse: bool,
 }
 #[derive(Default, Clone, Deserialize)]
 pub struct SearchArgs {
@@ -107,10 +110,13 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
     let Some(s) = raw else { return Ok(None) };
     let s = s.trim();
     if let Some(unit) = s.chars().last() {
+        let digits = &s[..s.len() - unit.len_utf8()];
         if matches!(unit, 'm' | 'h' | 'd' | 'w')
-            && s[..s.len() - 1].chars().all(|c| c.is_ascii_digit())
+            && !digits.is_empty()
+            && digits.chars().all(|c| c.is_ascii_digit())
         {
-            let n: i64 = s[..s.len() - 1].parse()?;
+            let invalid = || anyhow!("invalid {name} value: {s}");
+            let n: i64 = digits.parse().map_err(|_| invalid())?;
             let seconds = n
                 .checked_mul(match unit {
                     'm' => 60,
@@ -118,7 +124,7 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
                     'd' => 86400,
                     _ => 604800,
                 })
-                .ok_or_else(|| anyhow!("{name} duration is too large"))?;
+                .ok_or_else(invalid)?;
             return Ok(Some(
                 Utc::now()
                     .timestamp_millis()
@@ -226,15 +232,12 @@ fn date(ms: i64) -> String {
         })
         .unwrap_or_else(|| "unknown time".into())
 }
+/// `1 session`, `2 sessions`.
+fn plural<T: Copy + PartialEq + From<u8> + std::fmt::Display>(n: T, noun: &str) -> String {
+    format!("{n} {noun}{}", if n == T::from(1) { "" } else { "s" })
+}
 fn freshness(store: &Store) -> Result<String> {
-    let last = store
-        .list_sessions(&SessionQuery {
-            include_archived: true,
-            ..Default::default()
-        })?
-        .into_iter()
-        .map(|s| s.updated_at)
-        .max();
+    let last = store.latest_activity()?;
     Ok(last.map(|t| format!("\nIndex covers activity up to {} (local time); Ronda keeps it fresh while running.\n", date(t)))
         .unwrap_or_else(|| "\nIndex is empty. Launch Ronda or run `ronda-cli index`.\n".into()))
 }
@@ -282,7 +285,11 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
     );
     let mut sessions = store.list_sessions(&SessionQuery::default())?;
     sessions.retain(|s| s.parent_key.is_none() && accept(s, &paths, &agents, window, args.starred));
-    sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+    if args.reverse {
+        sessions.sort_by_key(|s| s.updated_at);
+    } else {
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+    }
     let count = sessions.len();
     sessions.truncate(
         args.limit
@@ -290,8 +297,14 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
             .clamp(SESSIONS_LIMIT.0, SESSIONS_LIMIT.1),
     );
     let mut out = format!(
-        "{count} sessions — showing {} most recent.\n\n",
-        sessions.len()
+        "{} — showing {} {}.\n\n",
+        plural(count, "session"),
+        sessions.len(),
+        if args.reverse {
+            "oldest"
+        } else {
+            "most recent"
+        }
     );
     for s in &sessions {
         out.push_str(&session_line(s));
@@ -339,7 +352,9 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
             .clamp(SEARCH_LIMIT.0, SEARCH_LIMIT.1),
     );
     let mut out = format!(
-        "{count} sessions match `{}` — showing {}.\n\n",
+        "{} {} `{}` — showing {}.\n\n",
+        plural(count, "session"),
+        if count == 1 { "matches" } else { "match" },
         args.query,
         grouped.len()
     );
@@ -583,9 +598,22 @@ fn append_child_refs(
 }
 
 pub fn list_projects(store: &Store, since: Option<&str>, limit: Option<usize>) -> Result<String> {
+    list_projects_ordered(store, since, limit, false)
+}
+
+/// Like [`list_projects`]; `reverse` lists the oldest activity first, before the limit applies.
+pub fn list_projects_ordered(
+    store: &Store,
+    since: Option<&str>,
+    limit: Option<usize>,
+    reverse: bool,
+) -> Result<String> {
     let since = since_ms(since)?;
-    let projects: Vec<_> = store
-        .projects()?
+    let mut all = store.projects()?;
+    if reverse {
+        all.sort_by_key(|p| p.updated_at);
+    }
+    let projects: Vec<_> = all
         .into_iter()
         .filter(|p| since.is_none_or(|s| p.updated_at >= s))
         .take(
@@ -594,12 +622,12 @@ pub fn list_projects(store: &Store, since: Option<&str>, limit: Option<usize>) -
                 .clamp(PROJECTS_LIMIT.0, PROJECTS_LIMIT.1),
         )
         .collect();
-    let mut out = format!("{} projects.\n\n", projects.len());
+    let mut out = format!("{}.\n\n", plural(projects.len(), "project"));
     for p in projects {
         out.push_str(&format!(
-            "- {} · {} sessions · updated {}\n",
+            "- {} · {} · updated {}\n",
             p.path,
-            p.session_count,
+            plural(p.session_count, "session"),
             date(p.updated_at)
         ));
     }
@@ -646,10 +674,10 @@ pub fn insights(store: &Store, args: &InsightsArgs) -> Result<String> {
     let r = store.intelligence(since, project.as_deref())?;
     let t = &r.totals;
     let mut out = format!(
-        "Session intelligence · {} · {}\n{} sessions · {} active · {} recovering from failing commands · {} of {} tool calls failed · {} recurring errors\n",
+        "Session intelligence · {} · {}\n{} · {} active · {} recovering from failing commands · {} of {} tool calls failed · {} recurring errors\n",
         if since.is_some() { format!("since {since_raw}") } else { "all time".into() },
         project.as_deref().unwrap_or("all projects"),
-        t.sessions, hours(t.active_ms), hours(t.recovery_ms), t.tool_errors, t.tool_calls, t.recurring_bugs
+        plural(t.sessions, "session"), hours(t.active_ms), hours(t.recovery_ms), t.tool_errors, t.tool_calls, t.recurring_bugs
     );
     if t.sessions == 0 {
         out.push_str(&freshness(store)?);
@@ -660,25 +688,29 @@ pub fn insights(store: &Store, args: &InsightsArgs) -> Result<String> {
     time.sort_by_key(|row| std::cmp::Reverse(row.active_ms));
     for row in &time {
         out.push_str(&format!(
-            "- {}: {} · {} sessions\n",
+            "- {}: {} · {}\n",
             row.label,
             hours(row.active_ms),
-            row.sessions
+            plural(row.sessions, "session")
         ));
     }
     out.push_str("\nHow sessions end\n");
     for row in &r.outcomes {
         out.push_str(&format!(
-            "- {}: {} sessions · {}\n",
+            "- {}: {} · {}\n",
             row.label,
-            row.sessions,
+            plural(row.sessions, "session"),
             hours(row.active_ms)
         ));
     }
     if !r.failures.is_empty() {
         out.push_str("\nAgent failures\n");
         for row in &r.failures {
-            out.push_str(&format!("- {}: {} sessions\n", row.label, row.sessions));
+            out.push_str(&format!(
+                "- {}: {}\n",
+                row.label,
+                plural(row.sessions, "session")
+            ));
             for e in row.evidence.iter().take(3) {
                 out.push_str(&format!("  - {} · {}\n", reference(e), e.title));
             }
@@ -688,9 +720,9 @@ pub fn insights(store: &Store, args: &InsightsArgs) -> Result<String> {
         out.push_str("\nRecurring errors\n");
         for bug in &r.recurring {
             out.push_str(&format!(
-                "- {} · {} sessions · {} · last seen {}{}\n",
+                "- {} · {} · {} · last seen {}{}\n",
                 bug.message,
-                bug.sessions,
+                plural(bug.sessions, "session"),
                 bug.agents.join(", "),
                 date(bug.last_seen),
                 if bug.came_back {
@@ -708,10 +740,10 @@ pub fn insights(store: &Store, args: &InsightsArgs) -> Result<String> {
         out.push_str("\nStack (share of sessions with tool calls)\n");
         for row in r.stack.iter().take(15) {
             out.push_str(&format!(
-                "- {}: {}% · {} sessions{}\n",
+                "- {}: {}% · {}{}\n",
                 row.tech,
                 row.share,
-                row.sessions,
+                plural(row.sessions, "session"),
                 if row.new { " · new" } else { "" }
             ));
         }
@@ -745,12 +777,15 @@ pub fn find_error(store: &Store, args: &FindErrorArgs) -> Result<String> {
     let Some((message, hits)) = store.find_error(&args.error)? else {
         return Ok("No indexed session hit this error. Ronda matches errors after removing paths, line numbers, and other values.\n".into());
     };
-    let mut out = format!("Seen in {} sessions: {message}\n\n", hits.len());
+    let mut out = format!("Seen in {}: {message}\n\n", plural(hits.len(), "session"));
     for (e, outcome) in hits.iter().take(20) {
         let label = Outcome::parse(outcome)
             .map(Outcome::label)
             .unwrap_or(outcome);
         out.push_str(&format!("- {} · {} · {}\n", reference(e), label, e.title));
+    }
+    if hits.len() > 20 {
+        out.push_str(&format!("… and {} more\n", hits.len() - 20));
     }
     out.push_str("\nRead one from that message with `ronda_get_session` (key and from_seq), including tools, to see how it was handled.\n");
     Ok(out)
@@ -825,5 +860,28 @@ mod tests {
         assert!(page.contains("[seq 7] User"));
         drop(db);
         let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn time_ms_rejects_bare_and_oversized_durations() {
+        for bad in [
+            "d",
+            "w",
+            " m ",
+            "99999999999999999999d",
+            "9223372036854775807w",
+            "xd",
+        ] {
+            let err = time_ms(Some(bad), "since").unwrap_err().to_string();
+            assert_eq!(err, format!("invalid since value: {}", bad.trim()));
+        }
+        assert!(time_ms(Some("7d"), "since").unwrap().is_some());
+        assert!(time_ms(None, "since").unwrap().is_none());
+    }
+    #[test]
+    fn plural_uses_singular_only_for_one() {
+        assert_eq!(plural(0usize, "session"), "0 sessions");
+        assert_eq!(plural(1usize, "session"), "1 session");
+        assert_eq!(plural(1i64, "project"), "1 project");
+        assert_eq!(plural(2u32, "project"), "2 projects");
     }
 }

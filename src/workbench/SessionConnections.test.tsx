@@ -42,6 +42,23 @@ test("connections open indexed children and originals, refresh only when active,
   }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
 });
 
+test("connections say when only the top related sessions are shown",async()=>{
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});installDemoBackend();
+  const parent=(await backend.getSession("claude-code:demo-0"))!;
+  const report=await backend.sessionRelationships(parent.key);
+  expect(report.related).toHaveLength(5);expect(report.related_total).toBeGreaterThan(5);
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  const show=async(value:typeof report)=>act(async()=>root.render(<SessionConnections key={String(value.related_total)} api={{...backend,sessionRelationships:async()=>structuredClone(value)}} session={parent} active onOpen={()=>{}} />));
+  try{
+    await show(report);
+    expect(host.textContent).toContain(`Showing top 5 of ${report.related_total} same-project sessions`);
+    await show({...report,related_total:5});
+    expect(host.textContent).not.toContain("Showing top");
+    const {related_total:_omitted,...legacy}=report;await show(legacy);
+    expect(host.textContent).not.toContain("Showing top");
+  }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
+});
+
 test("changing the selected transcript replaces its connection evidence",async()=>{
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});installDemoBackend();
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);

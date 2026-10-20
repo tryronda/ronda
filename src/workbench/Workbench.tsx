@@ -2,6 +2,9 @@ import { ErrorHistory } from "./ErrorHistory";
 import type {ErrorHistoryRequest} from "./api";
 import { ProjectOverview } from "./ProjectOverview";
 import { SearchEmpty } from "./SearchEmpty";
+import { RowLabels } from "./RowLabels";
+import { RecentQueries } from "./RecentQueries";
+import { useRecentQueries } from "./recent-queries";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -655,6 +658,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     }
   }, [messages, cancelPendingReadingSave]);
 
+  const recent = useRecentQueries(api), [searchFocused, setSearchFocused] = useState(false);
   useEffect(() => {
     const run = ++searchRun.current;
     searchOffset.current = 0; searchBusy.current = false;
@@ -668,12 +672,13 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         searchOffset.current = 50;
         setSearchTotals({sessions:next.total_sessions,messages:next.total_message_matches});
         setSearchContext({query:search.trim(),filter,revision});
+        recent.record(search);
         setError(null);
       }).catch(cause => { if (run === searchRun.current) setError(String(cause)); })
         .finally(() => { if (run === searchRun.current) { searchBusy.current = false; setSearching(false); } });
     },120);
     return () => { searchRun.current++; window.clearTimeout(timer); };
-  }, [api,filter,search,searchSort,revision,isActive,bookmarksOnly,dates.error]);
+  }, [api,filter,search,searchSort,revision,isActive,bookmarksOnly,dates.error,recent.record]);
 
   const loadMoreSearch = async () => {
     if (loading || searchBusy.current || dates.error || searchOffset.current >= searchTotals.sessions) return;
@@ -1156,12 +1161,15 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           <span className={scanning ? "[&_svg]:animate-spin" : undefined}><IconButton icon={ReloadIcon} title={t.refresh} onClick={() => void refresh()} disabled={scanning} /></span>
         </div>
         <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{dates.error ? "Choose a valid date range" : scanning ? t.refreshing : bookmarksOnly ? `${visibleBookmarks.length} saved messages` : search.trim() ? `Showing ${hits.length} of ${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `Showing ${sessions.length} of ${sessionTotal} sessions`}</p>
+        <div onFocus={()=>setSearchFocused(true)} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setSearchFocused(false);}}>
         <label className="glass flex h-9 items-center gap-2 px-2.5 text-muted-foreground transition-shadow focus-within:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--foreground)]">
           <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={2} />
           <input ref={searchRef} type="search" value={search} onChange={event => setSearch(event.target.value)}
             placeholder={bookmarksOnly ? "Search notes and saved excerpts" : t.search} aria-label={bookmarksOnly ? "Search bookmarks" : t.search}
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
+        {searchFocused && !search && !bookmarksOnly && recent.status==="ready" && <RecentQueries items={recent.items} onApply={query=>{setSearch(query);searchRef.current?.focus();}} onRemove={query=>{recent.remove(query);searchRef.current?.focus();}} onClear={()=>{recent.clear();searchRef.current?.focus();}} />}
+        </div>
         <button type="button" className="my-2 text-[13px] underline" onClick={()=>findHistory(search,null)}>Find error history</button>
         <ContextBundle api={api} selection={contextSelection} clear={()=>setContextSelection([])} embedded={embedded} />
         <details className="mt-2 text-[13px]">
@@ -1346,8 +1354,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {hasAlias(aliases, session.key) && <span className="block truncate text-[11px] text-muted-foreground" title={plainTitle(session.title)}>Original: {plainTitle(session.title)}</span>}
             <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
               <HugeiconsIcon icon={Folder01Icon} size={12} className="flex-none" /><span className="truncate">{session.project_path ? basename(session.project_path) : t.unknown}</span></div>
-            {!!session.labels?.length && <p className="mt-1 truncate text-[12px] text-muted-foreground">
-              {labels.filter(label => session.labels?.includes(label.id)).map(label => label.name).join(" · ")}</p>}
+            <RowLabels ids={session.labels} catalog={labels} />
             {group && <p className="mt-1 text-[12px] text-muted-foreground">
               {group.title_match && "Title match · "}{group.message_matches} matching message{group.message_matches === 1 ? "" : "s"}
             </p>}

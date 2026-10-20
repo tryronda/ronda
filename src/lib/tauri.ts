@@ -7,7 +7,7 @@ export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS
 // Read-only commands resolve to an empty library in a browser so the UI still renders.
 const browserDefaults: Record<string, unknown> = {
   inspect_resume: {supported:false,ready:false,host:null,original_directory:null,directory:null,program:null,args:[],command:null,reasons:["inspection_unknown"]},
-  get_session_relationships: {parent:null,children:[],related:[],candidate_limit:512},
+  get_session_relationships: {parent:null,children:[],related:[],candidate_limit:512,related_total:0},
   library_options: {agents: [], models: [], hosts: [], projects: []},
   session_page: {items: [], total: 0, offset: 0, limit: 100},
   list_session_labels: [], get_pref: null, set_pref: null, get_local_source_refresh_health: null, list_bookmarks: [], get_bookmark_backup: '{"version":1,"bookmarks":[]}', list_sessions: [], list_projects: [], search_sessions: [], get_transcript: [],
