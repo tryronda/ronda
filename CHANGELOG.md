@@ -4,6 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Search offers **Reset recent searches** when its stored list can't be read.
+- Settings → Data can copy the index database path.
+
 ### Fixed
 - Codex sessions keep their token total when a later usage event carries no data.
 - Failed tool calls from Hermes sessions are now marked as failed, so Intelligence counts their errors.
