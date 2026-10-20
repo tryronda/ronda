@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Error history results show when each session last changed and can copy a message reference.
+
 ### Changed
 - Project overview dates match the library list, and counts use correct singular and plural forms.
 
