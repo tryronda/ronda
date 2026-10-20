@@ -107,10 +107,13 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
     let Some(s) = raw else { return Ok(None) };
     let s = s.trim();
     if let Some(unit) = s.chars().last() {
+        let digits = &s[..s.len() - unit.len_utf8()];
         if matches!(unit, 'm' | 'h' | 'd' | 'w')
-            && s[..s.len() - 1].chars().all(|c| c.is_ascii_digit())
+            && !digits.is_empty()
+            && digits.chars().all(|c| c.is_ascii_digit())
         {
-            let n: i64 = s[..s.len() - 1].parse()?;
+            let invalid = || anyhow!("invalid {name} value: {s}");
+            let n: i64 = digits.parse().map_err(|_| invalid())?;
             let seconds = n
                 .checked_mul(match unit {
                     'm' => 60,
@@ -118,7 +121,7 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
                     'd' => 86400,
                     _ => 604800,
                 })
-                .ok_or_else(|| anyhow!("{name} duration is too large"))?;
+                .ok_or_else(invalid)?;
             return Ok(Some(
                 Utc::now()
                     .timestamp_millis()
@@ -825,5 +828,21 @@ mod tests {
         assert!(page.contains("[seq 7] User"));
         drop(db);
         let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn time_ms_rejects_bare_and_oversized_durations() {
+        for bad in [
+            "d",
+            "w",
+            " m ",
+            "99999999999999999999d",
+            "9223372036854775807w",
+            "xd",
+        ] {
+            let err = time_ms(Some(bad), "since").unwrap_err().to_string();
+            assert_eq!(err, format!("invalid since value: {}", bad.trim()));
+        }
+        assert!(time_ms(Some("7d"), "since").unwrap().is_some());
+        assert!(time_ms(None, "since").unwrap().is_none());
     }
 }

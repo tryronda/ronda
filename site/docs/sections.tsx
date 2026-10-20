@@ -188,7 +188,7 @@ ronda-cli projects
 ronda-cli insights --since 7d      # time, failures, recurring errors, stack
 ronda-cli errors 'database is locked'
 ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Code>
-      <P>When `--limit` or a `show` size option (`--messages`, `--chars`, `--message-chars`) is outside its allowed range, `ronda-cli` clamps it and notes this on stderr, for example `ronda-cli: --limit 500 clamped to 100`; stdout is unchanged. Usage errors, including an invalid `--since` or `--until` or an unknown `--agent` (the message lists the valid ids), exit with status 2.</P>
+      <P>When `--limit` or a `show` size option (`--messages`, `--chars`, `--message-chars`) is outside its allowed range, `ronda-cli` clamps it and notes this on stderr, for example `ronda-cli: --limit 500 clamped to 100`; stdout is unchanged. Put `--` before a query that begins with `-`; after it, `--help` and similar are search text. Usage errors, including an invalid `--since` or `--until` or an unknown `--agent` (the message lists the valid ids), exit with status 2.</P>
     </>,
   },
   {

@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- `ronda-cli` treats `--help` as a search term after `--`, and invalid durations like `--since d` get a clear message.
+
 ## [1.4.0] - 2026-10-19
 
 ### Added

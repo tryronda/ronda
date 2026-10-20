@@ -184,10 +184,12 @@ fn note_clamp(flag: &str, value: Option<usize>, bounds: (usize, usize)) {
 fn run() -> Result<String, (u8, String)> {
     let args: Vec<_> = env::args().skip(1).collect();
     let (db, args) = take_global(args).map_err(|e| (2, e))?;
-    if args.is_empty() || args.iter().any(|s| s == "--help" || s == "-h") {
+    // Flags after `--` are search text, not options.
+    let options = &args[..args.iter().position(|s| s == "--").unwrap_or(args.len())];
+    if args.is_empty() || options.iter().any(|s| s == "--help" || s == "-h") {
         return Ok(help().into());
     }
-    if args.iter().any(|s| s == "--version" || s == "-V") {
+    if options.iter().any(|s| s == "--version" || s == "-V") {
         return Ok(format!("ronda-cli {}\n", env!("CARGO_PKG_VERSION")));
     }
     let (command, rest) = (&args[0], &args[1..]);

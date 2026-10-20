@@ -103,3 +103,30 @@ fn agent_alias_still_works() {
     let o = cli(&db, &["sessions", "--agent", "claude"]);
     assert!(o.status.success(), "{}", stderr(&o));
 }
+
+#[test]
+fn help_flags_after_double_dash_are_search_text() {
+    let db = db();
+    let o = cli(&db, &["search", "--", "--help"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains("0 sessions match `--help`"), "{out}");
+    let o = cli(&db, &["search", "--", "-V"]);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("match `-V`"));
+    let o = cli(&db, &["search", "x", "--help"]);
+    assert!(String::from_utf8_lossy(&o.stdout).starts_with("ronda-cli search"));
+}
+
+#[test]
+fn bare_duration_exits_2_with_clear_message() {
+    let db = db();
+    for bad in ["d", "w"] {
+        let o = cli(&db, &["sessions", "--since", bad]);
+        assert_eq!(o.status.code(), Some(2));
+        assert!(
+            stderr(&o).contains(&format!("invalid since value: {bad}")),
+            "{}",
+            stderr(&o)
+        );
+    }
+}
