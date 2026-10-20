@@ -1,4 +1,6 @@
-use ronda_core::{AgentId, ParsedSession, SessionMeta, Store};
+use ronda_core::{
+    AgentId, MessageKind, ParsedSession, Role, SessionMeta, Store, ToolCall, TranscriptMessage,
+};
 use std::process::{Command, Output};
 
 fn db() -> std::path::PathBuf {
@@ -213,4 +215,100 @@ fn mcp_list_args_without_reverse_deserialize() {
     let a: ronda_core::query::ListArgs =
         serde_json::from_str(r#"{"project":"/tmp/a","limit":3}"#).unwrap();
     assert!(!a.reverse);
+}
+
+fn out(o: &Output) -> String {
+    assert!(o.status.success(), "{}", stderr(o));
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+#[test]
+fn single_session_answers_use_singular_counts() {
+    let db = db();
+    seed(&db, "only", "/tmp/a", 1_760_000_000_000);
+    let sessions = out(&cli(&db, &["sessions"]));
+    assert!(
+        sessions.starts_with("1 session — showing 1 most recent."),
+        "{sessions}"
+    );
+    let projects = out(&cli(&db, &["projects"]));
+    assert!(projects.starts_with("1 project.\n"), "{projects}");
+    assert!(projects.contains("· 1 session ·"), "{projects}");
+    assert!(!projects.contains("1 sessions") && !projects.contains("1 projects"));
+    assert!(
+        projects.contains("Index covers activity up to"),
+        "{projects}"
+    );
+}
+
+#[test]
+fn find_error_says_when_history_is_truncated() {
+    let db = db();
+    let mut store = Store::open(&db).unwrap();
+    for i in 0..21 {
+        let start = 1_760_000_000_000 + i * 1000;
+        let call = ToolCall {
+            id: "1".into(),
+            name: "Bash".into(),
+            input: Some(r#"{"command":"bun test"}"#.into()),
+            output: Some("Exit code 1\nError: SQLITE_BUSY: database is locked".into()),
+            is_error: true,
+        };
+        let msg = |seq, role, tool_calls| TranscriptMessage {
+            seq,
+            role,
+            kind: MessageKind::Text,
+            text: if seq == 0 {
+                "Fix the crash".into()
+            } else {
+                String::new()
+            },
+            timestamp: Some(start + seq * 100),
+            model: None,
+            thinking: None,
+            tool_calls,
+            images: Vec::new(),
+        };
+        let meta = SessionMeta {
+            key: format!("codex:e{i}"),
+            native_id: format!("e{i}"),
+            agent: AgentId::Codex,
+            host: None,
+            parent_key: None,
+            title: format!("Err {i}"),
+            project_path: Some("/repo".into()),
+            source_path: format!("/sources/e{i}"),
+            created_at: start,
+            updated_at: start + 200,
+            model: None,
+            source: None,
+            tokens: Some(100),
+            archived: false,
+            metadata_only: false,
+            can_delete: false,
+            starred: false,
+            pinned: false,
+            labels: Vec::new(),
+        };
+        store
+            .upsert(
+                &ParsedSession {
+                    meta,
+                    messages: vec![
+                        msg(0, Role::User, Vec::new()),
+                        msg(1, Role::Assistant, vec![call]),
+                    ],
+                },
+                "fixture",
+            )
+            .unwrap();
+    }
+    drop(store);
+    let text = out(&cli(
+        &db,
+        &["errors", "Error: SQLITE_BUSY: database is locked"],
+    ));
+    assert!(text.starts_with("Seen in 21 sessions:"), "{text}");
+    assert_eq!(text.matches("- ronda://session/").count(), 20, "{text}");
+    assert!(text.contains("… and 1 more\n"), "{text}");
 }

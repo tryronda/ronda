@@ -8,7 +8,11 @@ All notable changes to Ronda are recorded here.
 - `ronda-cli sessions` and `projects` accept `--reverse` to list the oldest activity first.
 
 ### Fixed
+- `ronda-cli` and MCP answers use correct singular and plural counts and say when error history is truncated.
 - `ronda-cli` treats `--help` as a search term after `--`, and invalid durations like `--since d` get a clear message.
+
+### Performance
+- Index freshness in CLI and MCP answers is computed with a single query.
 
 ## [1.4.0] - 2026-10-19
 
