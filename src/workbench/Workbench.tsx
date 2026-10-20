@@ -3,7 +3,7 @@ import type {ErrorHistoryRequest} from "./api";
 import { ProjectOverview } from "./ProjectOverview";
 import { SearchEmpty } from "./SearchEmpty";
 import { RowLabels } from "./RowLabels";
-import { RecentQueries } from "./RecentQueries";
+import { RecentQueries, RecentQueriesRecovery } from "./RecentQueries";
 import { useRecentQueries } from "./recent-queries";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -1169,6 +1169,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
         {searchFocused && !search && !bookmarksOnly && recent.status==="ready" && <RecentQueries items={recent.items} onApply={query=>{setSearch(query);searchRef.current?.focus();}} onRemove={query=>{recent.remove(query);searchRef.current?.focus();}} onClear={()=>{recent.clear();searchRef.current?.focus();}} />}
+        {searchFocused && !search && !bookmarksOnly && (recent.status==="invalid"||recent.status==="unavailable") && <RecentQueriesRecovery status={recent.status} onReset={()=>{void recent.reset();searchRef.current?.focus();}} onRetry={()=>{recent.retry();searchRef.current?.focus();}} />}
         </div>
         <button type="button" className="my-2 text-[13px] underline" onClick={()=>findHistory(search,null)}>Find error history</button>
         <ContextBundle api={api} selection={contextSelection} clear={()=>setContextSelection([])} embedded={embedded} />

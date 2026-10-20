@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Added
+- Search offers **Reset recent searches** when its stored list can't be read.
 - Settings → Data can copy the index database path.
 
 ## [1.5.0] - 2026-10-19

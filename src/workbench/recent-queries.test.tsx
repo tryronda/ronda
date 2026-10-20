@@ -7,7 +7,7 @@ import { expect, test, vi } from "vitest";
 MotionGlobalConfig.skipAnimations = true;
 Reflect.deleteProperty(Element.prototype, "animate");
 import { RECENT_QUERIES_KEY, parseRecentQueries, recordRecentQuery, useRecentQueries } from "./recent-queries";
-import { RecentQueries } from "./RecentQueries";
+import { RecentQueries, RecentQueriesRecovery } from "./RecentQueries";
 import { backend } from "./api";
 import { Workbench } from "./Workbench";
 import { installDemoBackend, uninstallDemoBackend } from "../../site/preview/demo";
@@ -60,6 +60,45 @@ test("hook persists, removes and clears; corrupt preference is never overwritten
   await act(async () => { broken.ref.current!.record("x"); broken.ref.current!.clear(); });
   expect(bad.setPref).not.toHaveBeenCalled();
   await broken.done();
+});
+
+test("reset writes an empty valid document only on explicit action; retry re-reads", async () => {
+  const store = new Map<string, string>([[RECENT_QUERIES_KEY, "garbage"]]);
+  const api = { getPref: async (k: string) => store.get(k) ?? null, setPref: vi.fn(async (k: string, v: string) => { store.set(k, v); }) };
+  const view = mount(api); await view.render();
+  expect(view.ref.current!.status).toBe("invalid");
+  expect(api.setPref).not.toHaveBeenCalled();
+  await act(async () => { await view.ref.current!.reset(); });
+  expect(store.get(RECENT_QUERIES_KEY)).toBe('{"version":1,"items":[]}');
+  expect(view.ref.current!.status).toBe("ready");
+  await act(async () => view.ref.current!.record("again"));
+  expect(JSON.parse(store.get(RECENT_QUERIES_KEY)!).items).toEqual(["again"]);
+  await view.done();
+
+  let fail = true;
+  const flaky = { getPref: async () => { if (fail) throw new Error("x"); return null; }, setPref: vi.fn(async () => {}) };
+  const second = mount(flaky); await second.render();
+  expect(second.ref.current!.status).toBe("unavailable");
+  fail = false;
+  await act(async () => { second.ref.current!.retry(); });
+  expect(second.ref.current!.status).toBe("ready");
+  expect(flaky.setPref).not.toHaveBeenCalled();
+  await second.done();
+});
+
+test("recovery notice: reset only for invalid, retry for unavailable", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const h = { onReset: vi.fn(), onRetry: vi.fn() };
+  const labels = () => Array.from(host.querySelectorAll("button")).map(b => b.textContent);
+  await act(async () => root.render(<RecentQueriesRecovery status="invalid" {...h} />));
+  expect(labels()).toEqual(["Reset recent searches"]);
+  await act(async () => host.querySelector("button")!.click()); expect(h.onReset).toHaveBeenCalled();
+  await act(async () => root.render(<RecentQueriesRecovery status="unavailable" {...h} />));
+  expect(labels()).toEqual(["Retry"]);
+  await act(async () => host.querySelector("button")!.click()); expect(h.onRetry).toHaveBeenCalled();
+  await act(async () => root.unmount()); host.remove();
 });
 
 test("component applies, removes and clears with the keyboard-accessible controls", async () => {
