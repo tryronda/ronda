@@ -13,7 +13,7 @@ import { Loader } from "@/components/motion/loader";
 import { SharedLayoutBg } from "@/components/motion/shared-layout-bg";
 import { PixelField, PixelStrip } from "@/components/brand/pixel-field";
 import { EASE_OUT } from "@/lib/ease";
-import { cn } from "@/lib/utils";
+import { cn, timeLabel } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { calendarRange, matchesSession, restoredFilters } from "./library-filters";
@@ -86,15 +86,7 @@ const SessionTerminal = lazy(() => import("./SessionTerminal").then(module => ({
 type TerminalEntry = { run: number; running: boolean; code: number | null; directory?:string };
 const Streamdown = lazy(() => loadStreamdown().then(module => ({ default: module.Streamdown })));
 
-/** Short date and time; the year appears only when it differs from the current year. */
-export function timeLabel(ms: number) {
-  if (!ms) return "";
-  const date = new Date(ms);
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short", day: "numeric", ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
-    hour: "2-digit", minute: "2-digit",
-  }).format(date);
-}
+export { timeLabel };
 
 function basename(path: string) {
   return path.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || path;

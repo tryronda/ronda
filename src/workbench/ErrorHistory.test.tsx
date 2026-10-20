@@ -3,6 +3,7 @@ import {act} from "react";
 import {createRoot} from "react-dom/client";
 import {expect,test,vi} from "vitest";
 import {backend,type SessionMeta} from "./api";
+import {timeLabel} from "@/lib/utils";
 import {ErrorHistory} from "./ErrorHistory";
 
 test("error lookup waits for submission, scopes pages, validates Unicode, and opens exact evidence",async()=>{
@@ -11,7 +12,7 @@ test("error lookup waits for submission, scopes pages, validates Unicode, and op
   HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new Event("close"));};
   const errorHistory=vi.fn(async(_text:string,_project:string|null,_host:string|null,_local:boolean,offset:number)=>({
     canonical:"Error: sample",offset,limit:20,total:25,indexed_sessions:40,with_tools:30,
-    hits:Array.from({length:offset ? 5 : 20},(_,index)=>({session:{key:`sample-${offset+index}`,title:`Original ${offset+index}`,agent:"codex",host:"local",project_path:"/repo"} as SessionMeta,seq:7,outcome:"committed"})),
+    hits:Array.from({length:offset ? 5 : 20},(_,index)=>({session:{key:`sample-${offset+index}`,title:`Original ${offset+index}`,agent:"codex",host:"local",project_path:"/repo",updated_at:new Date(2020,2,4,9,5).getTime()} as SessionMeta,seq:7,outcome:"committed"})),
   }));
   let changed=()=>{};
   const api={...backend,errorHistory,onLibraryChanged:async(callback:()=>void)=>{changed=callback;return ()=>{};}};
@@ -31,6 +32,12 @@ test("error lookup waits for submission, scopes pages, validates Unicode, and op
     await edit("Error: sample edited");expect(errorHistory).not.toHaveBeenCalled();
     await submit();expect(errorHistory).toHaveBeenLastCalledWith("Error: sample edited","/repo","local",false,0);
     expect(host.textContent).toContain("Showing 20 of 25");expect(host.textContent).toContain("Commit command observed");
+    expect(host.textContent).toContain(`Updated ${timeLabel(new Date(2020,2,4,9,5).getTime())}`);
+    const writeText=vi.fn(async(_text:string)=>{});
+    Object.defineProperty(navigator,"clipboard",{value:{writeText},configurable:true});
+    await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="Copy reference for message #7"]')!.click());
+    expect(writeText).toHaveBeenCalledWith("ronda://session/sample-0#7");
+    expect(host.querySelector('[role="status"][aria-live="polite"]')!.textContent).toBe("Reference copied");
     await click("Load more error occurrences");expect(errorHistory).toHaveBeenLastCalledWith("Error: sample edited","/repo","local",false,20);
     expect(host.textContent).toContain("Showing 25 of 25");
     await click("Open Original 24 · message #7");expect(onOpen).toHaveBeenCalledWith("sample-24",7);expect(onClose).toHaveBeenCalled();

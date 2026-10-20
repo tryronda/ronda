@@ -7,9 +7,15 @@ All notable changes to Ronda are recorded here.
 ### Added
 - Transcript find says “No matches” and ⌘F selects the current query.
 - Press ⌘/Ctrl+Enter in a bookmark note to save it.
+- Error history results show when each session last changed and can copy a message reference.
+
+### Changed
+- Project overview dates match the library list, and counts use correct singular and plural forms.
 
 ### Fixed
 - The browser preview now refuses to delete samples that the desktop app cannot delete.
+- Resume readiness no longer flashes back to “Checking…” when the library refreshes in the background.
+- The project overview heading shows the folder name for paths that use backslashes.
 
 ## [1.3.0] - 2026-10-19
 
