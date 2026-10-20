@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LABEL_NAME_LIMIT, MAX_LABELS_PER_SESSION, MAX_SESSION_LABELS,
   type SessionLabel, type SessionMeta, type WorkbenchBackend,
@@ -26,6 +26,14 @@ export function LabelManager({ api, labels, onCatalog, onDeleted }: {
   const [edited, setEdited] = useState("");
   const [message, setMessage] = useState("");
   const full = labels.length >= MAX_SESSION_LABELS;
+  const focusRename = useRef<string | null>(null);
+  useEffect(() => {
+    if (editing === null && focusRename.current) {
+      document.getElementById(`label-rename-button-${focusRename.current}`)?.focus();
+      focusRename.current = null;
+    }
+  }, [editing]);
+  const cancelRename = (id: string) => { focusRename.current = id; setEditing(null); setMessage(""); };
   const create = async () => {
     const problem = full ? `You can have at most ${MAX_SESSION_LABELS} labels` : validateLabelName(name, labels);
     if (problem) { setMessage(problem); return; }
@@ -43,7 +51,7 @@ export function LabelManager({ api, labels, onCatalog, onDeleted }: {
     } catch (cause) { setMessage(failure(cause)); }
   };
   const remove = async (label: SessionLabel) => {
-    if (!window.confirm("Delete this label? It will be removed from every session.")) return;
+    if (!window.confirm(`Delete the label “${label.name}”? It will be removed from every session.`)) return;
     try {
       await api.deleteSessionLabel(label.id);
       onCatalog(labels.filter(item => item.id !== label.id)); onDeleted(label.id); setMessage("Label deleted");
@@ -53,7 +61,7 @@ export function LabelManager({ api, labels, onCatalog, onDeleted }: {
     <summary className="cursor-pointer text-muted-foreground">Manage labels ({labels.length}/{MAX_SESSION_LABELS})</summary>
     <form className="mt-2 flex gap-1.5" onSubmit={event => { event.preventDefault(); void create(); }}>
       <label className="sr-only" htmlFor="new-label-name">New label name</label>
-      <input id="new-label-name" value={name} onChange={event => setName(event.target.value)} placeholder="New label"
+      <input id="new-label-name" value={name} onChange={event => { setName(event.target.value); setMessage(""); }} placeholder="New label"
         className="min-w-0 flex-1 bg-chip px-2 py-1" />
       <button type="submit" className="bg-chip px-2 py-1 hover:bg-foreground hover:text-background disabled:opacity-50" disabled={full}>Add</button>
     </form>
@@ -61,12 +69,14 @@ export function LabelManager({ api, labels, onCatalog, onDeleted }: {
       {labels.map(label => <li key={label.id} className="border-b border-border py-1.5">
         {editing === label.id ? <form className="flex gap-1" onSubmit={event => { event.preventDefault(); void rename(label); }}>
           <label className="sr-only" htmlFor={`label-rename-${label.id}`}>Rename label</label>
-          <input id={`label-rename-${label.id}`} autoFocus value={edited} onChange={event => setEdited(event.target.value)} className="min-w-0 flex-1 bg-chip px-1 py-0.5" />
+          <input id={`label-rename-${label.id}`} autoFocus value={edited} onChange={event => { setEdited(event.target.value); setMessage(""); }}
+            onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelRename(label.id); } }}
+            className="min-w-0 flex-1 bg-chip px-1 py-0.5" />
           <button type="submit" className="underline">Save</button>
-          <button type="button" className="underline" onClick={() => setEditing(null)}>Cancel</button>
+          <button type="button" className="underline" onClick={() => cancelRename(label.id)}>Cancel</button>
         </form> : <div className="flex items-center gap-3">
           <span className="min-w-0 flex-1 truncate">{label.name}</span>
-          <button type="button" className="underline" aria-label={`Rename label ${label.name}`}
+          <button type="button" className="underline" id={`label-rename-button-${label.id}`} aria-label={`Rename label ${label.name}`}
             onClick={() => { setEditing(label.id); setEdited(label.name); setMessage(""); }}>Rename</button>
           <button type="button" className="underline" aria-label={`Delete label ${label.name}`} onClick={() => void remove(label)}>Delete</button>
         </div>}

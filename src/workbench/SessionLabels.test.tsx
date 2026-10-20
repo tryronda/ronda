@@ -214,3 +214,27 @@ test("malformed restored label preferences are ignored rather than trusted", asy
     expect(fake.queries.every(query => !query.label_id)).toBe(true);
   } finally { await unmount(); }
 });
+
+test("Escape cancels a label rename and returns focus; delete confirmation names the label", async () => {
+  const fake = fakeApi();
+  const { host, unmount } = await mount(fake.api);
+  try {
+    host.querySelector("summary")!.click();
+    const rename = host.querySelector<HTMLButtonElement>('button[aria-label="Rename label Reference"]')!;
+    await act(async () => rename.click());
+    await set(host, `#label-rename-${LABEL_B}`, "Changed", "input");
+    const input = host.querySelector<HTMLInputElement>(`#label-rename-${LABEL_B}`)!;
+    await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    expect(host.querySelector(`#label-rename-${LABEL_B}`)).toBeNull();
+    expect(host.textContent).toContain("Reference");
+    expect(document.activeElement).toBe(host.querySelector('button[aria-label="Rename label Reference"]'));
+    const manager = Array.from(host.querySelectorAll("details")).find(item => item.querySelector("summary")?.textContent?.startsWith("Manage labels"))!;
+    expect(manager.querySelector('[role="status"]')).toBeNull();
+
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Delete label Reference"]')!.click());
+    expect(confirm).toHaveBeenCalledWith("Delete the label “Reference”? It will be removed from every session.");
+    expect(host.textContent).toContain("Reference");
+    confirm.mockRestore();
+  } finally { await unmount(); }
+});
