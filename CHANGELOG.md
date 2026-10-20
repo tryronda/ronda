@@ -6,6 +6,11 @@ All notable changes to Ronda are recorded here.
 
 ### Added
 - `ronda-cli sessions` and `projects` accept `--reverse` to list the oldest activity first.
+- Related sessions says when only the top five of more candidates are shown.
+- The search box offers your last eight searches, stored locally, with **Remove** and **Clear recent**.
+
+### Changed
+- Library rows show labels as chips with a “+N” overflow.
 
 ### Fixed
 - Sessions with a corrupted line in their transcript file now keep every later message instead of ending at the bad line.

@@ -18,6 +18,9 @@ pub struct SessionRelationships {
     pub children: Vec<SessionMeta>,
     pub related: Vec<RelatedSession>,
     pub candidate_limit: usize,
+    /// Ranked same-project candidates before the list is cut to the top five (at most `candidate_limit`).
+    #[serde(default)]
+    pub related_total: usize,
 }
 
 /// Compare recorded paths lexically, including remote Windows paths, without filesystem access.
@@ -90,6 +93,7 @@ impl Store {
         let children = self.session_children(&main)?;
         let candidate_limit = 512;
         let mut related = Vec::new();
+        let mut related_total = 0;
         if let Some(project) = main.project_path.as_deref().filter(|p| !p.is_empty()) {
             let errors = self.related_errors(key)?;
             let files = self.related_files(key, project)?;
@@ -170,6 +174,7 @@ impl Store {
                     .then(b.session.updated_at.cmp(&a.session.updated_at))
                     .then(a.session.key.cmp(&b.session.key))
             });
+            related_total = related.len();
             related.truncate(5);
             for row in &mut related {
                 if let Some(current) = self.get_session(&row.session.key)? {
@@ -182,6 +187,7 @@ impl Store {
             children,
             related,
             candidate_limit,
+            related_total,
         })
     }
 
@@ -321,6 +327,8 @@ mod tests {
         assert_eq!(result.children.len(), 2);
         assert!(result.parent.is_none());
         assert_eq!(result.related.len(), 5);
+        // 5,000 recents + error + files; children, remote host, orphan child and other projects are excluded, capped at 512.
+        assert_eq!(result.related_total, result.candidate_limit);
         assert_eq!(result.related[0].session.key, "codex:error");
         assert_eq!(result.related[0].shared_errors, 1);
         assert_eq!(result.related[0].shared_files, 1);
@@ -350,6 +358,12 @@ mod tests {
             .parent
             .is_none());
         assert!(db.session_relationships("missing").is_err());
+        assert_eq!(
+            db.session_relationships("codex:outside")
+                .unwrap()
+                .related_total,
+            0
+        );
         let mut timings = Vec::new();
         for _ in 0..20 {
             let start = Instant::now();
