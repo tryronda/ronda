@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Codex sessions keep their token total when a later usage event carries no data.
+
 ## [1.5.0] - 2026-10-19
 
 ### Added
