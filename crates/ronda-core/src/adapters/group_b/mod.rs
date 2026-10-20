@@ -346,9 +346,16 @@ fn rows(path: &Path, mut f: impl FnMut(Value)) -> Result<()> {
         Box::new(BufReader::new(file))
     };
     // A concurrently appended zstd frame can be incomplete. Stop on read error; do not spin.
-    for line in reader.lines() {
-        let Ok(line) = line else { break };
-        if let Ok(value) = serde_json::from_str(&line) {
+    // Read bytes so invalid UTF-8 skips one line; only a real read/decoder error stops.
+    let mut reader = reader;
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        if let Ok(value) = serde_json::from_slice(&buf) {
             f(value);
         }
     }
@@ -1069,6 +1076,20 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn rows_survive_invalid_utf8_and_truncated_tail() {
+        let home = home();
+        let path = home.join("rows.jsonl");
+        let mut bytes = b"{\"n\":1}\n".to_vec();
+        bytes.extend_from_slice(&[0xFF, 0xFF, b'\n']);
+        bytes.extend_from_slice(b"{\"n\":2}\n{\"n\":3");
+        fs::write(&path, bytes).unwrap();
+        let mut seen = Vec::new();
+        rows(&path, |v| seen.push(v["n"].as_i64().unwrap())).unwrap();
+        assert_eq!(seen, vec![1, 2]);
+        let _ = fs::remove_dir_all(&home);
     }
 
     fn put(home: &Path, rel: &str, content: &str) -> PathBuf {

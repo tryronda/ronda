@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Sessions with a corrupted line in their transcript file now keep every later message instead of ending at the bad line.
+
 ## [1.4.0] - 2026-10-19
 
 ### Added

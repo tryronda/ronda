@@ -377,11 +377,21 @@ fn read_rows(path: &Path) -> Result<Vec<Value>> {
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     // ponytail: holds one session in memory; stream rows if large transcripts exceed the memory budget.
     // Partial last writes are common while an agent is active.
-    Ok(BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
-        .filter_map(|line| serde_json::from_str(&line).ok())
-        .collect())
+    let mut reader = BufReader::new(file);
+    let mut rows = Vec::new();
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        // Read bytes, not `lines()`: one invalid UTF-8 line must not end the transcript.
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        if let Ok(row) = serde_json::from_slice(&buf) {
+            rows.push(row);
+        }
+    }
+    Ok(rows)
 }
 
 fn codex_internal(path: &Path) -> bool {
@@ -1277,6 +1287,21 @@ mod tests {
         let sources = FileAdapter(agent).discover(&root).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), contents);
         (root, sources)
+    }
+
+    #[test]
+    fn read_rows_survives_invalid_utf8_and_truncated_tail() {
+        let dir = std::env::temp_dir().join(format!("ronda-read-rows-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rows.jsonl");
+        let mut bytes = b"{\"n\":1}\n".to_vec();
+        bytes.extend_from_slice(&[0xFF, 0xFE, 0xFF, b'\n']);
+        bytes.extend_from_slice(b"{\"n\":2}\n{\"n\":3");
+        fs::write(&path, bytes).unwrap();
+        let rows = read_rows(&path).unwrap();
+        let n: Vec<i64> = rows.iter().map(|r| r["n"].as_i64().unwrap()).collect();
+        assert_eq!(n, vec![1, 2]);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
