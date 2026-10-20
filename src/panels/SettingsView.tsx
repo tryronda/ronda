@@ -295,7 +295,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           </div>)}
         </section>}
         {section === 'data' && <section className="panel-card"><h2>{t.data}</h2><p className="panel-help">{t.dataHelp}</p>
-          <div className="settings-field"><div><strong>{t.index}</strong><code className="settings-path">{paths?.[2] ?? '…'}</code></div></div>
+          <div className="settings-field"><div><strong>{t.index}</strong><code className="settings-path">{paths?.[2] ?? '…'}</code></div>
+            <button disabled={!paths?.[2]} aria-label="Copy index path" onClick={() => void copyText(paths![2])}>{t.copy}</button></div>
           <button disabled={busy} onClick={() => void rebuildIndex()}>{t.refresh}</button>
           <DiagnosticsExport embedded={embedded} />
           <BookmarkData embedded={embedded} />

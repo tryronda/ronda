@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Settings → Data can copy the index database path.
+
 ## [1.5.0] - 2026-10-19
 
 ### Added
