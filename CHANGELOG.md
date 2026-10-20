@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-19
+
 ### Added
 - Transcript find says “No matches” and ⌘F selects the current query.
 - Press ⌘/Ctrl+Enter in a bookmark note to save it.
