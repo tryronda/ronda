@@ -1,4 +1,6 @@
 import {useEffect,useRef,useState} from "react";
+import {timeLabel} from "@/lib/utils";
+import {sessionReference} from "./context-bundle";
 import type {ErrorHistory as Result,ErrorHistoryRequest,WorkbenchBackend} from "./api";
 
 export function ErrorHistory({api,request,projects,hosts,onClose,onOpen,onSearchTranscript}: {
@@ -8,7 +10,7 @@ export function ErrorHistory({api,request,projects,hosts,onClose,onOpen,onSearch
   const dialog=useRef<HTMLDialogElement>(null),generation=useRef(0);
   const [text,setText]=useState(request.text),[project,setProject]=useState(request.project ?? "");
   const [host,setHost]=useState(request.local_only ? "local" : request.host ? `remote:${request.host}` : "");
-  const [data,setData]=useState<Result|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const [data,setData]=useState<Result|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[copied,setCopied]=useState("");
   useEffect(()=>{dialog.current?.showModal();dialog.current?.querySelector("textarea")?.focus();return ()=>{generation.current++;};},[]);
   useEffect(()=>{
     let live=true,unlisten:(()=>void)|undefined;
@@ -16,7 +18,7 @@ export function ErrorHistory({api,request,projects,hosts,onClose,onOpen,onSearch
       .then(stop=>{if(live)unlisten=stop;else stop();}).catch(cause=>{if(live)setError(String(cause));});
     return ()=>{live=false;unlisten?.();};
   },[api]);
-  const reset=()=>{generation.current++;setData(null);setError("");};
+  const reset=()=>{generation.current++;setData(null);setError("");setCopied("");};
   const lookup=async(offset=0)=>{
     if(!text.trim() || Array.from(text).length>20_000){setError("Enter error text of 1 to 20,000 characters.");return;}
     const run=++generation.current;setBusy(true);setError("");
@@ -49,6 +51,7 @@ export function ErrorHistory({api,request,projects,hosts,onClose,onOpen,onSearch
     </form>
     {busy && <p role="status">Looking up recorded errors…</p>}
     {error && <p role="alert">{error}</p>}
+    <p role="status" aria-live="polite" className={copied ? undefined : "sr-only"}>{copied}</p>
     {data && <section aria-label="Error history results">
       {data.canonical && <pre className="whitespace-pre-wrap break-words bg-chip p-3">{data.canonical}</pre>}
       <p className="my-3">{data.with_tools} / {data.indexed_sessions} indexed sessions in this scope have tool data. Sessions without it cannot contribute error evidence.</p>
@@ -58,6 +61,9 @@ export function ErrorHistory({api,request,projects,hosts,onClose,onOpen,onSearch
         <button type="button" className="underline" onClick={()=>{dialog.current?.close();onOpen(hit.session.key,hit.seq);}}>Open {hit.session.title} · message #{hit.seq}</button>
         <p>{hit.session.agent} · {hit.session.host ? `@${hit.session.host}` : "Local"} · {hit.session.project_path ?? "Unknown project"}</p>
         <p>{outcomes[hit.outcome] ?? "Outcome unavailable"}</p>
+        {hit.session.updated_at ? <p className="text-muted-foreground">Updated {timeLabel(hit.session.updated_at)}</p> : null}
+        <button type="button" className="underline" aria-label={`Copy reference for message #${hit.seq}`}
+          onClick={()=>void navigator.clipboard.writeText(sessionReference(hit.session.key,hit.seq)).then(()=>setCopied("Reference copied")).catch(cause=>setError(String(cause)))}>Copy reference</button>
       </li>)}</ul>
       {data.hits.length<data.total && <button type="button" disabled={busy} onClick={()=>void lookup(data.offset+data.limit)}>Load more error occurrences</button>}
     </section>}

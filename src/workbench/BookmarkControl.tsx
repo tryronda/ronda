@@ -39,6 +39,12 @@ export function BookmarkControl({ api, sessionKey, seq, view, editorState, updat
     finally { updateEditor(current => ({ ...current, busy: false })); }
   };
   const count = Array.from(note).length;
+  const canSave = !busy && count <= 4000 && !(baseUpdatedAt !== null && !bookmark);
+  const saveNote = () => void run(async () => {
+    const saved = await api.saveBookmark(sessionKey, seq, note, false, baseUpdatedAt);
+    close(true);
+    try { await changed(saved); } catch (reason) { throw new Error(`Note saved, but refreshing bookmarks failed: ${String(reason)}`); }
+  });
   return <div className="mt-3 text-[13px]" aria-label={`Bookmark for message ${seq}`}>
     <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
       <button ref={toggle} type="button" disabled={busy} aria-expanded={open} onClick={() => {
@@ -72,15 +78,12 @@ export function BookmarkControl({ api, sessionKey, seq, view, editorState, updat
       <label>Note for message {seq}<textarea ref={editor} value={note} disabled={busy} rows={4} className="mt-1 block w-full bg-chip p-2 text-foreground"
         onChange={event => { const value = event.target.value; updateEditor(current => ({ ...current, draft: { note: value, baseUpdatedAt: current.draft ? current.draft.baseUpdatedAt : bookmark?.updated_at ?? null } })); }} onKeyDown={event => {
           if (event.key === "Escape" && !busy) { event.preventDefault(); close(true); }
+          else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); if (canSave) saveNote(); }
         }} /></label>
       <p role="status" className="text-muted-foreground">{count}/4,000 characters{note !== (bookmark?.note ?? "") ? " · Unsaved changes" : ""}</p>
       {bookmark && baseUpdatedAt !== bookmark.updated_at && <p role="alert">The saved note changed while you were editing. Your draft is kept; copy it before cancelling and reopening the note.</p>}
       <div className="flex gap-3">
-        <button type="button" disabled={busy || count > 4000 || (baseUpdatedAt !== null && !bookmark)} onClick={() => void run(async () => {
-          const saved = await api.saveBookmark(sessionKey, seq, note, false, baseUpdatedAt);
-          close(true);
-          try { await changed(saved); } catch (reason) { throw new Error(`Note saved, but refreshing bookmarks failed: ${String(reason)}`); }
-        })}>{busy ? "Saving…" : "Save note"}</button>
+        <button type="button" disabled={!canSave} onClick={saveNote}>{busy ? "Saving…" : "Save note"}</button>
         <button type="button" disabled={busy} onClick={() => close(true)}>Cancel note</button>
       </div>
     </div>}
