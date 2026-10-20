@@ -2,6 +2,7 @@ import { ErrorHistory } from "./ErrorHistory";
 import type {ErrorHistoryRequest} from "./api";
 import { ProjectOverview } from "./ProjectOverview";
 import { SearchEmpty } from "./SearchEmpty";
+import { RowLabels } from "./RowLabels";
 import { RecentQueries } from "./RecentQueries";
 import { useRecentQueries } from "./recent-queries";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactNode } from "react";
@@ -1353,8 +1354,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             {hasAlias(aliases, session.key) && <span className="block truncate text-[11px] text-muted-foreground" title={plainTitle(session.title)}>Original: {plainTitle(session.title)}</span>}
             <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
               <HugeiconsIcon icon={Folder01Icon} size={12} className="flex-none" /><span className="truncate">{session.project_path ? basename(session.project_path) : t.unknown}</span></div>
-            {!!session.labels?.length && <p className="mt-1 truncate text-[12px] text-muted-foreground">
-              {labels.filter(label => session.labels?.includes(label.id)).map(label => label.name).join(" · ")}</p>}
+            <RowLabels ids={session.labels} catalog={labels} />
             {group && <p className="mt-1 text-[12px] text-muted-foreground">
               {group.title_match && "Title match · "}{group.message_matches} matching message{group.message_matches === 1 ? "" : "s"}
             </p>}
