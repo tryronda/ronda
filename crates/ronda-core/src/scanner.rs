@@ -221,13 +221,13 @@ impl Scanner {
             for (index, source, id) in candidates {
                 let adapter = &self.adapters[index];
                 let fingerprint = adapter.fingerprint(&source);
-                let same_source = store
-                    .get_session(&key)?
-                    .is_some_and(|m| m.source_path == source.path.to_string_lossy());
-                if !force
-                    && same_source
-                    && store.fingerprint(&key)?.as_deref() == Some(&fingerprint)
-                {
+                let unchanged = !force
+                    && store
+                        .fingerprint_and_source(&key)?
+                        .is_some_and(|(stored, path)| {
+                            path == source.path.to_string_lossy() && stored == fingerprint
+                        });
+                if unchanged {
                     report.unchanged += 1;
                     parsed = Some(());
                     break;

@@ -8,6 +8,9 @@ All notable changes to Ronda are recorded here.
 - Sessions with a corrupted line in their transcript file now keep every later message instead of ending at the bad line.
 - A skipped or empty transcript file no longer stops Ronda from removing sessions whose files were deleted.
 
+### Performance
+- Library refreshes do less per-session work when nothing has changed.
+
 ## [1.4.0] - 2026-10-19
 
 ### Added
