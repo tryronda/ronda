@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Project overview dates match the library list, and counts use correct singular and plural forms.
+
 ### Fixed
 - The project overview heading shows the folder name for paths that use backslashes.
 
