@@ -185,7 +185,10 @@ fn reverse_lists_oldest_first_before_limit() {
         out.contains("codex:old") && !out.contains("codex:new"),
         "{out}"
     );
-    assert!(out.contains("3 sessions — showing 1 oldest."), "{out}");
+    assert!(
+        out.contains("3 sessions — showing 1 of 3 oldest. Archived sessions are excluded."),
+        "{out}"
+    );
     let newest =
         String::from_utf8_lossy(&cli(&db, &["sessions", "--limit", "1"]).stdout).into_owned();
     assert!(
@@ -196,6 +199,7 @@ fn reverse_lists_oldest_first_before_limit() {
     let o = cli(&db, &["projects", "--reverse", "--limit", "1"]);
     let out = String::from_utf8_lossy(&o.stdout);
     assert!(out.contains("/tmp/a") && !out.contains("/tmp/c"), "{out}");
+    assert!(out.contains("Showing 1 of 3 projects."), "{out}");
 }
 
 #[test]
