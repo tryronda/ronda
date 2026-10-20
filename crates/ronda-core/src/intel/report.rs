@@ -135,18 +135,18 @@ struct Fact {
 
 /// Format a duration like the app's `hours()`: whole minutes (at least one for any positive
 /// duration) under an hour, one decimal up to ten hours, whole hours beyond. The unit is chosen
-/// from the minutes after rounding, so 59.6 minutes reads as `1.0 h`, never `60 min`.
+/// from the unrounded duration, as the app does, so 59.6 minutes reads as `60 min`.
 pub fn hours(ms: i64) -> String {
     if ms <= 0 {
         return "0 min".into();
     }
-    let minutes = ((ms as f64 / 60_000.0).round() as i64).max(1);
     let h = ms as f64 / 3_600_000.0;
-    if minutes >= 600 {
+    if h >= 10.0 {
         format!("{} h", h.round())
-    } else if minutes >= 60 {
+    } else if h >= 1.0 {
         format!("{:.1} h", (h * 10.0).round() / 10.0)
     } else {
+        let minutes = ((ms as f64 / 60_000.0).round() as i64).max(1);
         format!("{minutes} min")
     }
 }
@@ -677,7 +677,7 @@ mod tests {
             (90_000, "2 min"),
             (119_000, "2 min"),
             (59 * 60_000 + 29_000, "59 min"),
-            (59 * 60_000 + 30_000, "1.0 h"),
+            (59 * 60_000 + 30_000, "60 min"),
             (3_600_000, "1.0 h"),
             (5_400_000, "1.5 h"),
             (4_500_000, "1.3 h"),
