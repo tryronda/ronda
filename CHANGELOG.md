@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Related sessions says when only the top five of more candidates are shown.
+
 ## [1.4.0] - 2026-10-19
 
 ### Added

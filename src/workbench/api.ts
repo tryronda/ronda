@@ -121,7 +121,7 @@ export interface ErrorHistory {
 export interface ErrorHistoryRequest {text:string;project:string|null;host:string|null;local_only:boolean}
 export interface SessionRelationships {
   parent:SessionMeta|null; children:SessionMeta[];
-  related:{session:SessionMeta;shared_errors:number;shared_files:number;explanation:string}[]; candidate_limit:number;
+  related:{session:SessionMeta;shared_errors:number;shared_files:number;explanation:string}[]; candidate_limit:number; related_total?:number;
 }
 
 export interface ScanReport {

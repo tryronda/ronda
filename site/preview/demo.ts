@@ -555,11 +555,11 @@ function sessionRelationships(key:string){
       files:new Set(tools.filter(tool=>["Read","Edit"].includes(tool.name) && tool.input).map(tool=>tool.input!.replaceAll("\\","/")))};
   };
   const own=signals(main);
-  const related=sessions.filter(session=>session.key!==key && !session.parent_key && main.project_path && session.project_path===main.project_path && session.host===main.host)
+  const ranked=sessions.filter(session=>session.key!==key && !session.parent_key && main.project_path && session.project_path===main.project_path && session.host===main.host)
     .map(session=>{const other=signals(session),shared_errors=[...own.errors].filter(error=>other.errors.has(error)).length,shared_files=[...own.files].filter(file=>other.files.has(file)).length;
       return {session,shared_errors,shared_files,explanation:shared_errors ? "Shared error" : shared_files ? "Shared files" : "Same project"};})
-    .sort((a,b)=>b.shared_errors-a.shared_errors || b.shared_files-a.shared_files || b.session.updated_at-a.session.updated_at || a.session.key.localeCompare(b.session.key)).slice(0,5);
-  return {parent,children,related,candidate_limit:512};
+    .sort((a,b)=>b.shared_errors-a.shared_errors || b.shared_files-a.shared_files || b.session.updated_at-a.session.updated_at || a.session.key.localeCompare(b.session.key));
+  return {parent,children,related:ranked.slice(0,5),candidate_limit:512,related_total:ranked.length};
 }
 
 function errorHistory(args:Args){
