@@ -42,6 +42,21 @@ pub struct ShowArgs {
     pub include_thinking: bool,
 }
 
+/// `(min, max)` bounds applied to size options; shared with the CLI clamp notes.
+pub const SESSIONS_LIMIT: (usize, usize) = (1, 100);
+pub const SEARCH_LIMIT: (usize, usize) = (1, 30);
+pub const PROJECTS_LIMIT: (usize, usize) = (1, 200);
+pub const SHOW_MESSAGES: (usize, usize) = (1, 200);
+pub const SHOW_CHARS: (usize, usize) = (200, 100_000);
+pub const SHOW_MESSAGE_CHARS: (usize, usize) = (100, 50_000);
+
+/// Returns a note when `value` falls outside `bounds` and will be clamped.
+pub fn clamp_note(flag: &str, value: Option<usize>, bounds: (usize, usize)) -> Option<String> {
+    let v = value?;
+    let c = v.clamp(bounds.0, bounds.1);
+    (c != v).then(|| format!("{flag} {v} clamped to {c}"))
+}
+
 pub fn agent_id(name: &str) -> Option<AgentId> {
     let n = name.trim().to_lowercase().replace([' ', '_'], "-");
     AgentId::ALL
@@ -65,6 +80,23 @@ fn selected_agents(raw: &[String]) -> Result<Vec<AgentId>> {
         .flat_map(|s| s.split(','))
         .map(|s| agent_id(s).ok_or_else(|| anyhow!("unknown agent: {s}")))
         .collect()
+}
+
+/// Rejects unknown agent ids up front, listing the valid ones.
+pub fn validate_agents(raw: &[String]) -> Result<()> {
+    selected_agents(raw).map(|_| ()).map_err(|_| {
+        let bad: Vec<&str> = raw
+            .iter()
+            .flat_map(|s| s.split(','))
+            .filter(|s| agent_id(s).is_none())
+            .collect();
+        let valid: Vec<&str> = AgentId::ALL.iter().map(|a| a.as_str()).collect();
+        anyhow!(
+            "unknown agent: {}; valid agents: {}",
+            bad.join(", "),
+            valid.join(", ")
+        )
+    })
 }
 
 fn since_ms(raw: Option<&str>) -> Result<Option<i64>> {
@@ -252,7 +284,11 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
     sessions.retain(|s| s.parent_key.is_none() && accept(s, &paths, &agents, window, args.starred));
     sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
     let count = sessions.len();
-    sessions.truncate(args.limit.unwrap_or(20).clamp(1, 100));
+    sessions.truncate(
+        args.limit
+            .unwrap_or(20)
+            .clamp(SESSIONS_LIMIT.0, SESSIONS_LIMIT.1),
+    );
     let mut out = format!(
         "{count} sessions — showing {} most recent.\n\n",
         sessions.len()
@@ -296,7 +332,12 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
         }
     }
     let count = grouped.len();
-    grouped.truncate(args.filter.limit.unwrap_or(10).clamp(1, 30));
+    grouped.truncate(
+        args.filter
+            .limit
+            .unwrap_or(10)
+            .clamp(SEARCH_LIMIT.0, SEARCH_LIMIT.1),
+    );
     let mut out = format!(
         "{count} sessions match `{}` — showing {}.\n\n",
         args.query,
@@ -402,9 +443,18 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
         })
         .unwrap_or(0)
         .max(0);
-    let max_messages = args.max_messages.unwrap_or(60).clamp(1, 200);
-    let max_chars = args.max_chars.unwrap_or(20_000).clamp(200, 100_000);
-    let per_message = args.max_message_chars.unwrap_or(4_000).clamp(100, 50_000);
+    let max_messages = args
+        .max_messages
+        .unwrap_or(60)
+        .clamp(SHOW_MESSAGES.0, SHOW_MESSAGES.1);
+    let max_chars = args
+        .max_chars
+        .unwrap_or(20_000)
+        .clamp(SHOW_CHARS.0, SHOW_CHARS.1);
+    let per_message = args
+        .max_message_chars
+        .unwrap_or(4_000)
+        .clamp(SHOW_MESSAGE_CHARS.0, SHOW_MESSAGE_CHARS.1);
     let mut out = format!(
         "# {}\n\nKey: `{}` · Agent: {}",
         meta.title,
@@ -538,7 +588,11 @@ pub fn list_projects(store: &Store, since: Option<&str>, limit: Option<usize>) -
         .projects()?
         .into_iter()
         .filter(|p| since.is_none_or(|s| p.updated_at >= s))
-        .take(limit.unwrap_or(50).clamp(1, 200))
+        .take(
+            limit
+                .unwrap_or(50)
+                .clamp(PROJECTS_LIMIT.0, PROJECTS_LIMIT.1),
+        )
         .collect();
     let mut out = format!("{} projects.\n\n", projects.len());
     for p in projects {

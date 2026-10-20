@@ -39,6 +39,25 @@ function shortNumber(value: number) {
   return new Intl.NumberFormat(undefined, { notation: value >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
 }
 
+type Cell = { key: string; count: number; placeholder?: boolean };
+
+/** Plain-language facts about the heatmap for screen readers; cells are ordered oldest to newest. */
+export function heatmapSummary(calendar: Cell[]): string {
+  const days = calendar.filter(cell => !cell.placeholder);
+  if (!days.length) return 'No activity data.';
+  const range = `${days[0].key} to ${days[days.length - 1].key}`;
+  const active = days.filter(day => day.count > 0);
+  if (!active.length) return `No activity from ${range}.`;
+  let busiest = active[0]; let longest = 0; let run = 0;
+  for (const day of days) {
+    if (day.count > busiest.count) busiest = day;
+    run = day.count > 0 ? run + 1 : 0;
+    longest = Math.max(longest, run);
+  }
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  return `${plural(active.length, 'active day')} from ${range}. Busiest day: ${busiest.key} with ${plural(busiest.count, 'prompt')}. Longest streak: ${plural(longest, 'day')}.`;
+}
+
 const LIMIT = 10;
 const sortRows = (rows: Row[], metric: Metric) => [...rows].sort((a, b) => b[metric] - a[metric]);
 
@@ -95,7 +114,7 @@ export function InsightsView({ active = true }: { active?: boolean }) {
     const counts = new Map(data?.activity ?? []);
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const start = new Date(today); start.setDate(start.getDate() - 364);
-    const cells: { key: string; count: number; placeholder?: boolean }[] = [];
+    const cells: Cell[] = [];
     for (let i = 0; i < start.getDay(); i++) cells.push({ key: `pad-${i}`, count: 0, placeholder: true });
     for (let i = 0; i < 365; i++) {
       const day = new Date(start); day.setDate(start.getDate() + i);
@@ -144,12 +163,13 @@ export function InsightsView({ active = true }: { active?: boolean }) {
           data-level={cell.count === 0 ? 0 : cell.count < 2 ? 1 : cell.count < 4 ? 2 : cell.count < 8 ? 3 : 4}
           title={cell.placeholder ? undefined : `${cell.key}: ${cell.count} ${t.prompts}`} />)}
       </div></div>
+      <p className="sr-only" data-testid="heatmap-summary">{heatmapSummary(calendar)}</p>
       <div className="heat-legend"><span>{t.less}</span>{[0, 1, 2, 3, 4].map(n => <i key={n} data-level={n} />)}<span>{t.more}</span></div>
     </section>
     <div className="insight-breakdowns">
-      <section className="panel-card"><h2>{t.weekday}</h2><MiniBars values={byWeekday} labels={['Sun','Mon','Tue','Wed','Thu','Fri','Sat']} /></section>
-      <section className="panel-card"><h2>{t.month}</h2><MiniBars values={byMonth} labels={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'narrow' }).format(new Date(2026, i, 1)))} /></section>
-      {data?.hours && <section className="panel-card"><h2>{t.hour}</h2><MiniBars values={Array.from({ length: 24 }, (_, i) => data.hours?.find(([hour]) => hour === i)?.[1] ?? 0)} labels={Array.from({ length: 24 }, (_, i) => i % 4 === 0 ? String(i) : '')} /></section>}
+      <section className="panel-card"><h2>{t.weekday}</h2><MiniBars values={byWeekday} labels={['Sun','Mon','Tue','Wed','Thu','Fri','Sat']} names={['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']} /></section>
+      <section className="panel-card"><h2>{t.month}</h2><MiniBars values={byMonth} labels={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'narrow' }).format(new Date(2026, i, 1)))} names={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(2026, i, 1)))} /></section>
+      {data?.hours && <section className="panel-card"><h2>{t.hour}</h2><MiniBars values={Array.from({ length: 24 }, (_, i) => data.hours?.find(([hour]) => hour === i)?.[1] ?? 0)} labels={Array.from({ length: 24 }, (_, i) => i % 4 === 0 ? String(i) : '')} names={Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)} /></section>}
     </div>
     <section className="panel-card">
       <div className="panel-section-head insight-leader-head"><h2>{t[board]}</h2>
@@ -167,11 +187,14 @@ export function InsightsView({ active = true }: { active?: boolean }) {
   </div>;
 }
 
-function MiniBars({ values, labels }: { values: number[]; labels: string[] }) {
+function MiniBars({ values, labels, names }: { values: number[]; labels: string[]; names?: string[] }) {
   const max = Math.max(1, ...values);
-  return <div className="mini-bars">{values.map((value, index) => <div className="mini-bar" key={index} title={`${labels[index]}: ${value}`}>
-    <div className="mini-bar-track"><motion.div initial={false} animate={{ height: `${value / max * 100}%` }} transition={{ duration: 0.3, ease: EASE_OUT }} /></div><small>{labels[index]}</small>
-  </div>)}</div>;
+  return <>
+    <ul className="sr-only">{values.map((value, index) => <li key={index}>{`${names?.[index] ?? labels[index]}: ${value}`}</li>)}</ul>
+    <div className="mini-bars" aria-hidden="true">{values.map((value, index) => <div className="mini-bar" key={index} title={`${names?.[index] ?? labels[index]}: ${value}`}>
+      <div className="mini-bar-track"><motion.div initial={false} animate={{ height: `${value / max * 100}%` }} transition={{ duration: 0.3, ease: EASE_OUT }} /></div><small>{labels[index]}</small>
+    </div>)}</div>
+  </>;
 }
 
 function Segment<T extends string>({ label, value, onChange, options, className }: {

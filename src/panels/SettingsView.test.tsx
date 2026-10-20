@@ -8,7 +8,7 @@ vi.mock("@/lib/tauri", () => ({ invoke: (...args: unknown[]) => invoke(...args),
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 vi.mock("./DiagnosticsExport", () => ({ DiagnosticsExport: () => null }));
 vi.mock("./BookmarkData", () => ({ BookmarkData: () => null }));
-import { SettingsView } from "./SettingsView";
+import { SettingsView, validSshHost } from "./SettingsView";
 
 afterEach(() => { document.body.innerHTML = ""; invoke.mockReset(); });
 
@@ -120,5 +120,74 @@ test("Connect offers a command-line snippet with the CLI path and copies it", as
     expect(block.textContent).toContain("`/opt/ronda/ronda-cli search <query>`");
     await act(async () => { block.querySelector("button")!.click(); await Promise.resolve(); });
     expect(writeText.mock.calls[0][0]).toContain("`/opt/ronda/ronda-cli show <key>`");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+const mountSettings = async (rows: unknown[], hosts: unknown[], tab: string) => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  invoke.mockImplementation((command: string) => {
+    if (command === "list_locations") return Promise.resolve(rows);
+    if (command === "list_remote_hosts") return Promise.resolve(hosts);
+    if (command === "app_paths") return Promise.resolve(["ronda-mcp", "", "index"]);
+    return Promise.resolve(null);
+  });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<SettingsView />));
+  const nav = Array.from(host.querySelectorAll<HTMLButtonElement>("nav button")).find(button => button.textContent?.includes(tab))!;
+  await act(async () => { nav.click(); await Promise.resolve(); });
+  return { host, root };
+};
+const typeInto = async (input: HTMLInputElement, value: string) => act(async () => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+});
+
+test("adding an already configured location explains it, keeps the path, and saves nothing", async () => {
+  const rows = [
+    { agent: "claude-code", path: "/Users/me/.claude/projects", health_id: "a", enabled: true, custom: false },
+    { agent: "codex", path: "/work/codex", health_id: "b", enabled: true, custom: true },
+    { agent: "gemini", path: "/Users/me/.gemini/tmp", health_id: "c", enabled: false, custom: false },
+  ];
+  const { host, root } = await mountSettings(rows, [], "Locations");
+  try {
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Agent"]')!;
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Absolute folder path"]')!;
+    const add = Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-form button")).find(b => b.textContent === "Add")!;
+    const attempt = async (agent: string, path: string) => {
+      await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, agent); select.dispatchEvent(new Event("change", { bubbles: true })); });
+      await typeInto(input, path);
+      await act(async () => { add.click(); await Promise.resolve(); });
+    };
+    await attempt("claude-code", "/Users/me/.claude/projects/");
+    expect(host.querySelector('[role="status"].panel-notice')?.textContent).toBe("Already configured: claude-code · /Users/me/.claude/projects (enabled)");
+    expect(input.value).toBe("/Users/me/.claude/projects/");
+    await attempt("codex", "/work/codex");
+    expect(host.querySelector('.panel-notice')?.textContent).toContain("Already configured: codex · /work/codex (enabled)");
+    await attempt("gemini", "/Users/me/.gemini/tmp");
+    expect(host.querySelector('.panel-notice')?.textContent).toMatch(/\(disabled; turn it on with its switch/);
+    expect(invoke.mock.calls.some(call => call[0] === "set_pref")).toBe(false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("validSshHost mirrors the core rules", () => {
+  for (const ok of ["box", "me@box.example.com", "a_b-c.d", "user@10.0.0.1"]) expect(validSshHost(ok)).toBe(true);
+  for (const bad of ["", "-oProxyCommand=x", "a b", "host;rm", "bøx", "a/b"]) expect(validSshHost(bad)).toBe(false);
+});
+
+test("remote host entry rejects invalid and duplicate names without calling the backend", async () => {
+  const { host, root } = await mountSettings([], [{ host: "box", enabled: false, last_sync_ms: null, last_error: null }], "Remote hosts");
+  try {
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="SSH host or alias"]')!;
+    const add = () => Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-form button")).find(b => b.textContent === "Add")!;
+    await typeInto(input, "-oProxyCommand=x");
+    await act(async () => { add().click(); await Promise.resolve(); });
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Use letters, numbers, @ . _ - only; cannot start with -");
+    await typeInto(input, "box");
+    await act(async () => { add().click(); await Promise.resolve(); });
+    expect(host.querySelector('.panel-notice')?.textContent).toBe("Already configured: box");
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(invoke.mock.calls.some(call => call[0] === "set_remote_host")).toBe(false);
+    expect(input.value).toBe("box");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

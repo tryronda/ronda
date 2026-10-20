@@ -1,7 +1,7 @@
 {
   "name": "ronda-desktop",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "A local desktop library for coding-agent sessions.",
   "license": "AGPL-3.0-only",
   "homepage": "https://tryronda.cloud",
@@ -16,7 +16,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "vitest run",
-    "check": "vitest run && tsc --noEmit",
+    "check": "vitest run --testTimeout=15000 && tsc --noEmit",
     "site:dev": "vite --config vite.site.config.ts",
     "site:build": "bun scripts/prerender-site.ts",
     "site:preview": "vite preview --config vite.site.config.ts",

@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { backend, queryDefaults, type BookmarkBackup, type SessionQuery, type BookmarkImport } from "@/workbench/api";
+import { version as appVersion } from "../../package.json";
 import { appendDemoMessage, changeFirstDemoAssistantReply, installDemoBackend, insertEarlierDemoMessage, uninstallDemoBackend } from "./demo";
 import { captureReadingPosition, resolveReadingPosition } from "@/workbench/reading-position";
 
@@ -395,4 +396,41 @@ test("library sort options order pages with pins first and deterministic ties", 
     const rest = got.slice(pinned);
     expect(rest.every((key,index)=>index===0 || value(rest[index-1])>value(key) || (value(rest[index-1])===value(key) && rest[index-1]<key))).toBe(true);
   }
+});
+
+test("preview remote hosts reject names the desktop core would refuse", async () => {
+  installDemoBackend();
+  for (const bad of ["", "-oProxyCommand=x", "a b", "host;rm", "a/b"]) await expect(invoke("set_remote_host", { host: bad, enabled: true })).rejects.toThrow("invalid SSH host");
+  await invoke("set_remote_host", { host: "me@box.example.com", enabled: true });
+  expect((await invoke<{ host: string }[]>("list_remote_hosts")).map(item => item.host)).toContain("me@box.example.com");
+  uninstallDemoBackend();
+});
+
+test("preview Settings locations reflect added, disabled, and removed locations and reset on reload", async () => {
+  installDemoBackend();
+  type Row = { agent: string; path: string; enabled: boolean; custom: boolean; health_id: string };
+  const list = () => invoke<Row[]>("list_locations");
+  const before = await list();
+  expect(before.every(row => !row.custom)).toBe(true);
+  await invoke("set_pref", { key: "custom_roots", value: JSON.stringify({ codex: ["/work/codex"] }) });
+  const added = (await list()).find(row => row.path === "/work/codex")!;
+  expect(added).toMatchObject({ agent: "codex", custom: true, enabled: true });
+  expect(added.health_id).toHaveLength(64);
+  await invoke("set_pref", { key: "disabled_roots", value: JSON.stringify(["/work/codex", "/Users/you/.cursor/chats"]) });
+  const disabled = await list();
+  expect(disabled.find(row => row.path === "/work/codex")?.enabled).toBe(false);
+  expect(disabled.find(row => row.path === "/Users/you/.cursor/chats")?.enabled).toBe(false);
+  expect(disabled.find(row => row.path === "/Users/you/.gemini/tmp")?.enabled).toBe(true);
+  await invoke("set_pref", { key: "custom_roots", value: "{}" });
+  await invoke("set_pref", { key: "disabled_roots", value: "[]" });
+  expect(await list()).toHaveLength(before.length);
+  uninstallDemoBackend();
+  installDemoBackend();
+  expect((await list()).find(row => row.path === "/Users/you/.gemini/tmp")?.enabled).toBe(false);
+});
+
+test("preview diagnostics report the current app version", async () => {
+  installDemoBackend();
+  expect((await invoke<{ app_version: string }>("get_diagnostics_report")).app_version).toBe(appVersion);
+  uninstallDemoBackend();
 });
