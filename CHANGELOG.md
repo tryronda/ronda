@@ -4,13 +4,19 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- `ronda-cli sessions` and `projects` accept `--reverse` to list the oldest activity first.
+
 ### Fixed
 - Sessions with a corrupted line in their transcript file now keep every later message instead of ending at the bad line.
 - A skipped or empty transcript file no longer stops Ronda from removing sessions whose files were deleted.
 - Intelligence no longer counts dry-run commits or pushes as committed work, and reads session start and end times correctly when timestamps arrive out of order.
+- `ronda-cli` and MCP answers use correct singular and plural counts and say when error history is truncated.
+- `ronda-cli` treats `--help` as a search term after `--`, and invalid durations like `--since d` get a clear message.
 
 ### Performance
 - Library refreshes do less per-session work when nothing has changed.
+- Index freshness in CLI and MCP answers is computed with a single query.
 
 ## [1.4.0] - 2026-10-19
 
