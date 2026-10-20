@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Codex sessions keep their token total when a later usage event carries no data.
+- Failed tool calls from Hermes sessions are now marked as failed, so Intelligence counts their errors.
 
 ## [1.5.0] - 2026-10-19
 
