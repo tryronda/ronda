@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-19
+
 ### Added
 - `ronda-cli sessions` and `projects` accept `--reverse` to list the oldest activity first.
 - Related sessions says when only the top five of more candidates are shown.
