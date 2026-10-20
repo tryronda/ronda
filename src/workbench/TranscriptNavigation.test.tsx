@@ -35,6 +35,7 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
     <div ref={container}><article id="message-2"><p data-transcript-field="text">Needle needle</p><details><pre data-transcript-field="tool-0-output">needle</pre></details></article></div>
     <textarea/><div className="xterm" tabIndex={0}/></div>));};
   const key=async(target:Element,value:string,options:KeyboardEventInit={})=>{const event=new KeyboardEvent("keydown",{key:value,bubbles:true,cancelable:true,...options});await act(async()=>{target.dispatchEvent(event);});return event;};
+  const input0=()=>host.querySelector<HTMLInputElement>('input[type="search"]')!;
   const type=async(value:string)=>{await act(async()=>{const input=host.querySelector<HTMLInputElement>('input[type="search"]')!;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}));});};
   try {
     await render();
@@ -50,7 +51,10 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
     expect((await key(host.querySelector(".xterm")!,"f",{metaKey:true})).defaultPrevented).toBe(false);
     expect((await key(scope.current!,"f",{metaKey:true})).defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(host.querySelector('input[type="search"]'));
-    await type("needle");expect(host.querySelector('[role="status"]')?.textContent).toBe("1 of 3");
+    await type("needle");
+    await key(scope.current!,"f",{metaKey:true});
+    expect([input0().selectionStart,input0().selectionEnd]).toEqual([0,6]);
+    expect(host.querySelector('[role="status"]')?.textContent).toBe("1 of 3");
     const input=host.querySelector<HTMLInputElement>('input[type="search"]')!;
     await key(input,"Enter",{shiftKey:true});expect(host.querySelector('[role="status"]')?.textContent).toBe("3 of 3");
     expect(beforeScroll.mock.calls.length).toBeGreaterThan(2);
@@ -59,7 +63,7 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
     await act(async()=>{container.current!.querySelector("p")!.append(" needle");await new Promise(resolve=>setTimeout(resolve,0));});
     expect(host.querySelector('[role="status"]')?.textContent).toBe("4 of 4");
     await key(input,"Enter");expect(host.querySelector('[role="status"]')?.textContent).toBe("1 of 4");
-    await type("absent");expect(host.querySelector('[role="status"]')?.textContent).toBe("0 of 0");
+    await type("absent");expect(host.querySelector('[role="status"]')?.textContent).toBe("No matches. Try Include thinking");
     expect(host.querySelector<HTMLButtonElement>('[aria-label="Next match"]')?.disabled).toBe(true);
     await key(input,"Escape");expect(host.querySelector('input[type="search"]')).toBeNull();
     await key(scope.current!,"f",{ctrlKey:true});jumpToken++;await render();
