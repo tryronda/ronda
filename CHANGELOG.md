@@ -4,6 +4,13 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Transcript find says “No matches” and ⌘F selects the current query.
+- Press ⌘/Ctrl+Enter in a bookmark note to save it.
+
+### Fixed
+- The browser preview now refuses to delete samples that the desktop app cannot delete.
+
 ## [1.3.0] - 2026-10-19
 
 ### Added

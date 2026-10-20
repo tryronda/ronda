@@ -46,7 +46,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
         event.preventDefault(); jumpPrompt(event.key === "]" ? 1 : -1); return;
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
-        event.preventDefault(); setOpen(true); input.current?.focus();
+        event.preventDefault(); setOpen(true); input.current?.focus(); input.current?.select();
       }
     };
     window.addEventListener("keydown", keydown);
@@ -111,7 +111,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
           if (event.key === "Enter") { event.preventDefault(); move(event.shiftKey ? -1 : 1); }
           else if (event.key === "Escape") { event.preventDefault(); close(); }
         }} />
-      <span role="status" aria-live="polite">{matches.length ? index + 1 : 0} of {matches.length}</span>
+      <span role="status" aria-live="polite">{query && !matches.length ? `No matches${thinking ? "" : ". Try Include thinking"}` : `${matches.length ? index + 1 : 0} of ${matches.length}`}</span>
       <button type="button" aria-label="Previous match" disabled={!matches.length} onClick={() => move(-1)}>↑</button>
       <button type="button" aria-label="Next match" disabled={!matches.length} onClick={() => move(1)}>↓</button>
       <label className="flex items-center gap-1"><input type="checkbox" checked={thinking} onChange={event => setThinking(event.target.checked)} />Include thinking</label>
