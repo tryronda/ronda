@@ -4,12 +4,15 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-19
+
 ### Added
 - Search offers **Reset recent searches** when its stored list can't be read.
 - Settings → Data can copy the index database path.
 
 ### Changed
 - `ronda-cli` and MCP session and project lists say when archived sessions are excluded and how many results exist beyond the limit.
+- The docs list what each supported agent records (model, tokens, tool calls, tool failures) and define when Intelligence counts a session as committed.
 
 ### Fixed
 - Codex sessions keep their token total when a later usage event carries no data.
