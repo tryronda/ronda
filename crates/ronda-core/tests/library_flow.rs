@@ -435,3 +435,74 @@ fn cli_until_bounds_sessions_and_search_to_a_window() {
     assert!(String::from_utf8_lossy(&bad.stderr).contains("invalid until value: yesterdayish"));
     fs::remove_dir_all(temp).unwrap();
 }
+
+fn skip_prune_fixture(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let temp = std::env::temp_dir().join(format!(
+        "ronda-{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let home = temp.join("home");
+    fs::create_dir_all(&home).unwrap();
+    (temp, home)
+}
+
+const CLAUDE_ROWS: &str = concat!(
+    "{\"type\":\"user\",\"cwd\":\"/repo\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":{\"content\":\"Question\"}}\n",
+    "{\"type\":\"assistant\",\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":{\"id\":\"r\",\"content\":[{\"type\":\"text\",\"text\":\"Answer\"}]}}\n"
+);
+const CURSOR_ROWS: &str =
+    "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Main task\"}]}}\n";
+
+#[test]
+fn skipped_empty_transcript_does_not_block_pruning_and_keeps_its_session() {
+    let (temp, home) = skip_prune_fixture("skip-prune");
+    let claude = home.join(".claude/projects/p/gone.jsonl");
+    let cursor = home.join(".cursor/projects/ws/agent-transcripts/main/main.jsonl");
+    for (path, rows) in [(&claude, CLAUDE_ROWS), (&cursor, CURSOR_ROWS)] {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, rows).unwrap();
+    }
+    let mut store = Store::open(&temp.join("index/ronda.db")).unwrap();
+    let scanner = Scanner::new(home);
+    assert_eq!(scanner.scan(&mut store, true).unwrap().indexed, 2);
+    // Cursor transcript becomes empty (skipped); the Claude file is deleted.
+    fs::write(&cursor, "").unwrap();
+    fs::remove_file(&claude).unwrap();
+    scanner.scan(&mut store, true).unwrap();
+    assert!(store.get_session("claude-code:gone").unwrap().is_none());
+    // The skipped source still exists, so its session must survive.
+    assert!(store.get_session("cursor:main").unwrap().is_some());
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn errored_source_still_blocks_pruning() {
+    use std::os::unix::fs::PermissionsExt;
+    let (temp, home) = skip_prune_fixture("err-prune");
+    let broken = home.join(".claude/projects/p/broken.jsonl");
+    fs::create_dir_all(broken.parent().unwrap()).unwrap();
+    fs::write(&broken, CLAUDE_ROWS).unwrap();
+    let mut store = Store::open(&temp.join("index/ronda.db")).unwrap();
+    store
+        .upsert(
+            &synthetic_session("claude-code:stale", "/gone/x.jsonl"),
+            "s",
+        )
+        .unwrap();
+    fs::set_permissions(&broken, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::File::open(&broken).is_ok() {
+        // Running as a user that ignores permissions; the Err path cannot be exercised.
+        fs::remove_dir_all(temp).unwrap();
+        return;
+    }
+    let report = Scanner::new(home).scan(&mut store, true).unwrap();
+    assert!(!report.errors.is_empty());
+    assert!(store.get_session("claude-code:stale").unwrap().is_some());
+    fs::set_permissions(&broken, fs::Permissions::from_mode(0o644)).unwrap();
+    fs::remove_dir_all(temp).unwrap();
+}
