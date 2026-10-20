@@ -44,6 +44,18 @@ export const docs: DocSection[] = [
         "Antigravity transcripts are encrypted, so Ronda shows their metadata only.",
         "Unknown token usage stays unknown rather than estimated.",
       ]} />
+      <h3>What each agent records</h3>
+      <P>Not every agent writes the same details, so model, tokens, tool calls, and tool failures differ by agent. A value the agent didn't record shows as unknown, never as zero. Intelligence only counts tool-based time, outcomes, and failures for sessions with recorded tool calls. A tool failure is the agent's own error flag, or a non-zero exit code printed in the tool output.</P>
+      <List items={[
+        "**Model, tokens, tool calls, and failures from an error flag:** Claude Code, Pi, Oh My Pi, DeepSeek Harness, CodeBuddy, WorkBuddy.",
+        "**Model, tokens, tool calls, and failures from exit codes:** Codex, Hermes Agent.",
+        "**Model, tokens, and tool calls; failures not flagged:** Qoder.",
+        "**Model and tokens; tool calls and failures from the older database generation only:** OpenCode.",
+        "**Model, tool calls, and failures from an error flag; no tokens:** Grok Build.",
+        "**Tool calls only; failures not detected:** Cursor, in both transcript and IDE stores.",
+        "**Model only:** Kiro, OpenClaw.",
+        "**None of these:** Gemini CLI, Kimi Code, Copilot CLI, Antigravity CLI.",
+      ]} />
     </>,
   },
   {
@@ -155,10 +167,11 @@ export const docs: DocSection[] = [
         "**Agent failures:** edit loops (one file edited five or more times around errors), context that filled up and was compacted, sessions that ended with tests failing, denied tool calls, and calls to APIs that don't exist.",
         "**Errors that keep coming back:** error lines are normalized so paths, line numbers, and ids don't split one bug into many. Errors are flagged when they return after a session that recorded a commit command.",
         "**Your stack:** languages, frameworks, and tools detected from edited files and commands, as a share of sessions with tool calls. Tech first seen in the selected range is marked new.",
-        "**How sessions end:** committed, edited but not committed, ended failing, or no file changes.",
+        "**How sessions end:** committed, edited but not committed, ended failing, or no file changes. A session counts as committed when a successful shell command recorded a real `git commit` or `git push`, or `gh pr create` or `gh pr merge`.",
         "**Worth knowing:** short notes, such as recovery time outgrowing tests and setup, or failing sessions running much longer than committed ones.",
       ]} />
-      <P>Recurring errors and your stack show the top rows with a **Show all** toggle when more exist, and **Copy summary** copies a Markdown summary of the current range and project. Failure and error rows link to their sessions and open the transcript at the matching message. Everything is derived locally when a session is indexed, with fixed rules and no language model. Agents that don't record tool calls count toward time and sessions, and the view names them.</P>
+      <P>Recurring errors and your stack show the top rows with a **Show all** toggle when more exist, and **Copy summary** copies a Markdown summary of the current range and project. Failure and error rows link to their sessions and open the transcript at the matching message. Durations read as minutes under an hour, one decimal place under 10 hours (for example 2.5 h), and whole hours from 10 hours up. Everything is derived locally when a session is indexed, with fixed rules and no language model. Agents that don't record tool calls count toward time and sessions, and the view names them.</P>
+      <P>Committed is read from the recorded command text, not from the repository. The command's first word must be an unquoted `git` or `gh`; leading environment assignments such as `CI=1`, and `git -C path` or `git -c key=value` before the subcommand, are allowed, and each part of a chain split by `&&`, `||`, `;`, `|`, or a newline is checked on its own. Commands inside quotes, such as `echo "git commit"`, and wrapper commands such as `sudo git commit` do not count. `git commit` or `git push` with `--dry-run`, and `git push` with `-n`, are ignored as non-work. A commit command does not prove the work was kept or correct.</P>
       <P>**Find error history** sits below global search, in project overviews, and beside message/tool output. It pre-fills the recorded wording but runs only when you choose **Look up previous occurrences**. Paste a multiline error up to 20,000 Unicode characters, choose a full project path and All hosts, Local sessions or a named remote host. Scope applies before counting and twenty-session paging; repeated events in one session count once. Archived sources are included; removed sources are excluded. Each result shows when its session last changed and has **Copy reference** to copy a `ronda://session/…#N` link to the exact message.</P>
       <P>The canonical error and each original message link show agent, host, full project path and recorded outcome. **Commit command observed** does not mean a fix was verified. Tool-data coverage names the indexed sessions that can contribute evidence. A no-match result may reflect missing tool output or different wording. Use **Search wording in current transcript** to search literal prose and tool output instead; with no transcript open, open a session and use **Find in transcript**. Missing analytics shows an error without changing your pasted text; submit again to retry.</P>
       <P>The preview has 28 explicitly synthetic occurrences of `Error: SYNTHETIC_PROJECT_CHECK failed`. Paste that line to load twenty results and then the remaining eight; either Local sessions or buildbox narrows it to fourteen. Preview lookup accepts fixed recorded sample lines; the desktop, CLI and MCP share the existing Rust normalizer for paths, line numbers and volatile values.</P>
@@ -189,6 +202,7 @@ ronda-cli projects
 ronda-cli insights --since 7d      # time, failures, recurring errors, stack
 ronda-cli errors 'database is locked'
 ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Code>
+      <P>List output says what it leaves out. `sessions` excludes archived sessions and states that in its heading; when `--limit` trims the list it reads “showing M of N sessions”. Each session line adds “archived” when it applies and a token count when one was recorded. `search` groups matches by session and adds “Up to 3 excerpts per session.” when excerpts were capped. `projects` says “Showing X of Y projects.” when it is limited. `ronda_list_sessions`, `ronda_search`, and `ronda_list_projects` return the same text over MCP.</P>
       <P>When `--limit` or a `show` size option (`--messages`, `--chars`, `--message-chars`) is outside its allowed range, `ronda-cli` clamps it and notes this on stderr, for example `ronda-cli: --limit 500 clamped to 100`; stdout is unchanged. Put `--` before a query that begins with `-`; after it, `--help` and similar are search text. Usage errors, including an invalid `--since` or `--until` or an unknown `--agent` (the message lists the valid ids), exit with status 2.</P>
     </>,
   },
