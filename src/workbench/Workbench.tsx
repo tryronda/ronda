@@ -767,6 +767,19 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   };
   const currentSavedSearchFilters = (): SavedSearchFilters => ({ project, agent, starredOnly, includeArchived,
     dateFrom, dateThrough, model, host, labels: labelId ? [labelId] : [] });
+  const [pendingFocus, setPendingFocus] = useState<{ ids: string[] } | null>(null);
+  useEffect(() => {
+    if (!pendingFocus) return;
+    for (const id of pendingFocus.ids) {
+      const element = document.getElementById(id);
+      if (element) { element.focus(); break; }
+    }
+    setPendingFocus(null);
+  }, [pendingFocus]);
+  const closeSaveForm = () => { setShowSaveSearch(false); setNewSavedSearchName(""); setPendingFocus({ ids: ["saved-search-save-button"] }); };
+  const cancelSavedSearchRename = (id: string) => {
+    setEditingSavedSearch(null); setEditedSavedSearchName(""); setPendingFocus({ ids: [`saved-search-rename-button-${id}`] });
+  };
   const saveCurrentSearch = () => {
     const validation = validateSavedSearchInput(newSavedSearchName, search);
     if (validation) { setSavedSearchFeedback(validation); return; }
@@ -781,7 +794,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       setSavedSearchFeedback("Saved searches are full. Remove one before adding another."); return;
     }
     if (persistSavedSearches([...savedSearchesRef.current, item])) {
-      setShowSaveSearch(false); setNewSavedSearchName("");
+      closeSaveForm();
     }
   };
   const replaySavedSearch = (item: SavedSearch) => {
@@ -801,10 +814,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     if (next.some(saved => saved.id !== item.id && savedSearchIdentity(saved) === savedSearchIdentity(nextItem))) {
       setSavedSearchFeedback("That saved search already exists"); return;
     }
-    if (persistSavedSearches(next)) { setEditingSavedSearch(null); setEditedSavedSearchName(""); }
+    if (persistSavedSearches(next)) cancelSavedSearchRename(item.id);
   };
   const removeSavedSearch = (id: string) => {
-    persistSavedSearches(savedSearchesRef.current.filter(item => item.id !== id));
+    if (persistSavedSearches(savedSearchesRef.current.filter(item => item.id !== id)))
+      setPendingFocus({ ids: ["saved-search-summary", "saved-search-save-button"] });
   };
   const clearUnavailableScopes = () => {
     const projectMissing = !!project && !options.projects.some(option => option.path === project);
@@ -1207,13 +1221,14 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </select>
         </label>}
         {!bookmarksOnly && search.trim() && <div className="mt-2">
-          <button type="button" className="text-[13px] underline disabled:opacity-50" disabled={savedSearchStatus !== "ready" || !!dates.error}
+          <button type="button" id="saved-search-save-button" className="text-[13px] underline disabled:opacity-50" disabled={savedSearchStatus !== "ready" || !!dates.error}
             onClick={() => { setShowSaveSearch(value => !value); setSavedSearchFeedback(""); }} aria-expanded={showSaveSearch}>
             {showSaveSearch ? "Cancel save" : t.saveSearch}
           </button>
           {showSaveSearch && <form className="mt-2 flex gap-1.5" onSubmit={event => { event.preventDefault(); saveCurrentSearch(); }}>
             <label className="sr-only" htmlFor="saved-search-name">{t.savedSearchName}</label>
             <input id="saved-search-name" autoFocus value={newSavedSearchName} onChange={event => setNewSavedSearchName(event.target.value)}
+              onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeSaveForm(); } }}
               placeholder={t.savedSearchName} className="min-w-0 flex-1 bg-chip px-2 py-1 text-[13px]" />
             <button type="submit" className="bg-chip px-2 py-1 text-[13px] hover:bg-foreground hover:text-background">Save</button>
           </form>}
@@ -1226,21 +1241,22 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           <button type="button" className="mt-1 underline" onClick={() => void resetSavedSearches()}>Clear and reset saved searches</button>
         </div>}
         {savedSearchStatus === "ready" && savedSearches.length > 0 && <details className="mt-2 text-[13px]">
-          <summary className="cursor-pointer text-muted-foreground">{t.savedSearches} ({savedSearches.length})</summary>
+          <summary id="saved-search-summary" className="cursor-pointer text-muted-foreground">{t.savedSearches} ({savedSearches.length})</summary>
           <div className="mt-1 max-h-48 overflow-y-auto border-l border-border pl-2">
             {savedSearches.map(item => <div key={item.id} className="border-b border-border py-2">
               {editingSavedSearch === item.id ? <form className="flex gap-1" onSubmit={event => { event.preventDefault(); renameSavedSearch(item); }}>
                 <label className="sr-only" htmlFor={`saved-search-rename-${item.id}`}>Rename saved search</label>
                 <input id={`saved-search-rename-${item.id}`} autoFocus value={editedSavedSearchName}
-                  onChange={event => setEditedSavedSearchName(event.target.value)} className="min-w-0 flex-1 bg-chip px-1 py-0.5" />
+                  onChange={event => setEditedSavedSearchName(event.target.value)} className="min-w-0 flex-1 bg-chip px-1 py-0.5"
+                  onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelSavedSearchRename(item.id); } }} />
                 <button type="submit" className="underline">Save</button>
-                <button type="button" className="underline" onClick={() => setEditingSavedSearch(null)}>Cancel</button>
+                <button type="button" className="underline" onClick={() => cancelSavedSearchRename(item.id)}>Cancel</button>
               </form> : <>
                 <button type="button" className="block max-w-full truncate text-left font-medium underline" onClick={() => replaySavedSearch(item)}>{item.name}</button>
                 <p className="break-all text-[11px] text-muted-foreground">{item.query}</p>
                 <p className="truncate text-[10px] text-muted-foreground">{item.filters.project ? basename(item.filters.project) : "All projects"} · {item.filters.agent ?? "All agents"} · {item.sort}</p>
                 <div className="mt-1 flex gap-3 text-[11px]">
-                  <button type="button" className="underline" onClick={() => { setEditingSavedSearch(item.id); setEditedSavedSearchName(item.name); }}>Rename</button>
+                  <button type="button" id={`saved-search-rename-button-${item.id}`} className="underline" onClick={() => { setEditingSavedSearch(item.id); setEditedSavedSearchName(item.name); }}>Rename</button>
                   <button type="button" className="underline" onClick={() => removeSavedSearch(item.id)} aria-label={`Remove ${item.name}`}>Remove</button>
                 </div>
               </>}

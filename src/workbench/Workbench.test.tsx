@@ -1190,3 +1190,51 @@ test("bookmark rows copy their ronda:// reference, including unavailable origina
     expect(writeText).toHaveBeenLastCalledWith("ronda://session/claude-code:gone#7");
   } finally {await act(async()=>root.unmount());host.remove();}
 });
+
+test("Escape closes saved-search forms and focus returns to the control that opened them", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  let stored: string | null = null;
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [], listBookmarks: async () => [],
+    getPref: async key => key === "saved_searches_v1" ? stored : null,
+    setPref: async (key, value) => { if (key === "saved_searches_v1") stored = value; },
+    sessionPage: async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit }),
+    searchGrouped: async () => ({ groups: [], total_sessions: 0, total_message_matches: 0 }), onLibraryChanged: async () => () => {} };
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const button = (text: string) => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent === text)!;
+  const inputValue = async (selector: string, value: string) => act(async () => {
+    const input = host.querySelector<HTMLInputElement>(selector)!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const escape = (selector: string) => act(async () => {
+    host.querySelector(selector)!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  });
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    await inputValue('[aria-label="Search all conversations"]', "timeout");
+    await act(async () => button("Save current search").click());
+    await escape("#saved-search-name");
+    expect(host.querySelector("#saved-search-name")).toBeNull();
+    expect(document.activeElement).toBe(button("Save current search"));
+
+    await act(async () => button("Save current search").click());
+    await inputValue("#saved-search-name", "Timeouts");
+    await act(async () => host.querySelector<HTMLFormElement>("#saved-search-name")!.form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await settle();
+    expect(host.querySelector("#saved-search-name")).toBeNull();
+    expect(document.activeElement).toBe(button("Save current search"));
+
+    await act(async () => button("Rename").click());
+    await inputValue('input[id^="saved-search-rename-"]', "Changed");
+    await escape('input[id^="saved-search-rename-"]');
+    expect(host.querySelector('input[id^="saved-search-rename-"]')).toBeNull();
+    expect(host.textContent).toContain("Timeouts");
+    expect(document.activeElement).toBe(button("Rename"));
+
+    await act(async () => button("Remove").click());
+    await settle();
+    expect(host.textContent).not.toContain("Timeouts");
+    expect(document.activeElement).toBe(button("Save current search"));
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
