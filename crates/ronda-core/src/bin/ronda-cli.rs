@@ -12,9 +12,9 @@ use std::{
 
 fn help() -> &'static str {
     "ronda-cli search QUERY [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--limit N]\n\
-     ronda-cli sessions [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--starred] [--limit N]\n\
+     ronda-cli sessions [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--starred] [--reverse] [--limit N]\n\
      ronda-cli show KEY [--subagent ID|*] [--from SEQ] [--messages N] [--chars N] [--message-chars N] [--tools] [--thinking]\n\
-     ronda-cli projects [--since WHEN] [--limit N]\n\
+     ronda-cli projects [--since WHEN] [--reverse] [--limit N]\n\
      ronda-cli insights [--project PATH] [--since WHEN|all]  (default: 30d)\n\
      ronda-cli errors ERROR_TEXT\n\
      ronda-cli setup | index\n\
@@ -95,6 +95,11 @@ fn parse_list(args: &[String], positional: bool) -> Result<(ListArgs, Vec<String
             }
             if args[i] == "--starred" {
                 filter.starred = true;
+                i += 1;
+                continue;
+            }
+            if args[i] == "--reverse" {
+                filter.reverse = true;
                 i += 1;
                 continue;
             }
@@ -232,6 +237,9 @@ fn run() -> Result<String, (u8, String)> {
     match command.as_str() {
         "search" => {
             let (filter, words) = parse_list(rest, true).map_err(|e| (2, e))?;
+            if filter.reverse {
+                return Err((2, "search does not accept --reverse".into()));
+            }
             if words.is_empty() {
                 return Err((2, "search needs a query".into()));
             }
@@ -274,12 +282,20 @@ fn run() -> Result<String, (u8, String)> {
                 || filter.starred
                 || filter.until.is_some()
             {
-                return Err((2, "projects only accepts --since and --limit".into()));
+                return Err((
+                    2,
+                    "projects only accepts --since, --reverse, and --limit".into(),
+                ));
             }
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             note_clamp("--limit", filter.limit, query::PROJECTS_LIMIT);
-            query::list_projects(&store, filter.since.as_deref(), filter.limit)
-                .map_err(|e| (1, e.to_string()))
+            query::list_projects_ordered(
+                &store,
+                filter.since.as_deref(),
+                filter.limit,
+                filter.reverse,
+            )
+            .map_err(|e| (1, e.to_string()))
         }
         "insights" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
@@ -287,6 +303,7 @@ fn run() -> Result<String, (u8, String)> {
                 || filter.starred
                 || filter.limit.is_some()
                 || filter.until.is_some()
+                || filter.reverse
             {
                 return Err((2, "insights only accepts --project and --since".into()));
             }

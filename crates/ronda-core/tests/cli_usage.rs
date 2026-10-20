@@ -1,4 +1,4 @@
-use ronda_core::Store;
+use ronda_core::{AgentId, ParsedSession, SessionMeta, Store};
 use std::process::{Command, Output};
 
 fn db() -> std::path::PathBuf {
@@ -129,4 +129,88 @@ fn bare_duration_exits_2_with_clear_message() {
             stderr(&o)
         );
     }
+}
+
+fn seed(db: &std::path::Path, key: &str, project: &str, updated_at: i64) {
+    let mut store = Store::open(db).unwrap();
+    let meta = SessionMeta {
+        key: format!("codex:{key}"),
+        native_id: key.into(),
+        agent: AgentId::Codex,
+        host: None,
+        parent_key: None,
+        title: format!("Title {key}"),
+        project_path: Some(project.into()),
+        source_path: "/tmp/missing.jsonl".into(),
+        created_at: updated_at,
+        updated_at,
+        model: None,
+        source: None,
+        tokens: None,
+        archived: false,
+        metadata_only: false,
+        can_delete: false,
+        starred: false,
+        pinned: false,
+        labels: Vec::new(),
+    };
+    store
+        .upsert(
+            &ParsedSession {
+                meta,
+                messages: Vec::new(),
+            },
+            "fixture",
+        )
+        .unwrap();
+}
+
+fn seeded() -> std::path::PathBuf {
+    let db = db();
+    seed(&db, "old", "/tmp/a", 1_760_000_000_000);
+    seed(&db, "mid", "/tmp/b", 1_760_000_100_000);
+    seed(&db, "new", "/tmp/c", 1_760_000_200_000);
+    db
+}
+
+#[test]
+fn reverse_lists_oldest_first_before_limit() {
+    let db = seeded();
+    let o = cli(&db, &["sessions", "--reverse", "--limit", "1"]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(
+        out.contains("codex:old") && !out.contains("codex:new"),
+        "{out}"
+    );
+    assert!(out.contains("3 sessions — showing 1 oldest."), "{out}");
+    let newest =
+        String::from_utf8_lossy(&cli(&db, &["sessions", "--limit", "1"]).stdout).into_owned();
+    assert!(
+        newest.contains("codex:new") && !newest.contains("codex:old"),
+        "{newest}"
+    );
+
+    let o = cli(&db, &["projects", "--reverse", "--limit", "1"]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains("/tmp/a") && !out.contains("/tmp/c"), "{out}");
+}
+
+#[test]
+fn reverse_is_rejected_where_it_does_not_apply() {
+    let db = seeded();
+    for args in [
+        vec!["insights", "--reverse"],
+        vec!["search", "x", "--reverse"],
+    ] {
+        let o = cli(&db, &args);
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
+fn mcp_list_args_without_reverse_deserialize() {
+    let a: ronda_core::query::ListArgs =
+        serde_json::from_str(r#"{"project":"/tmp/a","limit":3}"#).unwrap();
+    assert!(!a.reverse);
 }

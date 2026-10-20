@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- `ronda-cli sessions` and `projects` accept `--reverse` to list the oldest activity first.
+
 ### Fixed
 - `ronda-cli` treats `--help` as a search term after `--`, and invalid durations like `--since d` get a clear message.
 

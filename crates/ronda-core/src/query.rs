@@ -21,6 +21,9 @@ pub struct ListArgs {
     pub limit: Option<usize>,
     #[serde(default)]
     pub starred: bool,
+    /// List the oldest activity first. CLI only; applies to sessions and projects.
+    #[serde(default)]
+    pub reverse: bool,
 }
 #[derive(Default, Clone, Deserialize)]
 pub struct SearchArgs {
@@ -285,7 +288,11 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
     );
     let mut sessions = store.list_sessions(&SessionQuery::default())?;
     sessions.retain(|s| s.parent_key.is_none() && accept(s, &paths, &agents, window, args.starred));
-    sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+    if args.reverse {
+        sessions.sort_by_key(|s| s.updated_at);
+    } else {
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+    }
     let count = sessions.len();
     sessions.truncate(
         args.limit
@@ -293,8 +300,13 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
             .clamp(SESSIONS_LIMIT.0, SESSIONS_LIMIT.1),
     );
     let mut out = format!(
-        "{count} sessions — showing {} most recent.\n\n",
-        sessions.len()
+        "{count} sessions — showing {} {}.\n\n",
+        sessions.len(),
+        if args.reverse {
+            "oldest"
+        } else {
+            "most recent"
+        }
     );
     for s in &sessions {
         out.push_str(&session_line(s));
@@ -586,9 +598,22 @@ fn append_child_refs(
 }
 
 pub fn list_projects(store: &Store, since: Option<&str>, limit: Option<usize>) -> Result<String> {
+    list_projects_ordered(store, since, limit, false)
+}
+
+/// Like [`list_projects`]; `reverse` lists the oldest activity first, before the limit applies.
+pub fn list_projects_ordered(
+    store: &Store,
+    since: Option<&str>,
+    limit: Option<usize>,
+    reverse: bool,
+) -> Result<String> {
     let since = since_ms(since)?;
-    let projects: Vec<_> = store
-        .projects()?
+    let mut all = store.projects()?;
+    if reverse {
+        all.sort_by_key(|p| p.updated_at);
+    }
+    let projects: Vec<_> = all
         .into_iter()
         .filter(|p| since.is_none_or(|s| p.updated_at >= s))
         .take(

@@ -184,6 +184,7 @@ ronda-cli sessions --since 14d --until 7d   # a time window: 7d, 2w, 2026-01-31,
 ronda-cli search 'useEffect('
 ronda-cli show 'codex:SESSION_ID'
 ronda-cli show 'claude-code:SESSION_ID' --subagent '*'
+ronda-cli sessions --reverse --limit 5      # oldest activity first (also on projects)
 ronda-cli projects
 ronda-cli insights --since 7d      # time, failures, recurring errors, stack
 ronda-cli errors 'database is locked'
