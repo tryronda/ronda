@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- The project overview heading shows the folder name for paths that use backslashes.
+
 ## [1.3.0] - 2026-10-19
 
 ### Added

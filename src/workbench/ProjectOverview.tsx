@@ -3,6 +3,10 @@ import {sameJson,useLibraryRefresh} from "@/lib/hooks/use-library-refresh";
 import {hours} from "@/panels/IntelligenceView";
 import type {ProjectContext,ProjectOverview as Overview,WorkbenchBackend} from "./api";
 
+function folderName(path:string) {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
 export function ProjectOverview({api,context,active,onOpen,onViewAll,onIntelligence,onFindError}: {
   api:WorkbenchBackend; context:ProjectContext; active:boolean;
   onOpen:(key:string,seq:number)=>void; onViewAll:(bookmarks:boolean)=>void; onIntelligence:()=>void; onFindError?:(text:string)=>void;
@@ -18,7 +22,7 @@ export function ProjectOverview({api,context,active,onOpen,onViewAll,onIntellige
   const scopeMatches=data?.path===context.path && data.host===context.host && data.local_only===context.local_only;
   const report=scopeMatches ? data : null;
   const intelligence=report?.intelligence;
-  const title=context.path.split(/[\/]/).filter(Boolean).at(-1) ?? context.path;
+  const title=folderName(context.path);
   return <section aria-label="Project overview" className="min-h-0 flex-1 overflow-y-auto px-7 py-6 text-[14px]">
     <header className="mb-6 border-b border-border pb-5"><p className="label-mono text-muted-foreground">Project overview</p>
       <h2 className="mt-2 font-serif text-[34px]">{title}</h2><p className="break-all">{context.path}</p>

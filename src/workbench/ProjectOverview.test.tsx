@@ -32,3 +32,15 @@ test("project sections stay usable without analytics, open originals, and defer 
     expect(host.textContent).toContain(`Recent sessions · ${report.total_sessions}`);
   }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
 });
+
+test("heading shows the folder name for backslash paths with trailing separators",async()=>{
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});installDemoBackend();
+  const context={path:"C:\\Users\\me\\app\\",host:null,local_only:false};
+  const report=await backend.projectOverview("/Users/you/dev/payments-api",null,false);
+  const api={...backend,projectOverview:async()=>structuredClone(report),onLibraryChanged:async()=>()=>{}};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try{
+    await act(async()=>root.render(<ProjectOverview api={api} context={context} active={true} onOpen={vi.fn()} onViewAll={vi.fn()} onIntelligence={vi.fn()} />));
+    expect(host.querySelector("h2")!.textContent).toBe("app");
+  }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
+});
