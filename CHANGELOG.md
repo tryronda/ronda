@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Added
 - Related sessions says when only the top five of more candidates are shown.
+- The search box offers your last eight searches, stored locally, with **Remove** and **Clear recent**.
 
 ## [1.4.0] - 2026-10-19
 
