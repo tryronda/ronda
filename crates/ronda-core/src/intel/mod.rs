@@ -143,34 +143,157 @@ static TEST_PATH: LazyLock<Regex> = LazyLock::new(|| {
 static CONFIG_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\.(json|ya?ml|toml|lock|ini|env|cfg|conf)$|dockerfile|makefile|\.github[/\\]|\.gitignore$|\.config\.[cm]?[jt]s$|^[^/\\]*rc$)").unwrap()
 });
-static COMMIT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\bgit\s+(-C\s+\S+\s+)?(commit|push)\b|\bgh\s+pr\s+(create|merge)\b").unwrap()
-});
-static COMMAND_BREAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&&|\|\||[;|\n]").unwrap());
+/// One shell word: its text with quotes removed, and whether any part of it was quoted or escaped.
+struct Word {
+    text: String,
+    quoted: bool,
+}
+
+#[derive(Default)]
+struct Lexer {
+    segments: Vec<Vec<Word>>,
+    words: Vec<Word>,
+    cur: String,
+    started: bool,
+    quoted: bool,
+}
+
+impl Lexer {
+    fn end_word(&mut self) {
+        if self.started {
+            self.words.push(Word {
+                text: std::mem::take(&mut self.cur),
+                quoted: self.quoted,
+            });
+            self.started = false;
+            self.quoted = false;
+        }
+    }
+
+    fn end_segment(&mut self) {
+        self.end_word();
+        if !self.words.is_empty() {
+            self.segments.push(std::mem::take(&mut self.words));
+        }
+    }
+
+    fn push(&mut self, c: char, quoted: bool) {
+        self.started = true;
+        self.quoted |= quoted;
+        self.cur.push(c);
+    }
+}
+
+/// Split a command line into command segments of words. Understands single and double
+/// quotes and backslash escapes; only unquoted `&&`, `||`, `;`, `|`, and newlines end a segment.
+fn shell_segments(command: &str) -> Vec<Vec<Word>> {
+    let mut lx = Lexer::default();
+    let mut chars = command.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => {
+                lx.started = true;
+                lx.quoted = true;
+                for q in chars.by_ref() {
+                    if q == '\'' {
+                        break;
+                    }
+                    lx.cur.push(q);
+                }
+            }
+            '"' => {
+                lx.started = true;
+                lx.quoted = true;
+                while let Some(q) = chars.next() {
+                    match q {
+                        '"' => break,
+                        '\\' => match chars.next() {
+                            Some(e @ ('"' | '\\' | '$' | '`')) => lx.cur.push(e),
+                            Some('\n') => {}
+                            Some(e) => {
+                                lx.cur.push('\\');
+                                lx.cur.push(e);
+                            }
+                            None => lx.cur.push('\\'),
+                        },
+                        _ => lx.cur.push(q),
+                    }
+                }
+            }
+            '\\' => match chars.next() {
+                Some('\n') | None => {}
+                Some(e) => lx.push(e, true),
+            },
+            '&' if chars.peek() == Some(&'&') => {
+                chars.next();
+                lx.end_segment();
+            }
+            '|' => {
+                if chars.peek() == Some(&'|') {
+                    chars.next();
+                }
+                lx.end_segment();
+            }
+            ';' | '\n' => lx.end_segment(),
+            c if c.is_whitespace() => lx.end_word(),
+            c => lx.push(c, false),
+        }
+    }
+    lx.end_segment();
+    lx.segments
+}
 
 /// True when a shell command really commits or publishes work. `--dry-run` is excluded
 /// for `git commit` and `git push`, and `-n` too for push (for commit `-n` is `--no-verify`).
 /// Chained commands are judged per segment, so `git commit --dry-run && git commit` counts.
+/// Quotes are respected: a segment must start with `git` (or `gh`), and option checks ignore
+/// quoted text such as commit messages.
 fn commits_work(command: &str) -> bool {
-    COMMAND_BREAK.split(command).any(|segment| {
-        let Some(caps) = COMMIT.captures(segment) else {
+    shell_segments(command).iter().any(|segment| {
+        let mut words = segment
+            .iter()
+            .skip_while(|w| !w.quoted && w.text.contains('=') && !w.text.starts_with('-'));
+        let Some(first) = words.next() else {
             return false;
         };
-        let dry = |short_n: bool| {
-            segment.split_whitespace().any(|t| {
-                t == "--dry-run"
-                    || (short_n
-                        && t.starts_with('-')
-                        && !t.starts_with("--")
-                        && t[1..].chars().all(|c| c.is_ascii_alphabetic())
-                        && t.contains('n'))
-            })
-        };
-        match caps.get(2).map(|m| m.as_str()) {
-            Some("commit") => !dry(false),
-            Some("push") => !dry(true),
-            _ => true,
+        let rest: Vec<&Word> = words.collect();
+        if first.quoted {
+            return false;
         }
+        if first.text == "gh" {
+            return matches!(
+                (rest.first(), rest.get(1)),
+                (Some(a), Some(b)) if a.text == "pr" && matches!(b.text.as_str(), "create" | "merge")
+            );
+        }
+        if first.text != "git" {
+            return false;
+        }
+        let mut i = 0;
+        while let Some(w) = rest.get(i) {
+            if w.quoted || !w.text.starts_with('-') {
+                break;
+            }
+            i += if matches!(w.text.as_str(), "-C" | "-c") { 2 } else { 1 };
+        }
+        let Some(sub) = rest.get(i) else {
+            return false;
+        };
+        let is_push = match sub.text.as_str() {
+            "commit" => false,
+            "push" => true,
+            _ => return false,
+        };
+        let dry = rest[i + 1..].iter().any(|w| {
+            !w.quoted
+                && (w.text == "--dry-run"
+                    || (is_push
+                        && w.text.starts_with('-')
+                        && !w.text.starts_with("--")
+                        && w.text[1..].chars().all(|c| c.is_ascii_alphabetic())
+                        && w.text.contains('n')))
+        });
+        !dry
     })
 }
 
@@ -420,6 +543,21 @@ mod tests {
             ("git commit --dry-run && git push", true),
             ("git commit --dry-run && git push --dry-run", false),
             ("gh pr create --fill", true),
+            (r#"git commit -m "document --dry-run""#, true),
+            (r#"git commit -m "fix a; b""#, true),
+            (r#"git commit -m 'fix a && b | c'"#, true),
+            (r#"git commit --dry-run -m "x""#, false),
+            (r#"echo "git push""#, false),
+            (r#"echo 'git commit -m x' && ls"#, false),
+            (r#"git -c user.name=x commit -m "a --dry-run""#, true),
+            (r#"git -c k=v commit --dry-run"#, false),
+            (r#"git -C "/my repo" push -n"#, false),
+            (r#"git push -m "-n""#, true),
+            (r#"git commit -m "x" && git push --dry-run"#, true),
+            (r#"echo hi; git push origin main"#, true),
+            ("FOO=1 git push", true),
+            (r#"gh pr create --title "git push""#, true),
+            (r#"echo "gh pr create""#, false),
             ("cargo test", false),
         ] {
             assert_eq!(commits_work(cmd), expected, "{cmd}");

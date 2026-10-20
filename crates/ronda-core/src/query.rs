@@ -262,6 +262,12 @@ fn session_line(meta: &SessionMeta) -> String {
     if let Some(model) = &meta.model {
         suffix.push_str(&format!(" · {model}"));
     }
+    if meta.archived {
+        suffix.push_str(" · archived");
+    }
+    if let Some(tokens) = meta.tokens.filter(|t| *t > 0) {
+        suffix.push_str(&format!(" · {}", plural(tokens, "token")));
+    }
     format!(
         "- `{}` · {} · {}\n  {} · updated {}{}\n",
         meta.key,
@@ -296,10 +302,14 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
             .unwrap_or(20)
             .clamp(SESSIONS_LIMIT.0, SESSIONS_LIMIT.1),
     );
+    let shown = if sessions.len() < count {
+        format!("{} of {count}", sessions.len())
+    } else {
+        sessions.len().to_string()
+    };
     let mut out = format!(
-        "{} — showing {} {}.\n\n",
+        "{} — showing {shown} {}. Archived sessions are excluded.\n\n",
         plural(count, "session"),
-        sessions.len(),
         if args.reverse {
             "oldest"
         } else {
@@ -332,6 +342,7 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
         2000,
     )?;
     let mut grouped: Vec<(SessionMeta, Vec<(i64, String)>)> = Vec::new();
+    let mut capped = false;
     for h in hits {
         if !accept(&h.session, &paths, &agents, window, false) {
             continue;
@@ -339,6 +350,8 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
         if let Some((_, snippets)) = grouped.iter_mut().find(|(s, _)| s.key == h.session.key) {
             if snippets.len() < 3 {
                 snippets.push((h.seq, h.snippet));
+            } else {
+                capped = true;
             }
         } else {
             grouped.push((h.session, vec![(h.seq, h.snippet)]));
@@ -352,11 +365,20 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
             .clamp(SEARCH_LIMIT.0, SEARCH_LIMIT.1),
     );
     let mut out = format!(
-        "{} {} `{}` — showing {}.\n\n",
+        "{} {} `{}` — showing {}.{}\n\n",
         plural(count, "session"),
         if count == 1 { "matches" } else { "match" },
         args.query,
-        grouped.len()
+        if grouped.len() < count {
+            format!("{} of {count}", grouped.len())
+        } else {
+            grouped.len().to_string()
+        },
+        if capped {
+            " Up to 3 excerpts per session."
+        } else {
+            ""
+        }
     );
     for (i, (s, snippets)) in grouped.iter().enumerate() {
         out.push_str(&format!(
@@ -613,16 +635,25 @@ pub fn list_projects_ordered(
     if reverse {
         all.sort_by_key(|p| p.updated_at);
     }
-    let projects: Vec<_> = all
+    let mut projects: Vec<_> = all
         .into_iter()
         .filter(|p| since.is_none_or(|s| p.updated_at >= s))
-        .take(
-            limit
-                .unwrap_or(50)
-                .clamp(PROJECTS_LIMIT.0, PROJECTS_LIMIT.1),
-        )
         .collect();
-    let mut out = format!("{}.\n\n", plural(projects.len(), "project"));
+    let total = projects.len();
+    projects.truncate(
+        limit
+            .unwrap_or(50)
+            .clamp(PROJECTS_LIMIT.0, PROJECTS_LIMIT.1),
+    );
+    let mut out = if projects.len() < total {
+        format!(
+            "Showing {} of {}.\n\n",
+            projects.len(),
+            plural(total, "project")
+        )
+    } else {
+        format!("{}.\n\n", plural(projects.len(), "project"))
+    };
     for p in projects {
         out.push_str(&format!(
             "- {} · {} · updated {}\n",

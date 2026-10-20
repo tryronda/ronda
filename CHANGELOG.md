@@ -8,9 +8,14 @@ All notable changes to Ronda are recorded here.
 - Search offers **Reset recent searches** when its stored list can't be read.
 - Settings → Data can copy the index database path.
 
+### Changed
+- `ronda-cli` and MCP session and project lists say when archived sessions are excluded and how many results exist beyond the limit.
+
 ### Fixed
 - Codex sessions keep their token total when a later usage event carries no data.
 - Failed tool calls from Hermes sessions are now marked as failed, so Intelligence counts their errors.
+- Intelligence no longer misreads commit messages that mention --dry-run, or quoted git commands, when deciding whether work was committed.
+- Durations in Intelligence callouts and insights text are rounded the same way as in the app.
 
 ## [1.5.0] - 2026-10-19
 
