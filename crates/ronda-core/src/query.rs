@@ -15,13 +15,13 @@ pub struct ListArgs {
     #[serde(default)]
     pub agents: Vec<String>,
     pub since: Option<String>,
-    /// Keep sessions updated at or before this time (same formats as `since`). CLI only.
+    /// Keep sessions updated at or before this time (same formats as `since`).
     #[serde(default)]
     pub until: Option<String>,
     pub limit: Option<usize>,
     #[serde(default)]
     pub starred: bool,
-    /// List the oldest activity first. CLI only; applies to sessions and projects.
+    /// List the oldest activity first; applies to session and project lists.
     #[serde(default)]
     pub reverse: bool,
 }

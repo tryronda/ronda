@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- MCP session and project lists accept `until` and `reverse`, and unknown agents or invalid times are rejected as invalid parameters, as in `ronda-cli`.
+
 ### Fixed
 - `ronda-cli insights` exits with status 2 for an invalid `--since`, like the other commands.
 

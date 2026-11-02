@@ -175,6 +175,33 @@ fn four_query_surfaces_have_identical_cli_and_mcp_text() {
     );
     assert!(selected.contains("[seq 1] Assistant"));
     assert!(!selected.contains("[seq 0] User"));
+    for (cli_args, args) in [
+        (
+            vec!["sessions", "--until", "2999-01-01", "--reverse"],
+            json!({"until":"2999-01-01","reverse":true}),
+        ),
+        (
+            vec!["sessions", "--until", "2000-01-01"],
+            json!({"until":"2000-01-01"}),
+        ),
+    ] {
+        assert_eq!(
+            cli(&db_path, &cli_args),
+            mcp(&db_path, "ronda_list_sessions", args)
+        );
+    }
+    assert_eq!(
+        cli(&db_path, &["search", "x", "--until", "2000-01-01"]),
+        mcp(
+            &db_path,
+            "ronda_search",
+            json!({"query":"x","until":"2000-01-01"})
+        )
+    );
+    assert_eq!(
+        cli(&db_path, &["projects", "--reverse"]),
+        mcp(&db_path, "ronda_list_projects", json!({"reverse":true}))
+    );
     assert_eq!(
         cli(&db_path, &["projects"]),
         mcp(&db_path, "ronda_list_projects", json!({}))
