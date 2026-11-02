@@ -100,5 +100,7 @@ test("tool summary counts failed calls and uses the singular for one call", asyn
     expect(summaries).toContain("2 tools · 1 failed");
     expect(summaries).toContain("1 tool");
     expect(summaries).not.toContain("1 tool · 0 failed");
+    expect(host.querySelector("#message-1")!.getAttribute("data-failed")).toBe("true");
+    expect(host.querySelector("#message-2")!.hasAttribute("data-failed")).toBe(false);
   } finally { await unmount(); }
 });

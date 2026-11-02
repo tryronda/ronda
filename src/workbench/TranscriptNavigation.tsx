@@ -19,6 +19,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
   const [thinking, setThinking] = useState(false);
   const [matches, setMatches] = useState<TranscriptMatch[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [hasFailed, setHasFailed] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const close = () => { setOpen(false); toggle.current?.focus(); };
@@ -33,6 +34,15 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
   useEffect(() => {
     if (open && active) input.current?.focus();
   }, [open, active]);
+  useEffect(() => {
+    const element = container.current;
+    if (!element || !active) { setHasFailed(false); return; }
+    const check = () => setHasFailed(element.querySelector("article[data-failed]") !== null);
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(element, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-failed"] });
+    return () => observer.disconnect();
+  }, [active, container, promptsOnly]);
   const jumpRef = useRef<(direction: 1 | -1) => void>(() => {});
   const jumpPrompt = (direction: 1 | -1) => jumpRef.current(direction);
   useEffect(() => {
@@ -94,6 +104,17 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
     onBeforeProgrammaticScroll?.();
     target.scrollIntoView({ block: "start", behavior: reducedMotion ? "instant" : "smooth" });
   };
+  const jumpFailed = (direction: 1 | -1) => {
+    const element = container.current;
+    if (!element) return;
+    const failed = Array.from(element.querySelectorAll<HTMLElement>("article[data-failed]"));
+    const top = element.getBoundingClientRect().top;
+    const target = failed[nearestPrompt(failed.map(article => article.getBoundingClientRect().top), top, direction)];
+    if (!target) return;
+    target.querySelectorAll("details").forEach(details => { details.open = true; });
+    onBeforeProgrammaticScroll?.();
+    target.scrollIntoView({ block: "start", behavior: reducedMotion ? "instant" : "smooth" });
+  };
   const setAllDetails = (value: boolean) => container.current?.querySelectorAll("details").forEach(details => { details.open = value; });
   return <div hidden={!active} className={`${active ? "flex" : "hidden"} flex-none flex-wrap items-center gap-3 border-b border-border px-5 py-2 text-[13px]`} aria-label="Transcript navigation">
     <button ref={toggle} type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>Find in transcript</button>
@@ -101,6 +122,8 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
     <button type="button" onClick={() => edge(true)}>Last message</button>
     <button type="button" onClick={() => jumpPrompt(-1)}>Previous prompt</button>
     <button type="button" onClick={() => jumpPrompt(1)}>Next prompt</button>
+    {hasFailed && <button type="button" onClick={() => jumpFailed(-1)}>Previous error</button>}
+    {hasFailed && <button type="button" onClick={() => jumpFailed(1)}>Next error</button>}
     <button type="button" onClick={() => setAllDetails(true)}>Expand all</button>
     <button type="button" onClick={() => setAllDetails(false)}>Collapse all</button>
     <label className="ml-auto flex items-center gap-1"><input type="checkbox" checked={promptsOnly} onChange={event => setPromptsOnly(event.target.checked)} />Prompts only</label>

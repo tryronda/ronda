@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Added
 - Home and End jump to the first and last loaded session in the library list, and Shift extends the selection.
+- Transcript navigation can jump between messages with failed tool calls.
 
 ### Changed
 - A message's tool summary shows how many of its tool calls failed without opening it.

@@ -127,3 +127,39 @@ test("nearestPrompt picks the closest prompt above or below the viewport top", (
   expect(nearestPrompt([-100],0,1)).toBe(-1);
   expect(nearestPrompt([0,50],0,1)).toBe(1);
 });
+
+test("Previous/Next error buttons appear only with failed messages, open tools, and jump in order", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const scroll = vi.fn(); Element.prototype.scrollIntoView = scroll;
+  const host=document.createElement("div");document.body.append(host);
+  const container=createRef<HTMLDivElement>();const scope=createRef<HTMLDivElement>();
+  const root=createRoot(host);
+  const render=(failed:boolean)=>act(async()=>root.render(<div ref={scope}>
+    <TranscriptNavigation container={container} scope={scope} active embedded={false} promptsOnly={false} setPromptsOnly={()=>{}} reducedMotion jumpToken={0}/>
+    <div ref={container}>
+      <article id="message-1"><details><summary>t</summary></details></article>
+      <article id="message-2" data-failed={failed?"true":undefined}><details><summary>t</summary></details></article>
+      <article id="message-3" data-failed={failed?"true":undefined}><details><summary>t</summary></details></article>
+    </div></div>));
+  const label=(text:string)=>Array.from(host.querySelectorAll("button")).find(button=>button.textContent===text);
+  try {
+    await render(false);
+    expect(label("Next error")).toBeUndefined();
+    expect(label("Previous error")).toBeUndefined();
+    await render(true);
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+    const articles=Array.from(host.querySelectorAll("article"));
+    let viewport=0;
+    container.current!.getBoundingClientRect=()=>({top:viewport} as DOMRect);
+    articles.forEach((article,i)=>{article.getBoundingClientRect=()=>({top:(i+1)*100} as DOMRect);});
+    scroll.mockClear();
+    await act(async()=>label("Next error")!.click());
+    expect(scroll.mock.instances.at(-1)).toBe(articles[1]);
+    expect(articles[1].querySelector("details")!.open).toBe(true);
+    viewport=250;
+    await act(async()=>label("Next error")!.click());
+    expect(scroll.mock.instances.at(-1)).toBe(articles[2]);
+    await act(async()=>label("Previous error")!.click());
+    expect(scroll.mock.instances.at(-1)).toBe(articles[1]);
+  } finally { await act(async()=>root.unmount()); host.remove(); }
+});
