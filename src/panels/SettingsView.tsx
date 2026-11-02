@@ -153,6 +153,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   }
 
   function addLocation() {
+    if (busy) return;
     const path = locationPath.trim();
     if (!path || !(path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\'))) {
       setError(t.missingPath); return;
@@ -181,6 +182,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   }
 
   function addHost() {
+    if (busy) return;
     const host = hostInput.trim(); if (!host) return;
     if (!validSshHost(host)) { setNotice(''); setError(t.invalidHost); return; }
     if (hosts.some(item => item.host === host)) { setError(''); setNotice(`${t.alreadyHost}: ${host}`); return; }
@@ -269,14 +271,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           {!Object.keys(resumeMappings).length && <p className="panel-empty">No recovered project folders.</p>}
           <h3>{t.addLocation}</h3><div className="settings-form">
             <select aria-label={t.agent} value={locationAgent} onChange={event => setLocationAgent(event.target.value)}>{agents.map(agent => <option key={agent}>{agent}</option>)}</select>
-            <input aria-label={t.path} placeholder={t.path} value={locationPath} onChange={event => setLocationPath(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') addLocation(); }} />
+            <input aria-label={t.path} placeholder={t.path} value={locationPath} onChange={event => setLocationPath(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !busy) addLocation(); }} />
             <button disabled={busy} onClick={addLocation}>{t.add}</button>
           </div>
         </section>}
         {section === 'remote' && <section className="panel-card">
           <h2>{t.remote}</h2><p className="panel-help">{t.remoteHelp}</p>
           <div className="settings-form"><input aria-label={t.sshHost} placeholder={t.sshHost} value={hostInput}
-            onChange={event => setHostInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') addHost(); }} />
+            onChange={event => setHostInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !busy) addHost(); }} />
             <button disabled={busy || !hostInput.trim()} onClick={addHost}>{t.add}</button></div>
           {hosts.length ? <div className="remote-list">{hosts.map(host => <div className="remote-row" key={host.host}>
             <div><strong>{host.host}</strong><small>{t.lastSync}: {host.last_sync_ms ? new Date(host.last_sync_ms).toLocaleString() : t.never}</small>
@@ -290,7 +292,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         {section === 'connect' && <section className="panel-card">
           <h2>{t.connect}</h2><p className="panel-help">{t.connectHelp}</p>
           {snippets.map(([name, snippet]) => <div className="settings-snippet" key={name}>
-            <div><strong>{name}</strong><button onClick={() => void copyText(snippet)}>{t.copy}</button></div>
+            <div><strong>{name}</strong><button aria-label={`${t.copy} ${name} snippet`} onClick={() => void copyText(snippet)}>{t.copy}</button></div>
             <pre><code>{snippet}</code></pre>
           </div>)}
         </section>}
