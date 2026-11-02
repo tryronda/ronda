@@ -8,8 +8,9 @@ All notable changes to Ronda are recorded here.
 - MCP session and project lists accept `until` and `reverse`, and unknown agents or invalid times are rejected as invalid parameters, as in `ronda-cli`.
 
 ### Fixed
-- `ronda-cli` and MCP search apply project, agent and time filters before limiting hits, and mark archived sessions in results.
 - `ronda-cli insights` exits with status 2 for an invalid `--since`, like the other commands.
+- `ronda-cli` and MCP search apply project, agent and time filters before limiting hits, and mark archived sessions in results.
+- Intelligence counts commits run through `sudo`, `env`, `command`, `time` or an absolute path to git as committed work.
 
 ## [1.6.0] - 2026-11-02
 

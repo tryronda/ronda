@@ -247,12 +247,29 @@ fn shell_segments(command: &str) -> Vec<Vec<Word>> {
 /// for `git commit` and `git push`, and `-n` too for push (for commit `-n` is `--no-verify`).
 /// Chained commands are judged per segment, so `git commit --dry-run && git commit` counts.
 /// Quotes are respected: a segment must start with `git` (or `gh`), and option checks ignore
-/// quoted text such as commit messages.
+/// quoted text such as commit messages. One leading `sudo`, `env`, `command`, `time`, `nohup` or
+/// `exec` (with its flags and `VAR=` words) is looked through, and `/usr/bin/git` counts as git.
 fn commits_work(command: &str) -> bool {
     shell_segments(command).iter().any(|segment| {
-        let mut words = segment
-            .iter()
-            .skip_while(|w| !w.quoted && w.text.contains('=') && !w.text.starts_with('-'));
+        let is_assignment = |w: &Word| !w.quoted && w.text.contains('=') && !w.text.starts_with('-');
+        let mut words = segment.iter().skip_while(|w| is_assignment(w)).peekable();
+        // Name of an unquoted command word, without its directory (`/usr/bin/git` is `git`).
+        let name = |w: &Word| w.text.rsplit('/').next().unwrap_or_default().to_owned();
+        // One leading wrapper (never `nice`, which takes a value) runs the next command as-is.
+        if let Some(wrapper) = words.peek().filter(|w| {
+            !w.quoted && matches!(name(w).as_str(), "sudo" | "env" | "command" | "time" | "nohup" | "exec")
+        }) {
+            let lookup_only = name(wrapper) == "command";
+            words.next();
+            while let Some(w) =
+                words.next_if(|w| !w.quoted && (w.text.starts_with('-') || is_assignment(w)))
+            {
+                // `command -v git` only looks the program up.
+                if lookup_only && matches!(w.text.as_str(), "-v" | "-V") {
+                    return false;
+                }
+            }
+        }
         let Some(first) = words.next() else {
             return false;
         };
@@ -260,13 +277,14 @@ fn commits_work(command: &str) -> bool {
         if first.quoted {
             return false;
         }
-        if first.text == "gh" {
+        let program = name(first);
+        if program == "gh" {
             return matches!(
                 (rest.first(), rest.get(1)),
                 (Some(a), Some(b)) if a.text == "pr" && matches!(b.text.as_str(), "create" | "merge")
             );
         }
-        if first.text != "git" {
+        if program != "git" {
             return false;
         }
         let mut i = 0;
@@ -556,6 +574,17 @@ mod tests {
             (r#"git commit -m "x" && git push --dry-run"#, true),
             (r#"echo hi; git push origin main"#, true),
             ("FOO=1 git push", true),
+            ("sudo git commit -m x", true),
+            ("env FOO=1 git push", true),
+            ("/usr/bin/git push", true),
+            ("sudo git push --dry-run", false),
+            (r#"sudo echo "git push""#, false),
+            ("command -v git", false),
+            ("time git commit -m x", true),
+            ("sudo -n /usr/bin/git push", true),
+            ("nice git push", false),
+            ("xargs git push", false),
+            (r#""/usr/bin/git" push"#, false),
             (r#"gh pr create --title "git push""#, true),
             (r#"echo "gh pr create""#, false),
             ("cargo test", false),
