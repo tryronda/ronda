@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Insights counts only the prompts you wrote, not injected context or compaction summaries, matching Intelligence and Prompts only.
+
 ## [1.6.0] - 2026-11-02
 
 ### Added
