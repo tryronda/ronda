@@ -163,7 +163,7 @@ export function InsightsView({ active = true }: { active?: boolean }) {
           data-level={cell.count === 0 ? 0 : cell.count < 2 ? 1 : cell.count < 4 ? 2 : cell.count < 8 ? 3 : 4}
           title={cell.placeholder ? undefined : `${cell.key}: ${cell.count} ${t.prompts}`} />)}
       </div></div>
-      <p className="sr-only" data-testid="heatmap-summary">{heatmapSummary(calendar)}</p>
+      <p className="panel-help" style={{ margin: '10px 0 0' }} data-testid="heatmap-summary">{heatmapSummary(calendar)}</p>
       <div className="heat-legend"><span>{t.less}</span>{[0, 1, 2, 3, 4].map(n => <i key={n} data-level={n} />)}<span>{t.more}</span></div>
     </section>
     <div className="insight-breakdowns">

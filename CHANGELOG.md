@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Insights shows active days, the busiest day, and the longest streak under the activity chart.
+
 ### Changed
 - The landing page describes Markdown bookmark export, session labels, and saved searches.
 
