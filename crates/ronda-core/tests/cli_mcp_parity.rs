@@ -129,6 +129,16 @@ fn four_query_surfaces_have_identical_cli_and_mcp_text() {
     .unwrap();
     drop(db);
 
+    let starred = cli(&db_path, &["search", "needle", "--starred"]);
+    assert_eq!(
+        starred,
+        mcp(
+            &db_path,
+            "ronda_search",
+            json!({"query":"needle","starred":true})
+        )
+    );
+    assert!(starred.starts_with("0 sessions match"), "{starred}");
     assert_eq!(
         cli(&db_path, &["search", "needle"]),
         mcp(&db_path, "ronda_search", json!({"query":"needle"}))

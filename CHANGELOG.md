@@ -8,6 +8,7 @@ All notable changes to Ronda are recorded here.
 - Insights shows active days, the busiest day, and the longest streak under the activity chart.
 - Home and End jump to the first and last loaded session in the library list, and Shift extends the selection.
 - Transcript navigation can jump between messages with failed tool calls.
+- `ronda-cli show` and `ronda_get_session` headers include when the session started, its token count, and whether it is starred or archived.
 
 ### Changed
 - The landing page describes Markdown bookmark export, session labels, and saved searches.
@@ -17,6 +18,9 @@ All notable changes to Ronda are recorded here.
 ### Fixed
 - Sessions titled from a prompt use its first non-empty line, so titles never start blank or span several lines in `ronda-cli` and MCP lists.
 - Search excerpts centre on the longest word of a multi-word query, so they show the text that matched.
+- Intelligence counts commits and pushes run through `sudo -u USER`, `env -u VAR` and similar wrappers that take a value.
+- `ronda-cli` and MCP search apply `--starred` and reject a blank query as a usage error.
+- `ronda-cli projects` and `ronda_list_projects` say that archived sessions are not counted.
 
 ## [1.7.0] - 2026-11-02
 
