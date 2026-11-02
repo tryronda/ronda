@@ -248,7 +248,7 @@ fn shell_segments(command: &str) -> Vec<Vec<Word>> {
 /// Chained commands are judged per segment, so `git commit --dry-run && git commit` counts.
 /// Quotes are respected: a segment must start with `git` (or `gh`), and option checks ignore
 /// quoted text such as commit messages. One leading `sudo`, `env`, `command`, `time`, `nohup` or
-/// `exec` (with its flags and `VAR=` words) is looked through, and `/usr/bin/git` counts as git.
+/// `exec` (with its flags, their values, and `VAR=` words) is looked through, and `/usr/bin/git` counts as git.
 fn commits_work(command: &str) -> bool {
     shell_segments(command).iter().any(|segment| {
         let is_assignment = |w: &Word| !w.quoted && w.text.contains('=') && !w.text.starts_with('-');
@@ -259,7 +259,16 @@ fn commits_work(command: &str) -> bool {
         if let Some(wrapper) = words.peek().filter(|w| {
             !w.quoted && matches!(name(w).as_str(), "sudo" | "env" | "command" | "time" | "nohup" | "exec")
         }) {
-            let lookup_only = name(wrapper) == "command";
+            let wrapper_name = name(wrapper);
+            let lookup_only = wrapper_name == "command";
+            // Flags (exact, no `=`) that take the next word as their value.
+            let value_flags: &[&str] = match wrapper_name.as_str() {
+                "sudo" => &["-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U", "-r", "-t"],
+                "env" => &["-u", "-C", "-S"],
+                "time" => &["-f", "-o"],
+                "exec" => &["-a"],
+                _ => &[],
+            };
             words.next();
             while let Some(w) =
                 words.next_if(|w| !w.quoted && (w.text.starts_with('-') || is_assignment(w)))
@@ -267,6 +276,9 @@ fn commits_work(command: &str) -> bool {
                 // `command -v git` only looks the program up.
                 if lookup_only && matches!(w.text.as_str(), "-v" | "-V") {
                     return false;
+                }
+                if value_flags.contains(&w.text.as_str()) {
+                    words.next();
                 }
             }
         }
@@ -582,6 +594,13 @@ mod tests {
             ("command -v git", false),
             ("time git commit -m x", true),
             ("sudo -n /usr/bin/git push", true),
+            ("sudo -u root git push", true),
+            ("sudo -u root -g wheel git commit -m x", true),
+            ("env -u FOO git push", true),
+            ("exec -a x git push", true),
+            ("sudo -u root git push --dry-run", false),
+            (r#"sudo -u root echo "git push""#, false),
+            ("sudo -u git", false),
             ("nice git push", false),
             ("xargs git push", false),
             (r#""/usr/bin/git" push"#, false),

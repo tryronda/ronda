@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Intelligence counts commits and pushes run through `sudo -u USER`, `env -u VAR` and similar wrappers that take a value.
+
 ## [1.7.0] - 2026-11-02
 
 ### Added
