@@ -4,6 +4,12 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The related-sessions performance check no longer fails on a busy machine and still catches a slow query.
+
+### Fixed
+- Sessions titled from a prompt use its first non-empty line, so titles never start blank or span several lines in `ronda-cli` and MCP lists.
+
 ## [1.7.0] - 2026-11-02
 
 ### Added

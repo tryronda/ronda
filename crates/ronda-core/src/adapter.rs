@@ -2,6 +2,14 @@ use crate::{AgentId, ParsedSession, ResumeSpec, SessionMeta};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+/// Title for a session without an explicit one: the first non-blank line of the prompt,
+/// trimmed, with inner whitespace collapsed, at most 100 characters.
+pub(crate) fn fallback_title(text: &str) -> String {
+    let line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let collapsed = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed.chars().take(100).collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceRef {
     pub agent: AgentId,
@@ -32,5 +40,20 @@ pub trait AgentAdapter: Send + Sync {
     }
     fn owned_paths(&self, meta: &SessionMeta) -> Vec<PathBuf> {
         vec![PathBuf::from(&meta.source_path)]
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::fallback_title;
+
+    #[test]
+    fn fallback_title_uses_first_nonblank_line_collapsed_and_clipped() {
+        assert_eq!(
+            fallback_title("\n\n  Fix  the build\nmore"),
+            "Fix the build"
+        );
+        assert_eq!(fallback_title("   \n "), "");
+        assert_eq!(fallback_title(&"x".repeat(150)).chars().count(), 100);
     }
 }
