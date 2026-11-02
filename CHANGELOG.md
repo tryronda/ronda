@@ -7,6 +7,9 @@ All notable changes to Ronda are recorded here.
 ### Added
 - MCP session and project lists accept `until` and `reverse`, and unknown agents or invalid times are rejected as invalid parameters, as in `ronda-cli`.
 
+### Changed
+- Docs describe archived results in `search`, the MCP `until` and `reverse` options, and which wrapped git commands Intelligence counts.
+
 ### Fixed
 - Search status, error history and related-session lines use correct singular and plural forms.
 - Settings no longer starts a second location or host change when Enter is pressed during a save, and each Connect snippet has its own Copy button name.
