@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Search status, error history and related-session lines use correct singular and plural forms.
+
 ## [1.6.0] - 2026-11-02
 
 ### Added

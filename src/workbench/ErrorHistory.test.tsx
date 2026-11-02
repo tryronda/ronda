@@ -48,3 +48,20 @@ test("error lookup waits for submission, scopes pages, validates Unicode, and op
     await click("Search wording in current transcript");expect(onSearchTranscript).toHaveBeenCalledWith("Unrecorded wording");
   }finally{await act(async()=>root.unmount());host.remove();vi.restoreAllMocks();}
 });
+
+test("error history uses the singular form for one previous occurrence",async()=>{
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  HTMLDialogElement.prototype.close=function(){this.open=false;};
+  const errorHistory=vi.fn(async()=>({canonical:"Error: one",offset:0,limit:20,total:1,indexed_sessions:3,with_tools:3,
+    hits:[{session:{key:"one",title:"Only",agent:"codex",host:"local",project_path:"/repo",updated_at:0} as SessionMeta,seq:1,outcome:"committed"}]}));
+  const api={...backend,errorHistory,onLibraryChanged:async()=>()=>{}};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try{
+    await act(async()=>root.render(<ErrorHistory api={api} request={{text:"Error: one",project:"/repo",host:"local",local_only:false}}
+      projects={["/repo"]} hosts={["local"]} onOpen={()=>{}} onClose={()=>{}} onSearchTranscript={()=>{}}/>));
+    await act(async()=>host.querySelector("form")!.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(host.textContent).toContain("Showing 1 of 1 previous occurrence");
+    expect(host.textContent).not.toContain("1 of 1 previous occurrences");
+  }finally{await act(async()=>root.unmount());host.remove();vi.restoreAllMocks();}
+});

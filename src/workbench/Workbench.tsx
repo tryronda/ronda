@@ -17,7 +17,7 @@ import { Loader } from "@/components/motion/loader";
 import { SharedLayoutBg } from "@/components/motion/shared-layout-bg";
 import { PixelField, PixelStrip } from "@/components/brand/pixel-field";
 import { EASE_OUT } from "@/lib/ease";
-import { cn, timeLabel } from "@/lib/utils";
+import { cn, plural, timeLabel } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
 import { useLibraryRefresh, sameJson } from "@/lib/hooks/use-library-refresh";
 import { calendarRange, matchesSession, restoredFilters } from "./library-filters";
@@ -1160,7 +1160,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
           </AnimatePresence>
           <span className={scanning ? "[&_svg]:animate-spin" : undefined}><IconButton icon={ReloadIcon} title={t.refresh} onClick={() => void refresh()} disabled={scanning} /></span>
         </div>
-        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{dates.error ? "Choose a valid date range" : scanning ? t.refreshing : bookmarksOnly ? `${visibleBookmarks.length} saved messages` : search.trim() ? `Showing ${hits.length} of ${searchTotals.sessions} sessions · ${searchTotals.messages} matching messages` : `Showing ${sessions.length} of ${sessionTotal} sessions`}</p>
+        <p role="status" className="label-mono mt-1 mb-3.5 text-[12px] text-muted-foreground">{dates.error ? "Choose a valid date range" : scanning ? t.refreshing : bookmarksOnly ? plural(visibleBookmarks.length, "saved message") : search.trim() ? `Showing ${hits.length} of ${plural(searchTotals.sessions, "session")} · ${plural(searchTotals.messages, "matching message")}` : `Showing ${sessions.length} of ${plural(sessionTotal, "session")}`}</p>
         <div onFocus={()=>setSearchFocused(true)} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setSearchFocused(false);}}>
         <label className="glass flex h-9 items-center gap-2 px-2.5 text-muted-foreground transition-shadow focus-within:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--foreground)]">
           <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={2} />

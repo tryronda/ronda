@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from "react";
-import {timeLabel} from "@/lib/utils";
+import {plural,timeLabel} from "@/lib/utils";
 import {sessionReference} from "./context-bundle";
 import type {ErrorHistory as Result,ErrorHistoryRequest,WorkbenchBackend} from "./api";
 
@@ -55,7 +55,7 @@ export function ErrorHistory({api,request,projects,hosts,onClose,onOpen,onSearch
     {data && <section aria-label="Error history results">
       {data.canonical && <pre className="whitespace-pre-wrap break-words bg-chip p-3">{data.canonical}</pre>}
       <p className="my-3">{data.with_tools} / {data.indexed_sessions} indexed sessions in this scope have tool data. Sessions without it cannot contribute error evidence.</p>
-      <p role="status">Showing {data.hits.length} of {data.total} previous occurrences</p>
+      <p role="status">Showing {data.hits.length} of {plural(data.total, "previous occurrence")}</p>
       {!data.total && <p>No recorded match. Try the exact error line, or search the raw wording in a transcript.</p>}
       <ul>{data.hits.map(hit=><li key={hit.session.key} className="border-b border-border py-3">
         <button type="button" className="underline" onClick={()=>{dialog.current?.close();onOpen(hit.session.key,hit.seq);}}>Open {hit.session.title} · message #{hit.seq}</button>
