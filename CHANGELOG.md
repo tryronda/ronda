@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- `ronda-cli show` and `ronda_get_session` headers include when the session started, its token count, and whether it is starred or archived.
+
 ### Fixed
 - Intelligence counts commits and pushes run through `sudo -u USER`, `env -u VAR` and similar wrappers that take a value.
 - `ronda-cli` and MCP search apply `--starred` and reject a blank query as a usage error.

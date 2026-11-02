@@ -543,11 +543,8 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
     if let Some(model) = &meta.model {
         out.push_str(&format!("\nModel: {model}"));
     }
-    out.push_str(&format!(
-        "\nUpdated: {} · {} messages\n\n",
-        date(meta.updated_at),
-        messages.len()
-    ));
+    out.push_str(&session_timing(&meta, &messages));
+    out.push_str("\n\n");
     let mut shown = 0;
     let mut next = None;
     let mut hidden_meta = 0;
@@ -630,6 +627,37 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
         }
     }
     Ok(out)
+}
+
+/// The `Started`/`Updated` header lines of `show`. Messages counts those the body shows;
+/// injected context (`Meta`) is counted apart. Unknown start times and token counts are left out.
+fn session_timing(meta: &SessionMeta, messages: &[crate::TranscriptMessage]) -> String {
+    let injected = messages
+        .iter()
+        .filter(|m| matches!(m.kind, MessageKind::Meta))
+        .count();
+    let mut out = String::new();
+    if meta.created_at > 0 {
+        out.push_str(&format!("\nStarted: {}", date(meta.created_at)));
+    }
+    out.push_str(&format!(
+        "\nUpdated: {} · {}",
+        date(meta.updated_at),
+        plural(messages.len() - injected, "message")
+    ));
+    if injected > 0 {
+        out.push_str(&format!(" (+{injected} injected)"));
+    }
+    if let Some(tokens) = meta.tokens.filter(|t| *t > 0) {
+        out.push_str(&format!(" · {}", plural(tokens, "token")));
+    }
+    if meta.starred {
+        out.push_str(" · ★ starred");
+    }
+    if meta.archived {
+        out.push_str(" · archived");
+    }
+    out
 }
 
 fn child_label<'a>(parent: &SessionMeta, child: &'a SessionMeta) -> &'a str {
@@ -962,6 +990,98 @@ mod tests {
         assert!(validate_search_text("  \t\n").is_err());
         assert!(validate_search_text("").is_err());
         assert!(validate_search_text(" x ").is_ok());
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn show_header_has_start_tokens_flags_and_message_counts() {
+        let path = std::env::temp_dir().join(format!("ronda-header-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        seeded(&mut db, "codex:plain", AgentId::Codex, "/tmp/a", 10, false);
+        let show = |db: &Store, key: &str| {
+            get_session(
+                db,
+                &ShowArgs {
+                    key: key.into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+        // created_at is 1 (a real, positive time): Started shows; nothing else is known.
+        let plain = show(&db, "codex:plain");
+        assert!(plain.contains("\nStarted: "), "{plain}");
+        assert!(plain.contains(" · 1 message\n"), "{plain}");
+        assert!(
+            !plain.contains("token") && !plain.contains("starred"),
+            "{plain}"
+        );
+        assert!(
+            !plain.contains("archived") && !plain.contains("injected"),
+            "{plain}"
+        );
+
+        let mut meta = SessionMeta {
+            key: "codex:rich".into(),
+            native_id: "rich".into(),
+            agent: AgentId::Codex,
+            host: None,
+            parent_key: None,
+            title: "Rich".into(),
+            project_path: Some("/tmp/a".into()),
+            source_path: "/tmp/x".into(),
+            created_at: 0,
+            updated_at: 20,
+            model: None,
+            source: None,
+            tokens: Some(1),
+            archived: true,
+            metadata_only: false,
+            can_delete: false,
+            starred: false,
+            pinned: false,
+            labels: Vec::new(),
+        };
+        let msg = |seq, kind| TranscriptMessage {
+            seq,
+            role: Role::User,
+            kind,
+            text: "text".into(),
+            timestamp: None,
+            model: None,
+            thinking: None,
+            tool_calls: Vec::new(),
+            images: Vec::new(),
+        };
+        let messages = vec![
+            msg(0, MessageKind::Text),
+            msg(1, MessageKind::Meta),
+            msg(2, MessageKind::Meta),
+            msg(3, MessageKind::Text),
+        ];
+        db.upsert(
+            &ParsedSession {
+                meta: meta.clone(),
+                messages: messages.clone(),
+            },
+            "fixture",
+        )
+        .unwrap();
+        db.set_flags("codex:rich", true, false).unwrap();
+        let rich = show(&db, "codex:rich");
+        assert!(!rich.contains("Started"), "{rich}");
+        assert!(
+            rich.contains(" · 2 messages (+2 injected) · 1 token · ★ starred · archived\n"),
+            "{rich}"
+        );
+        // Zero or unknown tokens never read as zero tokens.
+        meta.tokens = Some(0);
+        meta.key = "codex:zero".into();
+        meta.native_id = "zero".into();
+        db.upsert(&ParsedSession { meta, messages }, "fixture")
+            .unwrap();
+        assert!(!show(&db, "codex:zero").contains("token"));
         drop(db);
         let _ = std::fs::remove_file(&path);
     }
