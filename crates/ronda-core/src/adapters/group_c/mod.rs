@@ -209,6 +209,18 @@ fn push(out: &mut Vec<TranscriptMessage>, role: Role, content: impl Into<String>
         out.push(message(role, content, timestamp));
     }
 }
+fn append_thinking(slot: &mut Option<String>, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    match slot {
+        Some(existing) => {
+            existing.push_str("\n\n");
+            existing.push_str(text);
+        }
+        None => *slot = Some(text.to_owned()),
+    }
+}
 fn finish(mut meta: SessionMeta, mut messages: Vec<TranscriptMessage>) -> ParsedSession {
     for (i, m) in messages.iter_mut().enumerate() {
         m.seq = i as i64;
@@ -755,9 +767,10 @@ fn parse_opencode(s: &SourceRef) -> Result<Option<ParsedSession>> {
                             m.kind = MessageKind::Meta;
                         }
                     }
-                    Some("reasoning") => {
-                        m.thinking = Some(text(p.get("text").unwrap_or(&Value::Null)))
-                    }
+                    Some("reasoning") => append_thinking(
+                        &mut m.thinking,
+                        &text(p.get("text").unwrap_or(&Value::Null)),
+                    ),
                     Some("tool") => m.tool_calls.push(ToolCall {
                         id: p.get("callID").and_then(Value::as_str).unwrap_or("").into(),
                         name: p
@@ -1172,6 +1185,31 @@ mod tests {
         assert!(a.meta.metadata_only);
         assert_eq!(a.meta.project_path.as_deref(), Some("/a b"));
         assert!(a.messages[0].text.contains("encrypted"));
+    }
+
+    #[test]
+    fn opencode_keeps_every_reasoning_part() {
+        let f = Fixture::new();
+        let db = f.db("opencode-think.db", r#"
+            CREATE TABLE session(id TEXT,parent_id TEXT,title TEXT,directory TEXT,time_created INTEGER,time_updated INTEGER);
+            CREATE TABLE message(id TEXT,session_id TEXT,time_created INTEGER,data TEXT);
+            CREATE TABLE part(id TEXT,session_id TEXT,message_id TEXT,data TEXT);
+            INSERT INTO session VALUES('oc',NULL,'OC','/project',1760000000000,1760000001000);
+            INSERT INTO message VALUES('m','oc',1,'{"role":"assistant","time":{"created":1760000000000}}');
+            INSERT INTO part VALUES('p1','oc','m','{"type":"reasoning","text":"first"}');
+            INSERT INTO part VALUES('p2','oc','m','{"type":"reasoning","text":"second"}');
+            INSERT INTO part VALUES('p3','oc','m','{"type":"text","text":"answer"}');
+        "#);
+        let parsed = only(
+            &Store {
+                kind: Kind::OpenCode,
+            },
+            &db,
+        );
+        assert_eq!(
+            parsed.messages[0].thinking.as_deref(),
+            Some("first\n\nsecond")
+        );
     }
 
     #[test]

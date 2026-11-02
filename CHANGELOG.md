@@ -7,6 +7,7 @@ All notable changes to Ronda are recorded here.
 ### Fixed
 - Insights counts only the prompts you wrote, not injected context or compaction summaries, matching Intelligence and Prompts only.
 - Projects and Insights leaderboards keep a stable order when rows tie.
+- Sessions with several thinking blocks in one message now keep all of them instead of only the last.
 
 ## [1.6.0] - 2026-11-02
 
