@@ -55,6 +55,8 @@ fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
         "ronda_search" => {
             let a: SearchArgs = parsed(args)?;
             validate_filter(&a.filter)?;
+            query::validate_window(a.filter.since.as_deref(), a.filter.until.as_deref())
+                .map_err(|e| CallError::Invalid(e.to_string()))?;
             query::search(store, &a).map_err(|e| CallError::Tool(e.to_string()))
         }
         "ronda_list_sessions" => {
