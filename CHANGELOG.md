@@ -14,6 +14,7 @@ All notable changes to Ronda are recorded here.
 - The landing page describes Markdown bookmark export, session labels, and saved searches.
 - The related-sessions performance check no longer fails on a busy machine and still catches a slow query.
 - A message's tool summary shows how many of its tool calls failed without opening it.
+- Docs describe `search --starred`, the richer `show` header, blank-query errors, and wrapper flags that take a value.
 
 ### Fixed
 - Sessions titled from a prompt use its first non-empty line, so titles never start blank or span several lines in `ronda-cli` and MCP lists.
