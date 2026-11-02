@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The landing page describes Markdown bookmark export, session labels, and saved searches.
+
 ## [1.7.0] - 2026-11-02
 
 ### Added
