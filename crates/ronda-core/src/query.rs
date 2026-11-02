@@ -326,6 +326,12 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
 /// Most message hits a search reads before grouping them by session.
 const SEARCH_HIT_CAP: usize = 2000;
 
+/// Rejects search or error text that is empty or only whitespace.
+pub fn validate_search_text(text: &str) -> Result<()> {
+    anyhow::ensure!(!text.trim().is_empty(), "search text must not be blank");
+    Ok(())
+}
+
 /// Rejects a `since` later than `until`, which no session can satisfy.
 pub fn validate_window(since: Option<&str>, until: Option<&str>) -> Result<()> {
     if let (Some(from), Some(to)) = (since_ms(since)?, time_ms(until, "until")?) {
@@ -365,6 +371,7 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
             },
             updated_from_ms: window.0,
             updated_before_ms: window.1.map(|t| t.saturating_add(1)),
+            starred_only: args.filter.starred,
             ..Default::default()
         },
         cap,
@@ -372,7 +379,7 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
     let mut grouped: Vec<(SessionMeta, Vec<(i64, String)>)> = Vec::new();
     let mut capped = false;
     for h in hits {
-        if !accept(&h.session, &paths, &agents, window, false) {
+        if !accept(&h.session, &paths, &agents, window, args.filter.starred) {
             continue;
         }
         if let Some((_, snippets)) = grouped.iter_mut().find(|(s, _)| s.key == h.session.key) {
@@ -918,6 +925,43 @@ mod tests {
         )
         .unwrap();
         assert!(page.contains("[seq 7] User"));
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn starred_search_drops_unstarred_hits_and_blank_text_is_rejected() {
+        let path = std::env::temp_dir().join(format!("ronda-starsearch-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        seeded(&mut db, "codex:plain", AgentId::Codex, "/tmp/a", 10, false);
+        seeded(&mut db, "codex:fav", AgentId::Codex, "/tmp/a", 20, false);
+        db.set_flags("codex:fav", true, false).unwrap();
+        let run = |starred| {
+            search(
+                &db,
+                &SearchArgs {
+                    query: "haystack".into(),
+                    filter: ListArgs {
+                        starred,
+                        ..Default::default()
+                    },
+                },
+            )
+            .unwrap()
+        };
+        let all = run(false);
+        assert!(
+            all.contains("codex:plain") && all.contains("codex:fav"),
+            "{all}"
+        );
+        let only = run(true);
+        assert!(
+            only.contains("codex:fav") && !only.contains("codex:plain"),
+            "{only}"
+        );
+        assert!(validate_search_text("  \t\n").is_err());
+        assert!(validate_search_text("").is_err());
+        assert!(validate_search_text(" x ").is_ok());
         drop(db);
         let _ = std::fs::remove_file(&path);
     }

@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Intelligence counts commits and pushes run through `sudo -u USER`, `env -u VAR` and similar wrappers that take a value.
+- `ronda-cli` and MCP search apply `--starred` and reject a blank query as a usage error.
 
 ## [1.7.0] - 2026-11-02
 

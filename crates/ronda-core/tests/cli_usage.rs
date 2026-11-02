@@ -229,6 +229,20 @@ fn reverse_is_rejected_where_it_does_not_apply() {
 }
 
 #[test]
+fn blank_search_and_error_text_are_usage_errors() {
+    let db = seeded();
+    for args in [
+        vec!["search", ""],
+        vec!["search", "  "],
+        vec!["errors", ""],
+        vec!["errors", " "],
+    ] {
+        let o = cli(&db, &args);
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
 fn mcp_list_args_without_reverse_deserialize() {
     let a: ronda_core::query::ListArgs =
         serde_json::from_str(r#"{"project":"/tmp/a","limit":3}"#).unwrap();
