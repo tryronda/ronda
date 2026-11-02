@@ -133,6 +133,20 @@ fn bare_duration_exits_2_with_clear_message() {
     }
 }
 
+#[test]
+fn insights_validates_since_before_running() {
+    let db = db();
+    let o = cli(&db, &["insights", "--since", "30x"]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(
+        stderr(&o).contains("invalid since value: 30x"),
+        "{}",
+        stderr(&o)
+    );
+    let o = cli(&db, &["insights", "--since", "all"]);
+    assert_ne!(o.status.code(), Some(2), "{}", stderr(&o));
+}
+
 fn seed(db: &std::path::Path, key: &str, project: &str, updated_at: i64) {
     let mut store = Store::open(db).unwrap();
     let meta = SessionMeta {

@@ -15,13 +15,13 @@ pub struct ListArgs {
     #[serde(default)]
     pub agents: Vec<String>,
     pub since: Option<String>,
-    /// Keep sessions updated at or before this time (same formats as `since`). CLI only.
+    /// Keep sessions updated at or before this time (same formats as `since`).
     #[serde(default)]
     pub until: Option<String>,
     pub limit: Option<usize>,
     #[serde(default)]
     pub starred: bool,
-    /// List the oldest activity first. CLI only; applies to sessions and projects.
+    /// List the oldest activity first; applies to session and project lists.
     #[serde(default)]
     pub reverse: bool,
 }
@@ -323,7 +323,22 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
     Ok(out)
 }
 
+/// Most message hits a search reads before grouping them by session.
+const SEARCH_HIT_CAP: usize = 2000;
+
+/// Rejects a `since` later than `until`, which no session can satisfy.
+pub fn validate_window(since: Option<&str>, until: Option<&str>) -> Result<()> {
+    if let (Some(from), Some(to)) = (since_ms(since)?, time_ms(until, "until")?) {
+        anyhow::ensure!(from <= to, "since must not be later than until");
+    }
+    Ok(())
+}
+
 pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
+    search_capped(store, args, SEARCH_HIT_CAP)
+}
+
+fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String> {
     let paths = project_paths(store, args.filter.project.as_deref())?;
     if paths.as_ref().is_some_and(Vec::is_empty) {
         return unknown_project(store, args.filter.project.as_deref().unwrap_or(""));
@@ -333,13 +348,26 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
         since_ms(args.filter.since.as_deref())?,
         time_ms(args.filter.until.as_deref(), "until")?,
     );
+    validate_window(args.filter.since.as_deref(), args.filter.until.as_deref())?;
+    // Narrow in the store where one value expresses the filter, so the hit cap applies after
+    // filtering; `accept` below stays the final check for the multi-valued cases.
     let hits = store.search(
         &args.query,
         &SessionQuery {
             include_archived: true,
+            agent: match agents.as_slice() {
+                [only] => Some(*only),
+                _ => None,
+            },
+            project_path: match paths.as_deref() {
+                Some([only]) => Some(only.clone()),
+                _ => None,
+            },
+            updated_from_ms: window.0,
+            updated_before_ms: window.1.map(|t| t.saturating_add(1)),
             ..Default::default()
         },
-        2000,
+        cap,
     )?;
     let mut grouped: Vec<(SessionMeta, Vec<(i64, String)>)> = Vec::new();
     let mut capped = false;
@@ -382,13 +410,14 @@ pub fn search(store: &Store, args: &SearchArgs) -> Result<String> {
     );
     for (i, (s, snippets)) in grouped.iter().enumerate() {
         out.push_str(&format!(
-            "{}. `{}` · {} · {}\n  {} · updated {}\n",
+            "{}. `{}` · {} · {}\n  {} · updated {}{}\n",
             i + 1,
             s.key,
             s.agent.as_str(),
             s.title,
             s.project_path.as_deref().unwrap_or("Unknown project"),
-            date(s.updated_at)
+            date(s.updated_at),
+            if s.archived { " · archived" } else { "" }
         ));
         for (seq, snippet) in snippets {
             out.push_str(&format!(
@@ -914,5 +943,129 @@ mod tests {
         assert_eq!(plural(1usize, "session"), "1 session");
         assert_eq!(plural(1i64, "project"), "1 project");
         assert_eq!(plural(2u32, "project"), "2 projects");
+    }
+    fn seeded(
+        db: &mut Store,
+        key: &str,
+        agent: AgentId,
+        project: &str,
+        updated_at: i64,
+        archived: bool,
+    ) {
+        let meta = SessionMeta {
+            key: key.into(),
+            native_id: key.into(),
+            agent,
+            host: None,
+            parent_key: None,
+            title: key.into(),
+            project_path: Some(project.into()),
+            source_path: "/tmp/x".into(),
+            created_at: 1,
+            updated_at,
+            model: None,
+            source: None,
+            tokens: None,
+            archived,
+            metadata_only: false,
+            can_delete: false,
+            starred: false,
+            pinned: false,
+            labels: Vec::new(),
+        };
+        let msg = TranscriptMessage {
+            seq: 0,
+            role: Role::User,
+            kind: MessageKind::Text,
+            text: "shared haystack".into(),
+            timestamp: None,
+            model: None,
+            thinking: None,
+            tool_calls: Vec::new(),
+            images: Vec::new(),
+        };
+        db.upsert(
+            &ParsedSession {
+                meta,
+                messages: vec![msg],
+            },
+            "fixture",
+        )
+        .unwrap();
+    }
+    #[test]
+    fn filters_apply_before_the_hit_cap_and_archived_is_marked() {
+        let path = std::env::temp_dir().join(format!("ronda-cap-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        for n in 0..6 {
+            seeded(
+                &mut db,
+                &format!("claude:o{n}"),
+                AgentId::ClaudeCode,
+                "/tmp/other",
+                1000 + n,
+                false,
+            );
+        }
+        seeded(
+            &mut db,
+            "codex:mine",
+            AgentId::Codex,
+            "/tmp/mine",
+            10,
+            false,
+        );
+        seeded(&mut db, "codex:old", AgentId::Codex, "/tmp/other", 5, true);
+        let run = |filter: ListArgs| {
+            search_capped(
+                &db,
+                &SearchArgs {
+                    query: "haystack".into(),
+                    filter,
+                },
+                3,
+            )
+        };
+        // The unfiltered cap of 3 only reaches the newer sessions.
+        assert!(!run(ListArgs::default()).unwrap().contains("codex:mine"));
+        let out = run(ListArgs {
+            project: Some("/tmp/mine".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(out.contains("1 session matches"), "{out}");
+        assert!(out.contains("codex:mine"), "{out}");
+        assert!(!out.contains("archived"), "{out}");
+        for filter in [
+            ListArgs {
+                agents: vec!["codex".into()],
+                ..Default::default()
+            },
+            ListArgs {
+                until: Some("1970-01-01T00:00:00.500Z".into()),
+                ..Default::default()
+            },
+        ] {
+            let out = run(filter).unwrap();
+            assert!(out.contains("2 sessions match"), "{out}");
+            assert!(out.contains("codex:mine"), "{out}");
+            assert!(
+                out.contains(
+                    " · archived
+"
+                ),
+                "{out}"
+            );
+        }
+        let err = run(ListArgs {
+            since: Some("2000-01-02".into()),
+            until: Some("2000-01-01".into()),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert_eq!(err.to_string(), "since must not be later than until");
+        drop(db);
+        let _ = std::fs::remove_file(&path);
     }
 }
