@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Home and End jump to the first and last loaded session in the library list, and Shift extends the selection.
+
 ## [1.7.0] - 2026-11-02
 
 ### Added

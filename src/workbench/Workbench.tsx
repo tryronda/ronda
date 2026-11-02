@@ -1294,6 +1294,18 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             event.preventDefault(); selectionAnchor.current = null; setSelection(new Set(rowOrder)); return;
           }
           if (event.key === "Escape" && selection.size) { event.preventDefault(); clearSelection(); return; }
+          if ((event.key === "Home" || event.key === "End") && card?.classList.contains("session-card") && !event.metaKey && !event.ctrlKey && !event.altKey) {
+            const all = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".session-card"));
+            const end = event.key === "End" ? all[all.length - 1] : all[0];
+            if (!end) return;
+            event.preventDefault();
+            if (event.shiftKey && !bookmarksOnly && end.dataset.sessionKey) {
+              if (selectionAnchor.current === null) selectionAnchor.current = card.dataset.sessionKey!;
+              extendRows(end.dataset.sessionKey);
+            }
+            end.focus();
+            return;
+          }
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           const cards = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".session-card"));
           const index = cards.indexOf(document.activeElement as HTMLButtonElement);

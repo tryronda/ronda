@@ -132,6 +132,28 @@ test("shift-click and keyboard select ranges; Escape and Clear selection empty t
   } finally { await unmount(); }
 });
 
+test("Home and End jump to the ends of the loaded list; Shift extends; search input ignores them", async () => {
+  const { api } = fakeApi();
+  const { host, unmount } = await mount(api);
+  try {
+    const first = cards(host)[0]; first.focus();
+    await key(first, { key: "End" });
+    expect(document.activeElement).toBe(cards(host)[4]);
+    expect(bar(host)).toBeNull();
+    await key(cards(host)[4], { key: "Home" });
+    expect(document.activeElement).toBe(cards(host)[0]);
+    cards(host)[3].focus();
+    await key(cards(host)[3], { key: " " });
+    await key(cards(host)[3], { key: "Home", shiftKey: true });
+    expect(pressed(host)).toEqual([true, true, true, true, false]);
+    expect(document.activeElement).toBe(cards(host)[0]);
+    const input = host.querySelector<HTMLInputElement>("input[type='search'], input")!;
+    input.focus();
+    await key(input, { key: "End" });
+    expect(document.activeElement).toBe(input);
+  } finally { await unmount(); }
+});
+
 test("bulk actions change one flag, announce the count, and undo restores exact previous pairs", async () => {
   const fake = fakeApi();
   const { host, unmount } = await mount(fake.api);
