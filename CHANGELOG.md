@@ -6,10 +6,13 @@ All notable changes to Ronda are recorded here.
 
 ### Added
 - Insights shows active days, the busiest day, and the longest streak under the activity chart.
+- Home and End jump to the first and last loaded session in the library list, and Shift extends the selection.
+- Transcript navigation can jump between messages with failed tool calls.
 
 ### Changed
 - The landing page describes Markdown bookmark export, session labels, and saved searches.
 - The related-sessions performance check no longer fails on a busy machine and still catches a slow query.
+- A message's tool summary shows how many of its tool calls failed without opening it.
 
 ### Fixed
 - Sessions titled from a prompt use its first non-empty line, so titles never start blank or span several lines in `ronda-cli` and MCP lists.
