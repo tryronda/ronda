@@ -711,12 +711,15 @@ pub fn list_projects_ordered(
     );
     let mut out = if projects.len() < total {
         format!(
-            "Showing {} of {}.\n\n",
+            "Showing {} of {}. Archived sessions are not counted.\n\n",
             projects.len(),
             plural(total, "project")
         )
     } else {
-        format!("{}.\n\n", plural(projects.len(), "project"))
+        format!(
+            "{}. Archived sessions are not counted.\n\n",
+            plural(projects.len(), "project")
+        )
     };
     for p in projects {
         out.push_str(&format!(
