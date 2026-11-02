@@ -97,3 +97,18 @@ test("the real preview Workbench labels source reveal Desktop required under moc
     expect(host.querySelector('[role="alert"]')).toBeNull();
   }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
 });
+
+test("connections use singular forms for a single shared error, file and hidden session",async()=>{
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});installDemoBackend();
+  const parent=(await backend.getSession("claude-code:demo-0"))!;
+  const report=await backend.sessionRelationships(parent.key);
+  const value={...report,related:[{...report.related[0],shared_errors:1,shared_files:1}],related_total:2};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try{
+    await act(async()=>root.render(<SessionConnections api={{...backend,sessionRelationships:async()=>structuredClone(value)}} session={parent} active onOpen={()=>{}} />));
+    expect(host.textContent).toContain("1 shared error · 1 shared file");
+    expect(host.textContent).not.toContain("1 shared errors");expect(host.textContent).not.toContain("1 shared files");
+    await act(async()=>root.render(<SessionConnections key="b" api={{...backend,sessionRelationships:async()=>structuredClone({...value,related_total:2})}} session={parent} active onOpen={()=>{}} />));
+    expect(host.textContent).toContain("Showing top 1 of 2 same-project sessions");
+  }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
+});

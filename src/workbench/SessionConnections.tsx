@@ -1,4 +1,5 @@
 import {useState} from "react";
+import {plural} from "@/lib/utils";
 import {sameJson,useLibraryRefresh} from "@/lib/hooks/use-library-refresh";
 import type {SessionMeta,SessionRelationships,WorkbenchBackend} from "./api";
 
@@ -23,10 +24,10 @@ export function SessionConnections({api,session,active,onOpen}:{api:WorkbenchBac
             {data.children.length ? <ul>{data.children.map(child=><li key={child.key}><button className="underline" type="button" onClick={()=>onOpen(child)}>Subagent: {title(child)}</button></li>)}</ul>
               : <p>No indexed subagents. Agent ancestry may be unavailable.</p>}
             <h3 className="mt-2">Related sessions · {data.related.length}</h3>
-            {(data.related_total??0)>data.related.length && <p className="text-muted-foreground">Showing top {data.related.length} of {data.related_total} same-project sessions</p>}
+            {(data.related_total??0)>data.related.length && <p className="text-muted-foreground">Showing top {data.related.length} of {plural(data.related_total!, "same-project session")}</p>}
             {data.related.length ? <ul>{data.related.map(row=><li className="py-1" key={row.session.key}>
               <button className="underline" type="button" onClick={()=>onOpen(row.session)}>{title(row.session)}</button>
-              <p className="text-muted-foreground">{row.explanation} · {row.shared_errors} shared errors · {row.shared_files} shared files</p>
+              <p className="text-muted-foreground">{row.explanation} · {plural(row.shared_errors, "shared error")} · {plural(row.shared_files, "shared file")}</p>
             </li>)}</ul> : <p>No other indexed root sessions in this project and host.</p>}
           </div>
         </details>

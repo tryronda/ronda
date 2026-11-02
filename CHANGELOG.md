@@ -4,6 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Search status, error history and related-session lines use correct singular and plural forms.
+- Settings no longer starts a second location or host change when Enter is pressed during a save, and each Connect snippet has its own Copy button name.
+
 ## [1.6.0] - 2026-11-02
 
 ### Added

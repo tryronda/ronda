@@ -572,10 +572,10 @@ test("bookmarks search saved notes, filter missing projects, and open messages o
     const pane=host.querySelector('[aria-label="Bookmarks"]')!;
     expect(pane.textContent).toContain("2 saved messages");
     expect(host.querySelector<HTMLButtonElement>('.session-card')!.disabled).toBe(true);
-    await click("removed0");expect(pane.textContent).toContain("1 saved messages");
+    await click("removed0");expect(pane.textContent).toContain("1 saved message");
     expect(pane.textContent).not.toContain("Retain search decision");
     await click("Bookmarks2");await search("search decision");
-    expect(pane.textContent).toContain("1 saved messages");
+    expect(pane.textContent).toContain("1 saved message");
     await act(async()=>pane.querySelector<HTMLButtonElement>('.session-card')!.click());
     const prompts=Array.from(host.querySelectorAll("label")).find(label=>label.textContent?.includes("Prompts only"))!.querySelector<HTMLInputElement>("input")!;
     await act(async()=>prompts.click());expect(host.querySelector('#message-1')).toBeNull();

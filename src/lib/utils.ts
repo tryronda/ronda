@@ -14,3 +14,8 @@ export function timeLabel(ms: number) {
     hour: "2-digit", minute: "2-digit",
   }).format(date);
 }
+
+/** "1 file" / "2 files": the count followed by the singular or plural noun. */
+export function plural(n: number, noun: string, many = `${noun}s`) {
+  return `${n} ${n === 1 ? noun : many}`;
+}
