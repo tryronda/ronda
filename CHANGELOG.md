@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-02
+
 ### Added
 - MCP session and project lists accept `until` and `reverse`, and unknown agents or invalid times are rejected as invalid parameters, as in `ronda-cli`.
 
