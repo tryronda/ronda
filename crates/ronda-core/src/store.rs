@@ -1609,4 +1609,27 @@ mod search_tests {
         assert_eq!(insights.agents[0].prompts, 1);
         assert_eq!(insights.activity.iter().map(|(_, n)| n).sum::<usize>(), 1);
     }
+
+    #[test]
+    fn projects_and_boards_break_ties_stably() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for (key, project) in [("1", "/c"), ("2", "/a"), ("3", "/d"), ("4", "/b")] {
+            seeded_session(&mut store, key, project, 5, &[crate::MessageKind::Text]);
+        }
+        let paths: Vec<_> = store
+            .projects()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.path)
+            .collect();
+        assert_eq!(paths, ["/a", "/b", "/c", "/d"]);
+        let labels: Vec<_> = store
+            .insights()
+            .unwrap()
+            .projects
+            .into_iter()
+            .map(|r| r.label)
+            .collect();
+        assert_eq!(labels, ["/a", "/b", "/c", "/d"]);
+    }
 }
