@@ -123,6 +123,37 @@ test("Connect offers a command-line snippet with the CLI path and copies it", as
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
+test("Data copies the index path; the button stays disabled without one", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const writeText = vi.fn(async (_text: string) => {});
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  let indexPath = "";
+  invoke.mockImplementation((command: string) => {
+    if (command === "list_locations" || command === "list_remote_hosts") return Promise.resolve([]);
+    if (command === "app_paths") return Promise.resolve(["m", "c", indexPath]);
+    return Promise.resolve(null);
+  });
+  const open = async () => {
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<SettingsView />));
+    const data = Array.from(host.querySelectorAll<HTMLButtonElement>("nav button")).find(button => button.textContent?.includes("Data"))!;
+    await act(async () => { data.click(); await Promise.resolve(); });
+    return { host, root, copyButton: () => host.querySelector<HTMLButtonElement>('button[aria-label="Copy index path"]')! };
+  };
+  const empty = await open();
+  expect(empty.copyButton().disabled).toBe(true);
+  await act(async () => empty.root.unmount()); empty.host.remove();
+  indexPath = "/data/ronda.db";
+  const ready = await open();
+  try {
+    expect(ready.copyButton().disabled).toBe(false);
+    await act(async () => { ready.copyButton().click(); await Promise.resolve(); });
+    expect(writeText).toHaveBeenCalledWith("/data/ronda.db");
+    expect(ready.host.querySelector('[role="status"]')?.textContent).toBe("Copied");
+  } finally { await act(async () => ready.root.unmount()); ready.host.remove(); }
+});
+
 const mountSettings = async (rows: unknown[], hosts: unknown[], tab: string) => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   invoke.mockImplementation((command: string) => {

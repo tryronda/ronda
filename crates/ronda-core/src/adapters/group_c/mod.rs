@@ -823,7 +823,12 @@ fn parse_hermes(s: &SourceRef) -> Result<Option<ParsedSession>> {
                     if let Some((mi, ti)) =
                         field(&r, "tool_call_id").and_then(|id| calls.get(&id).copied())
                     {
-                        messages[mi].tool_calls[ti].output = field(&r, "content");
+                        let content = field(&r, "content");
+                        messages[mi].tool_calls[ti].is_error =
+                            content.as_deref().is_some_and(|c| {
+                                crate::intel::tools::exit_code(c).is_some_and(|code| code != 0)
+                            });
+                        messages[mi].tool_calls[ti].output = content;
                     }
                 }
                 "user" | "assistant" | "system" => {
@@ -1209,9 +1214,13 @@ mod tests {
             INSERT INTO sessions VALUES('h','Hermes','telegram','gpt',1760000000,1760000001);
             INSERT INTO messages VALUES(1,'h','assistant','running','[{"id":"call","function":{"name":"shell","arguments":"ls"}}]',NULL,1760000000);
             INSERT INTO messages VALUES(2,'h','tool','files',NULL,'call',1760000001);
+            INSERT INTO messages VALUES(3,'h','assistant','retry','[{"id":"bad","function":{"name":"shell","arguments":"false"}}]',NULL,1760000002);
+            INSERT INTO messages VALUES(4,'h','tool','Process exited with code 1',NULL,'bad',1760000003);
         "#);
         let h = only(&Store { kind: Kind::Hermes }, &hermes);
         assert_eq!(h.messages[0].tool_calls[0].output.as_deref(), Some("files"));
+        assert!(!h.messages[0].tool_calls[0].is_error);
+        assert!(h.messages[1].tool_calls[0].is_error);
         assert_eq!(h.meta.source.as_deref(), Some("telegram"));
 
         let claw = f.db("openclaw-agent.sqlite", r#"

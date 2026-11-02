@@ -72,5 +72,23 @@ export function useRecentQueries(api: PrefStore) {
   const record = useCallback((query: string) => commit(recordRecentQuery(current.current, query)), [commit]);
   const remove = useCallback((query: string) => commit(current.current.filter(item => item !== query)), [commit]);
   const clear = useCallback(() => commit(current.current.length ? [] : current.current), [commit]);
-  return { items, status, record, remove, clear };
+  /** Explicit user action only: replaces an unreadable preference with an empty valid document. */
+  const reset = useCallback(async () => {
+    try {
+      await writes.current.catch(() => {});
+      await api.setPref(RECENT_QUERIES_KEY, serializeRecentQueries([]));
+      current.current = []; ready.current = true; setItems([]); setStatus("ready");
+    } catch { setStatus("unavailable"); }
+  }, [api]);
+  /** Re-reads the preference after it was unavailable. */
+  const retry = useCallback(() => {
+    setStatus("loading");
+    void api.getPref(RECENT_QUERIES_KEY).then(raw => {
+      const parsed = parseRecentQueries(raw);
+      if (!parsed.ok) { setStatus("invalid"); return; }
+      current.current = parsed.document.items; ready.current = true;
+      setItems(parsed.document.items); setStatus("ready");
+    }).catch(() => setStatus("unavailable"));
+  }, [api]);
+  return { items, status, record, remove, clear, reset, retry };
 }
