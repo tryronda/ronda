@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- `ronda-cli insights` exits with status 2 for an invalid `--since`, like the other commands.
+
 ## [1.6.0] - 2026-11-02
 
 ### Added
