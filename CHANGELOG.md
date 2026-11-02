@@ -4,7 +4,7 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
-## [1.6.0] - 2026-10-19
+## [1.6.0] - 2026-11-02
 
 ### Added
 - Search offers **Reset recent searches** when its stored list can't be read.
