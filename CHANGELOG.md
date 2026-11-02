@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-06
+
 ### Added
 - Insights shows active days, the busiest day, and the longest streak under the activity chart.
 - Home and End jump to the first and last loaded session in the library list, and Shift extends the selection.
