@@ -89,3 +89,16 @@ test("header omits tokens when unknown", async () => {
     expect(line).not.toContain("tokens");
   } finally { await unmount(); }
 });
+
+test("tool summary counts failed calls and uses the singular for one call", async () => {
+  const call = (id: string, is_error: boolean) => ({ id, name: "Bash", input: "ls", output: "x", is_error });
+  const two = { ...message(1, "assistant", "two"), tool_calls: [call("a", true), call("b", false)] };
+  const one = { ...message(2, "assistant", "one"), tool_calls: [call("c", false)] };
+  const { host, unmount } = await mount(base, [two, one]);
+  try {
+    const summaries = Array.from(host.querySelectorAll("article summary")).map(item => item.textContent);
+    expect(summaries).toContain("2 tools · 1 failed");
+    expect(summaries).toContain("1 tool");
+    expect(summaries).not.toContain("1 tool · 0 failed");
+  } finally { await unmount(); }
+});

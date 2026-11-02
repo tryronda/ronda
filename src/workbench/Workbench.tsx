@@ -59,7 +59,7 @@ const copy = {
   export: "Export Markdown", revealSource: "Reveal source file", trash: "Move to Trash", pin: "Pin", unpin: "Unpin",
   star: "Star", unstar: "Unstar", noSessions: "No sessions found", noSessionsHint: "Connect an agent or refresh your library to get started.",
   noTranscript: "No transcript is available for this session.", noSelection: "Choose a session to read its story.",
-  tools: "tool calls", thinking: "Thinking", project: "Project", model: "Model", unknown: "Unknown project",
+  thinking: "Thinking", project: "Project", model: "Model", unknown: "Unknown project",
   archived: "Archived", copyRemote: "SSH command copied", opened: "Opened in terminal", exported: "Transcript exported",
   deleteConfirm: "Move this session to the system Trash?", deleted: "Session moved to Trash",
   searchResults: "Search results", searching: "Searching…", searchEmpty: "No matching messages", matches: "matches",
@@ -116,6 +116,7 @@ function Message({ message, animate, children, onFindError, onCopyMessage, onCop
   const t = copy;
   const isUser = message.role === "user" && message.kind === "text";
   const isMeta = message.kind !== "text" || message.role === "system";
+  const failedCalls = message.tool_calls.filter(tool => tool.is_error).length;
   return <article id={`message-${message.seq}`} data-prompt={isUser ? "true" : undefined}
     className={cn("flex scroll-mt-6 items-start gap-4 border-b border-border py-6 last:border-b-0",
       isUser && "-mx-4 my-3 border-b-0 bg-chip px-4 py-4",
@@ -144,7 +145,7 @@ function Message({ message, animate, children, onFindError, onCopyMessage, onCop
         <summary className="label-mono cursor-pointer text-[12px] lowercase text-muted-foreground">{t.thinking}</summary>
         <pre data-transcript-field="thinking" className="message-pre mt-2 border-0 bg-transparent p-0">{message.thinking}</pre></details>}
       {message.tool_calls.length > 0 && <details className="mt-3 bg-canvas px-3 py-2 shadow-lift">
-        <summary className="label-mono cursor-pointer text-[12px] lowercase text-muted-foreground">{message.tool_calls.length} {t.tools}</summary>
+        <summary className="label-mono cursor-pointer text-[12px] lowercase text-muted-foreground">{plural(message.tool_calls.length, "tool")}{failedCalls > 0 && <> · <span className="text-destructive">{failedCalls} failed</span></>}</summary>
         {message.tool_calls.map((tool, index) => <div className="mt-2 border-t border-border pt-2.5 text-[11px]" key={`${tool.id}-${index}`}>
           <strong className="label-mono text-foreground">{tool.name}</strong>
           {tool.is_error && <span className="label-mono ml-2 text-destructive">{t.error}</span>}

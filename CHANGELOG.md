@@ -7,6 +7,9 @@ All notable changes to Ronda are recorded here.
 ### Added
 - Home and End jump to the first and last loaded session in the library list, and Shift extends the selection.
 
+### Changed
+- A message's tool summary shows how many of its tool calls failed without opening it.
+
 ## [1.7.0] - 2026-11-02
 
 ### Added
