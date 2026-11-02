@@ -246,6 +246,8 @@ fn run() -> Result<String, (u8, String)> {
             query::validate_agents(&filter.agents).map_err(|e| (2, e.to_string()))?;
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
+            query::validate_window(filter.since.as_deref(), filter.until.as_deref())
+                .map_err(|e| (2, e.to_string()))?;
             note_clamp("--limit", filter.limit, query::SEARCH_LIMIT);
             query::search(
                 &store,
@@ -306,6 +308,9 @@ fn run() -> Result<String, (u8, String)> {
                 || filter.reverse
             {
                 return Err((2, "insights only accepts --project and --since".into()));
+            }
+            if filter.since.as_deref() != Some("all") {
+                query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             }
             query::insights(
                 &store,

@@ -4,6 +4,25 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-02
+
+### Added
+- MCP session and project lists accept `until` and `reverse`, and unknown agents or invalid times are rejected as invalid parameters, as in `ronda-cli`.
+
+### Changed
+- Docs describe archived results in `search`, the MCP `until` and `reverse` options, and which wrapped git commands Intelligence counts.
+
+### Fixed
+- Search status, error history and related-session lines use correct singular and plural forms.
+- Settings no longer starts a second location or host change when Enter is pressed during a save, and each Connect snippet has its own Copy button name.
+- Insights counts only the prompts you wrote, not injected context or compaction summaries, matching Intelligence and Prompts only.
+- Projects and Insights leaderboards keep a stable order when rows tie.
+- Sessions with several thinking blocks in one message now keep all of them instead of only the last.
+- OpenCode, Hermes and other sessions no longer take their title from injected context.
+- `ronda-cli insights` exits with status 2 for an invalid `--since`, like the other commands.
+- `ronda-cli` and MCP search apply project, agent and time filters before limiting hits, and mark archived sessions in results.
+- Intelligence counts commits run through `sudo`, `env`, `command`, `time` or an absolute path to git as committed work.
+
 ## [1.6.0] - 2026-11-02
 
 ### Added

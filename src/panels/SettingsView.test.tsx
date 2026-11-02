@@ -222,3 +222,67 @@ test("remote host entry rejects invalid and duplicate names without calling the 
     expect(input.value).toBe("box");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("Enter in the location path or SSH host field does not start a second save while one is pending", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  let release!: () => void;
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  invoke.mockImplementation((command: string) => {
+    if (command === "list_locations" || command === "list_remote_hosts") return Promise.resolve([]);
+    if (command === "app_paths") return Promise.resolve(["m", "c", "i"]);
+    if (command === "set_pref" || command === "set_remote_host") return hold;
+    return Promise.resolve(null);
+  });
+  const enter = (input: HTMLInputElement) => act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await Promise.resolve(); });
+  const count = (name: string) => invoke.mock.calls.filter(call => call[0] === name).length;
+  const open = async (tab: string) => {
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<SettingsView />));
+    const nav = Array.from(host.querySelectorAll<HTMLButtonElement>("nav button")).find(button => button.textContent?.includes(tab))!;
+    await act(async () => { nav.click(); await Promise.resolve(); });
+    return { host, root };
+  };
+  const location = await open("Locations");
+  try {
+    const input = location.host.querySelector<HTMLInputElement>('input[aria-label="Absolute folder path"]')!;
+    await typeInto(input, "/work/one");
+    await enter(input); await enter(input);
+    expect(count("set_pref")).toBe(1);
+  } finally { release(); await act(async () => location.root.unmount()); location.host.remove(); }
+  let release2!: () => void;
+  const hold2 = new Promise<void>(resolve => { release2 = resolve; });
+  invoke.mockImplementation((command: string) => {
+    if (command === "list_locations" || command === "list_remote_hosts") return Promise.resolve([]);
+    if (command === "set_remote_host") return hold2;
+    return Promise.resolve(null);
+  });
+  invoke.mockClear();
+  const remote = await open("Remote hosts");
+  try {
+    const input = remote.host.querySelector<HTMLInputElement>('input[aria-label="SSH host or alias"]')!;
+    await typeInto(input, "box");
+    await enter(input); await enter(input);
+    expect(count("set_remote_host")).toBe(1);
+  } finally { release2(); await act(async () => remote.root.unmount()); remote.host.remove(); }
+});
+
+test("each Connect snippet has its own Copy button name", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  invoke.mockImplementation((command: string) => {
+    if (command === "list_locations" || command === "list_remote_hosts") return Promise.resolve([]);
+    if (command === "app_paths") return Promise.resolve(["/opt/ronda-mcp", "/opt/ronda-cli", "index"]);
+    return Promise.resolve(null);
+  });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<SettingsView />));
+    const connect = Array.from(host.querySelectorAll<HTMLButtonElement>("nav button")).find(button => button.textContent?.includes("Connect"))!;
+    await act(async () => { connect.click(); await Promise.resolve(); });
+    const names = Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-snippet button")).map(button => button.getAttribute("aria-label"));
+    expect(names).toHaveLength(4);
+    expect(new Set(names).size).toBe(4);
+    expect(names.some(name => /^Copy .*Claude Code.* snippet$/.test(name ?? ""))).toBe(true);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
