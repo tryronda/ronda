@@ -747,7 +747,7 @@ fn parse_claude(rows: &[Value], include_sidechain: bool) -> Parsed {
                         match block["type"].as_str().unwrap_or("") {
                             "thinking" => {
                                 if let Some(s) = block["thinking"].as_str() {
-                                    out.messages[i].thinking = Some(s.to_owned());
+                                    append_thinking(&mut out.messages[i].thinking, s);
                                 }
                             }
                             "tool_use" => {
@@ -1138,9 +1138,7 @@ fn parse_buddy(rows: &[Value]) -> Parsed {
                     out.push(Role::Assistant, MessageKind::Text, String::new(), ts)
                 });
                 let (s, _) = body(&row["rawContent"]);
-                if !s.is_empty() {
-                    out.messages[i].thinking = Some(s);
-                }
+                append_thinking(&mut out.messages[i].thinking, &s);
             }
             "function_call" => {
                 let i = *pending.get_or_insert_with(|| {
@@ -1271,6 +1269,18 @@ fn cursor_project(path: &Path) -> Option<String> {
         .or_else(|| Some(format!("/{}", slug.replace('-', "/"))))
 }
 
+fn append_thinking(slot: &mut Option<String>, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    match slot {
+        Some(existing) => {
+            existing.push_str("\n\n");
+            existing.push_str(text);
+        }
+        None => *slot = Some(text.to_owned()),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1327,6 +1337,25 @@ mod tests {
         );
         assert_eq!(parsed.meta.tokens, Some(7));
         assert_eq!(parsed.meta.project_path.as_deref(), Some("/My Project"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn claude_keeps_every_thinking_block_of_one_message() {
+        let data = concat!(
+            "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n",
+            "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"first\"}]}}\n",
+            "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"second\"},{\"type\":\"text\",\"text\":\"Done\"}]}}\n");
+        let (root, sources) = fixture(AgentId::ClaudeCode, "slug/s2.jsonl", data);
+        let parsed = FileAdapter(AgentId::ClaudeCode)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.messages.len(), 2);
+        assert_eq!(
+            parsed.messages[1].thinking.as_deref(),
+            Some("first\n\nsecond")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

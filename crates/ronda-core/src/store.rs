@@ -816,7 +816,11 @@ impl Store {
             }
         }
         let mut values: Vec<_> = map.into_values().collect();
-        values.sort_by_key(|project| std::cmp::Reverse(project.updated_at));
+        values.sort_by(|a, b| {
+            b.updated_at
+                .cmp(&a.updated_at)
+                .then_with(|| a.path.cmp(&b.path))
+        });
         Ok(values)
     }
 
@@ -835,14 +839,11 @@ impl Store {
         let mut tokens = 0;
         for session in &sessions {
             let messages = self.get_transcript(&session.key)?;
-            let count = messages
-                .iter()
-                .filter(|m| matches!(m.role, crate::Role::User))
-                .count();
-            for message in messages
-                .iter()
-                .filter(|m| matches!(m.role, crate::Role::User))
-            {
+            let written = |m: &&crate::TranscriptMessage| {
+                matches!(m.role, crate::Role::User) && matches!(m.kind, crate::MessageKind::Text)
+            };
+            let count = messages.iter().filter(written).count();
+            for message in messages.iter().filter(written) {
                 let time = message
                     .timestamp
                     .and_then(chrono::DateTime::from_timestamp_millis)
@@ -889,7 +890,11 @@ impl Store {
         }
         let sorted = |map: HashMap<String, InsightRow>| {
             let mut rows: Vec<_> = map.into_values().collect();
-            rows.sort_by_key(|row| std::cmp::Reverse(row.sessions));
+            rows.sort_by(|a, b| {
+                b.sessions
+                    .cmp(&a.sessions)
+                    .then_with(|| a.label.cmp(&b.label))
+            });
             rows
         };
         let mut activity: Vec<_> = activity.into_iter().collect();
@@ -1549,5 +1554,82 @@ mod search_tests {
                 0
             );
         }
+    }
+
+    fn seeded_session(
+        store: &mut Store,
+        key: &str,
+        project: &str,
+        updated: i64,
+        kinds: &[crate::MessageKind],
+    ) {
+        let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+            "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+            "title":key,"project_path":project,"source_path":"/fixture","created_at":0,
+            "updated_at":updated,"model":null,"source":null,"tokens":null,"archived":false,
+            "metadata_only":false,"can_delete":true,"starred":false,"pinned":false
+        }))
+        .unwrap();
+        let messages = kinds
+            .iter()
+            .enumerate()
+            .map(|(seq, kind)| crate::TranscriptMessage {
+                seq: seq as i64,
+                role: crate::Role::User,
+                kind: *kind,
+                text: format!("prompt {seq}"),
+                timestamp: None,
+                model: None,
+                thinking: None,
+                tool_calls: Vec::new(),
+                images: Vec::new(),
+            })
+            .collect();
+        store
+            .upsert(&crate::ParsedSession { meta, messages }, "fixture")
+            .unwrap();
+    }
+
+    #[test]
+    fn insights_count_only_written_prompts() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        seeded_session(
+            &mut store,
+            "a",
+            "/repo",
+            1,
+            &[
+                crate::MessageKind::Text,
+                crate::MessageKind::Meta,
+                crate::MessageKind::CompactSummary,
+            ],
+        );
+        let insights = store.insights().unwrap();
+        assert_eq!(insights.prompts, 1);
+        assert_eq!(insights.agents[0].prompts, 1);
+        assert_eq!(insights.activity.iter().map(|(_, n)| n).sum::<usize>(), 1);
+    }
+
+    #[test]
+    fn projects_and_boards_break_ties_stably() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for (key, project) in [("1", "/c"), ("2", "/a"), ("3", "/d"), ("4", "/b")] {
+            seeded_session(&mut store, key, project, 5, &[crate::MessageKind::Text]);
+        }
+        let paths: Vec<_> = store
+            .projects()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.path)
+            .collect();
+        assert_eq!(paths, ["/a", "/b", "/c", "/d"]);
+        let labels: Vec<_> = store
+            .insights()
+            .unwrap()
+            .projects
+            .into_iter()
+            .map(|r| r.label)
+            .collect();
+        assert_eq!(labels, ["/a", "/b", "/c", "/d"]);
     }
 }
