@@ -9,6 +9,11 @@ All notable changes to Ronda are recorded here.
 
 ### Changed
 - The landing page describes Markdown bookmark export, session labels, and saved searches.
+- The related-sessions performance check no longer fails on a busy machine and still catches a slow query.
+
+### Fixed
+- Sessions titled from a prompt use its first non-empty line, so titles never start blank or span several lines in `ronda-cli` and MCP lists.
+- Search excerpts centre on the longest word of a multi-word query, so they show the text that matched.
 
 ## [1.7.0] - 2026-11-02
 

@@ -32,6 +32,18 @@ fn search_expression(query: &str) -> (String, bool) {
     }
 }
 
+/// The term an excerpt centres on: the longest one (the first on ties), since a short
+/// leading word like "a" matches far from the text that matters.
+fn snippet_anchor(terms: &[String]) -> &str {
+    let mut best = "";
+    for term in terms {
+        if term.chars().count() > best.chars().count() {
+            best = term;
+        }
+    }
+    best
+}
+
 fn search_snippet(full: &str, first: &str) -> String {
     let folded_start = full.to_lowercase().find(&first.to_lowercase()).unwrap_or(0);
     let mut folded_bytes = 0;
@@ -520,7 +532,7 @@ impl Store {
             return Ok(Vec::new());
         }
         let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
-        let first = query.split_whitespace().next().unwrap_or(query);
+        let anchor = snippet_anchor(&terms).to_owned();
         let (match_query, indexed) = search_expression(query);
         let mut results = Vec::new();
         let mut stmt = if indexed {
@@ -547,7 +559,7 @@ impl Store {
             if !filter.matches(&session) {
                 continue;
             }
-            let snippet = search_snippet(&full, first);
+            let snippet = search_snippet(&full, &anchor);
             results.push(SearchHit {
                 session,
                 seq,
@@ -645,7 +657,7 @@ impl Store {
                 SearchHit {
                     session,
                     seq,
-                    snippet: search_snippet(&text, &terms[0]),
+                    snippet: search_snippet(&text, snippet_anchor(&terms)),
                 },
                 score,
             ));
@@ -1046,6 +1058,21 @@ mod search_tests {
         assert!(!store
             .has_local_source_under_root("codex", Path::new("/data/root"))
             .unwrap());
+    }
+
+    #[test]
+    fn excerpts_centre_on_the_longest_query_word() {
+        let text = format!("a {} database schema", "filler ".repeat(60));
+        let terms: Vec<String> = "a database"
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        assert_eq!(snippet_anchor(&terms), "database");
+        assert!(search_snippet(&text, snippet_anchor(&terms)).contains("database"));
+        let tie: Vec<String> = vec!["ab".into(), "cd".into()];
+        assert_eq!(snippet_anchor(&tie), "ab");
+        let single = vec!["database".to_string()];
+        assert!(search_snippet(&text, snippet_anchor(&single)).contains("database"));
     }
 
     #[test]

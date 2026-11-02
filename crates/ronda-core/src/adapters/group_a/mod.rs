@@ -218,15 +218,7 @@ impl AgentAdapter for FileAdapter {
                         && matches!(m.kind, MessageKind::Text)
                         && !m.text.trim().is_empty()
                 })
-                .map(|m| {
-                    m.text
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .chars()
-                        .take(120)
-                        .collect()
-                })
+                .map(|m| crate::adapter::fallback_title(&m.text))
                 .unwrap_or_else(|| source.native_id.clone());
         }
         if is_child && self.0 == AgentId::ClaudeCode {
@@ -1337,6 +1329,18 @@ mod tests {
         );
         assert_eq!(parsed.meta.tokens, Some(7));
         assert_eq!(parsed.meta.project_path.as_deref(), Some("/My Project"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn claude_title_skips_a_leading_blank_line() {
+        let data = "{\"type\":\"user\",\"message\":{\"content\":\"\\n\\n  Fix  the build\\nmore detail\"}}\n";
+        let (root, sources) = fixture(AgentId::ClaudeCode, "slug/s-title.jsonl", data);
+        let parsed = FileAdapter(AgentId::ClaudeCode)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.meta.title, "Fix the build");
         fs::remove_dir_all(root).unwrap();
     }
 

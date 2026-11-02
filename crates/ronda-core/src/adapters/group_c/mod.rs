@@ -233,7 +233,7 @@ fn finish(mut meta: SessionMeta, mut messages: Vec<TranscriptMessage>) -> Parsed
                     && matches!(m.kind, MessageKind::Text)
                     && !m.text.trim().is_empty()
             })
-            .map(|m| m.text.trim().chars().take(100).collect())
+            .map(|m| crate::adapter::fallback_title(&m.text))
             .unwrap_or_else(|| "Untitled session".into());
     }
     ParsedSession { meta, messages }
