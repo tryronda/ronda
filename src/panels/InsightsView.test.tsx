@@ -130,3 +130,18 @@ test("weekday, month, and heatmap totals cover only the last 12 months; headings
   expect(head("Hours")).toContain("All time");
   await act(async () => root.unmount());
 });
+
+test("month and hour labels are built once, not on every render", async () => {
+  const spy = vi.spyOn(Intl, "DateTimeFormat");
+  const { host, root } = await mount();
+  try {
+    const monthFormats = () => spy.mock.calls.filter(call => ["narrow", "long"].includes((call[1] as { month?: string } | undefined)?.month ?? ""));
+    expect(monthFormats()).toHaveLength(0);
+    const before = spy.mock.calls.length;
+    await act(async () => { root.render(<InsightsView />); });
+    await act(async () => { button(host, "Prompts").click(); });
+    expect(monthFormats()).toHaveLength(0);
+    expect(spy.mock.calls.length).toBe(before);
+    expect(host.textContent).toContain("January: ");
+  } finally { await act(async () => root.unmount()); spy.mockRestore(); }
+});

@@ -4,6 +4,16 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Intelligence's copied summary uses the same bullet lines as `ronda-cli insights` instead of tables.
+
+### Fixed
+- Settings shows last sync and last scan times in the short form used elsewhere, with a plain fallback when there is none.
+- Settings treats remote host names as the same regardless of case, so `Box` and `box` are not added twice.
+
+### Performance
+- Insights builds its month and hour chart labels once instead of on every render.
+
 ## [1.7.6] - 2026-11-06
 
 ### Changed
