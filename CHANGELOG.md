@@ -16,6 +16,7 @@ All notable changes to Ronda are recorded here.
 - `ronda-mcp` rejects unknown argument names as invalid parameters instead of silently ignoring them.
 - `ronda-mcp` ignores blank input lines instead of replying with a parse error.
 - `--project` and MCP `project` accept names that start with a dot, such as `.dotfiles`, and relative paths are a usage error.
+- `ronda-cli index` indexes an existing but empty database instead of saying it already exists, and lists the first scan errors.
 
 ## [1.7.2] - 2026-11-06
 
