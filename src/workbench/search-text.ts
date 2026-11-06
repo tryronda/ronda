@@ -1,3 +1,13 @@
+/** Splits a query into terms; each is a word list, and a quoted span is one phrase. Stray quotes are dropped. */
+function queryTerms(query: string) {
+  const terms: string[][] = [];
+  for (const [, quoted, word] of query.matchAll(/"([^"]*)"|(\S+)/g)) {
+    const words = (quoted ?? word.replaceAll('"', "")).toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length) terms.push(words);
+  }
+  return terms;
+}
+
 /** Literal, case-insensitive ranges in the original text, including expanding lowercase characters. */
 export function searchRanges(text: string, query: string, literal = false) {
   let folded = "";
@@ -10,10 +20,15 @@ export function searchRanges(text: string, query: string, literal = false) {
     offset += character.length;
   }
   const ranges: { start: number; end: number }[] = [];
-  const terms = literal ? (query ? [query.toLowerCase()] : []) : query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  for (const term of terms) {
-    for (let at = folded.indexOf(term); at >= 0; at = folded.indexOf(term, at + 1)) {
+  if (literal) {
+    const term = query.toLowerCase();
+    if (term) for (let at = folded.indexOf(term); at >= 0; at = folded.indexOf(term, at + 1)) {
       ranges.push({ start: starts[at], end: ends[at + term.length - 1] });
+    }
+  } else for (const words of queryTerms(query)) {
+    const pattern = new RegExp(`(?=(${words.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+")}))`, "g");
+    for (const match of folded.matchAll(pattern)) {
+      ranges.push({ start: starts[match.index], end: ends[match.index + match[1].length - 1] });
     }
   }
   ranges.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -28,7 +43,8 @@ export function searchRanges(text: string, query: string, literal = false) {
 }
 
 export function searchSnippet(text: string, query: string) {
-  const at = searchRanges(text, query.split(/\s+/)[0])[0]?.start ?? 0;
+  const first = queryTerms(query)[0];
+  const at = (first ? searchRanges(text, `"${first.join(" ")}"`)[0]?.start : undefined) ?? 0;
   const before = Array.from(text.slice(0, at)).slice(-60).join("");
   return Array.from(before + text.slice(at)).slice(0, 260).join("").replaceAll("\n", " ");
 }

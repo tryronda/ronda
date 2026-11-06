@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Quoted search queries highlight the quoted phrase as one match and center the snippet on it.
+
 ## [1.7.8] - 2026-11-06
 
 ### Fixed
