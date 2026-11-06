@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.5] - 2026-11-06
+
 ### Added
 - `show` and `ronda_get_session` mark tool calls that failed.
 
