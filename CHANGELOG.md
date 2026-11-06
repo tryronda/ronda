@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Intelligence recognises `make test`, `flutter test`, `tox`, `nox`, `ctest` and `bats` as test runs, and no longer matches words that merely start with a runner name.
+
 ## [1.7.1] - 2026-11-06
 
 ### Added

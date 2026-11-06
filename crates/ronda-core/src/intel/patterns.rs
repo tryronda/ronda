@@ -49,7 +49,7 @@ impl Pattern {
 }
 
 pub static TEST_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(pytest|vitest|jest|mocha|rspec|phpunit|go test|cargo (test|nextest)|(bun|npm|pnpm|yarn|deno) (run )?test\b|playwright test|swift test|dotnet test|mix test|gradle test|mvn test|bun run check)").unwrap()
+    Regex::new(r"(?m)\b(?:pytest|vitest|jest|mocha|rspec|phpunit|go test|cargo (?:test|nextest)|(?:bun|npm|pnpm|yarn|deno) (?:run )?test|playwright test|swift test|dotnet test|mix test|gradle test|mvn test|bun run check|make (?:test|check)|flutter test)\b|(?:^|[;&|])\s*(?:tox|nox|ctest|bats)\b").unwrap()
 });
 static DENIED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(permission (for this action )?(was )?denied|doesn't want to proceed|user (rejected|denied|declined)|rejected by (the )?user|requires approval|not allowed by|sandbox (denied|blocked))").unwrap()
@@ -124,4 +124,63 @@ pub fn detect(messages: &[TranscriptMessage], events: &[ToolEvent]) -> Vec<(Patt
         found.push((Pattern::UnknownApi, seq));
     }
     found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shell(command: &str, exit_code: i32) -> ToolEvent {
+        ToolEvent {
+            seq: 3,
+            kind: ToolKind::Shell,
+            command: Some(command.to_string()),
+            path: None,
+            is_error: exit_code != 0,
+            exit_code: Some(exit_code),
+        }
+    }
+
+    fn fires(command: &str) -> bool {
+        detect(&[], &[shell(command, 1)])
+            .iter()
+            .any(|(p, _)| *p == Pattern::TestsFailingAtEnd)
+    }
+
+    #[test]
+    fn recognises_more_test_runners() {
+        for command in [
+            "make test",
+            "make test-unit",
+            "make check",
+            "cd x && tox -e py",
+            "nox -s tests",
+            "ctest --output-on-failure",
+            "bats tests/",
+            "flutter test",
+            "pytest -q",
+        ] {
+            assert!(fires(command), "{command} should count as a test run");
+        }
+    }
+
+    #[test]
+    fn ignores_words_that_only_start_with_a_runner() {
+        for command in [
+            "pip install tox",
+            "make testdata",
+            "go testing",
+            "echo mochaccino",
+            "ls batsman",
+        ] {
+            assert!(!fires(command), "{command} should not count as a test run");
+        }
+    }
+
+    #[test]
+    fn passing_runs_do_not_fire() {
+        assert!(!detect(&[], &[shell("make test", 0)])
+            .iter()
+            .any(|(p, _)| *p == Pattern::TestsFailingAtEnd));
+    }
 }
