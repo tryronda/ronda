@@ -10,6 +10,15 @@ pub(crate) fn fallback_title(text: &str) -> String {
     collapsed.chars().take(100).collect()
 }
 
+/// Title for a session with a stored one: trimmed, or only its first line when it spans several.
+pub(crate) fn tidy_title(title: &str) -> String {
+    if title.contains(['\n', '\r']) {
+        fallback_title(title)
+    } else {
+        title.trim().to_owned()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceRef {
     pub agent: AgentId,
@@ -45,7 +54,7 @@ pub trait AgentAdapter: Send + Sync {
 
 #[cfg(test)]
 mod title_tests {
-    use super::fallback_title;
+    use super::{fallback_title, tidy_title};
 
     #[test]
     fn fallback_title_uses_first_nonblank_line_collapsed_and_clipped() {
@@ -54,6 +63,8 @@ mod title_tests {
             "Fix the build"
         );
         assert_eq!(fallback_title("   \n "), "");
+        assert_eq!(tidy_title("  One  "), "One");
+        assert_eq!(tidy_title("Line one\r\nLine two"), "Line one");
         assert_eq!(fallback_title(&"x".repeat(150)).chars().count(), 100);
     }
 }

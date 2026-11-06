@@ -260,7 +260,7 @@ fn meta(
         agent: s.agent,
         host: None,
         parent_key: None,
-        title,
+        title: crate::adapter::tidy_title(&title),
         project_path: project,
         source_path: s.path.to_string_lossy().into_owned(),
         created_at: created.max(0),
@@ -1189,6 +1189,27 @@ mod tests {
         assert!(a.meta.metadata_only);
         assert_eq!(a.meta.project_path.as_deref(), Some("/a b"));
         assert!(a.messages[0].text.contains("encrypted"));
+    }
+
+    #[test]
+    fn opencode_multi_line_title_shows_first_line() {
+        let f = Fixture::new();
+        let db = f.db("opencode-ml.db", r#"
+            CREATE TABLE session(id TEXT,parent_id TEXT,title TEXT,directory TEXT,time_created INTEGER,time_updated INTEGER);
+            CREATE TABLE message(id TEXT,session_id TEXT,time_created INTEGER,data TEXT);
+            CREATE TABLE part(id TEXT,session_id TEXT,message_id TEXT,data TEXT);
+            INSERT INTO session VALUES('oc',NULL,'Line one
+Line two','/project',1760000000000,1760000001000);
+            INSERT INTO message VALUES('m','oc',1,'{"role":"user","time":{"created":1760000000000}}');
+            INSERT INTO part VALUES('p1','oc','m','{"type":"text","text":"hello"}');
+        "#);
+        let parsed = only(
+            &Store {
+                kind: Kind::OpenCode,
+            },
+            &db,
+        );
+        assert_eq!(parsed.meta.title, "Line one");
     }
 
     #[test]
