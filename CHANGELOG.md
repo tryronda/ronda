@@ -9,6 +9,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - `ronda-cli errors` suggests `ronda-cli show … --tools` instead of the MCP tool name.
+- A date-only `--until` (or MCP `until`) includes that whole day instead of stopping at midnight.
 
 ## [1.7.1] - 2026-11-06
 

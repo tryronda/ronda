@@ -218,3 +218,109 @@ fn four_query_surfaces_have_identical_cli_and_mcp_text() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+fn plain_session(key: &str, title: &str, updated_at: i64, messages: &[&str]) -> ParsedSession {
+    ParsedSession {
+        meta: SessionMeta {
+            key: key.into(),
+            native_id: key.into(),
+            agent: AgentId::Codex,
+            host: None,
+            parent_key: None,
+            title: title.into(),
+            project_path: Some("/tmp/ronda-window".into()),
+            source_path: "/tmp/missing.jsonl".into(),
+            created_at: updated_at,
+            updated_at,
+            model: None,
+            source: None,
+            tokens: None,
+            archived: false,
+            metadata_only: false,
+            can_delete: false,
+            starred: false,
+            pinned: false,
+            labels: Vec::new(),
+        },
+        messages: messages
+            .iter()
+            .enumerate()
+            .map(|(seq, text)| TranscriptMessage {
+                seq: seq as i64,
+                role: Role::User,
+                kind: MessageKind::Text,
+                text: (*text).into(),
+                timestamp: None,
+                model: None,
+                thinking: None,
+                tool_calls: Vec::new(),
+                images: Vec::new(),
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn date_only_until_includes_that_whole_day_on_cli_and_mcp() {
+    use chrono::{Local, NaiveDate, TimeZone};
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("ronda-until-{}-{n}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("ronda.db");
+    let mut db = Store::open(&db_path).unwrap();
+    let afternoon = |day: u32| {
+        Local
+            .from_local_datetime(
+                &NaiveDate::from_ymd_opt(2024, 3, day)
+                    .unwrap()
+                    .and_hms_opt(15, 0, 0)
+                    .unwrap(),
+            )
+            .earliest()
+            .unwrap()
+            .timestamp_millis()
+    };
+    db.upsert(
+        &plain_session("codex:fifth", "Fifth day", afternoon(5), &["window needle"]),
+        "f",
+    )
+    .unwrap();
+    db.upsert(
+        &plain_session("codex:sixth", "Sixth day", afternoon(6), &["window needle"]),
+        "f",
+    )
+    .unwrap();
+    drop(db);
+    let check = |out: &str| {
+        assert!(
+            out.contains("codex:fifth") && !out.contains("codex:sixth"),
+            "{out}"
+        );
+    };
+    check(&cli(&db_path, &["sessions", "--until", "2024-03-05"]));
+    check(&mcp(
+        &db_path,
+        "ronda_list_sessions",
+        json!({"until":"2024-03-05"}),
+    ));
+    check(&cli(
+        &db_path,
+        &[
+            "search",
+            "needle",
+            "--since",
+            "2024-03-05",
+            "--until",
+            "2024-03-05",
+        ],
+    ));
+    check(&mcp(
+        &db_path,
+        "ronda_search",
+        json!({"query":"needle","since":"2024-03-05","until":"2024-03-05"}),
+    ));
+    std::fs::remove_dir_all(dir).unwrap();
+}

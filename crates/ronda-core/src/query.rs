@@ -136,13 +136,21 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
         return Ok(Some(t.timestamp_millis()));
     }
     if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return Ok(Some(
+        let local_midnight = |d: NaiveDate| {
             Local
                 .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
                 .earliest()
-                .ok_or_else(|| anyhow!("ambiguous date"))?
-                .timestamp_millis(),
-        ));
+                .map(|t| t.timestamp_millis())
+                .ok_or_else(|| anyhow!("ambiguous date"))
+        };
+        // A bare date as an upper bound means the whole local day, so it ends just before the
+        // next local midnight; as a lower bound it starts at this day's midnight.
+        if name == "until" {
+            if let Some(next) = d.succ_opt() {
+                return Ok(Some(local_midnight(next)? - 1));
+            }
+        }
+        return Ok(Some(local_midnight(d)?));
     }
     if let Ok(t) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M") {
         return Ok(Some(
@@ -1118,6 +1126,22 @@ mod tests {
         assert!(time_ms(Some("7d"), "since").unwrap().is_some());
         assert!(time_ms(None, "since").unwrap().is_none());
     }
+
+    #[test]
+    fn date_only_until_covers_the_whole_local_day() {
+        let start = time_ms(Some("2024-03-05"), "since").unwrap().unwrap();
+        let end = time_ms(Some("2024-03-05"), "until").unwrap().unwrap();
+        let next = time_ms(Some("2024-03-06"), "since").unwrap().unwrap();
+        assert_eq!(end, next - 1);
+        assert!(end - start >= 23 * 3_600_000);
+        // Other forms are untouched by the date-only rule.
+        let minute = time_ms(Some("2024-03-05 10:30"), "until").unwrap().unwrap();
+        assert!(start < minute && minute < end);
+        let stamp = time_ms(Some("2024-03-05T10:30:00Z"), "until").unwrap();
+        assert_eq!(stamp, Some(1_709_634_600_000));
+        assert!(validate_window(Some("2024-03-05"), Some("2024-03-05")).is_ok());
+        assert!(validate_window(Some("2024-03-06"), Some("2024-03-05")).is_err());
+    }
     #[test]
     fn plural_uses_singular_only_for_one() {
         assert_eq!(plural(0usize, "session"), "0 sessions");
@@ -1174,6 +1198,71 @@ mod tests {
         )
         .unwrap();
     }
+    #[test]
+    fn date_only_until_lists_sessions_from_that_day() {
+        let path = std::env::temp_dir().join(format!("ronda-until-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        let at = |d: &str| {
+            time_ms(Some(&format!("{d} 15:00")), "since")
+                .unwrap()
+                .unwrap()
+        };
+        seeded(
+            &mut db,
+            "codex:day",
+            AgentId::Codex,
+            "/tmp/p",
+            at("2024-03-05"),
+            false,
+        );
+        seeded(
+            &mut db,
+            "codex:next",
+            AgentId::Codex,
+            "/tmp/p",
+            at("2024-03-06"),
+            false,
+        );
+        let list = |until: &str| {
+            list_sessions(
+                &db,
+                &ListArgs {
+                    until: Some(until.into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+        let out = list("2024-03-05");
+        assert!(
+            out.contains("codex:day") && !out.contains("codex:next"),
+            "{out}"
+        );
+        let search = |filter: ListArgs| {
+            search_capped(
+                &db,
+                &SearchArgs {
+                    query: "haystack".into(),
+                    filter,
+                },
+                10,
+            )
+            .unwrap()
+        };
+        let out = search(ListArgs {
+            since: Some("2024-03-05".into()),
+            until: Some("2024-03-05".into()),
+            ..Default::default()
+        });
+        assert!(
+            out.contains("codex:day") && !out.contains("codex:next"),
+            "{out}"
+        );
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn filters_apply_before_the_hit_cap_and_archived_is_marked() {
         let path = std::env::temp_dir().join(format!("ronda-cap-{}.db", std::process::id()));
