@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Performance
+- Listing sessions loads stars, pins and labels with two queries instead of two per session, speeding up the sidebar, projects, insights and CLI/MCP lists.
+
 ## [1.7.11] - 2026-11-06
 
 ### Fixed

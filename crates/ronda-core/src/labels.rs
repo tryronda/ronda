@@ -2,6 +2,7 @@ use crate::Store;
 use anyhow::{bail, ensure, Result};
 use rusqlite::params;
 use serde::Serialize;
+use std::collections::HashMap;
 
 pub const MAX_LABELS: usize = 12;
 pub const MAX_LABELS_PER_SESSION: usize = 4;
@@ -167,6 +168,20 @@ impl Store {
             params![key, label_id],
         )?;
         Ok(())
+    }
+
+    /// Every session's assigned label ids in catalog order, in one query.
+    pub(crate) fn all_session_labels(&self) -> Result<HashMap<String, Vec<String>>> {
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT m.session_key,d.id FROM session_label_map m JOIN session_label_defs d ON d.id=m.label_id \
+             ORDER BY d.created_at,d.id",
+        )?;
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            let (key, id) = row?;
+            map.entry(key).or_default().push(id);
+        }
+        Ok(map)
     }
 
     /// Assigned label ids in catalog order. Map rows without a definition are ignored.
@@ -442,5 +457,33 @@ mod tests {
             )
             .unwrap();
         assert!(store.list_labels().is_err());
+    }
+
+    #[test]
+    fn list_sessions_bulk_overlay_matches_get_session() {
+        let mut store = store();
+        let a = store.create_label("Alpha").unwrap();
+        let b = store.create_label("Beta").unwrap();
+        for (i, key) in ["s1", "s2", "s3"].iter().enumerate() {
+            store.upsert(&parsed(key, "/p", "hello"), "1").unwrap();
+            store.set_flags(key, i % 2 == 0, i != 1).unwrap();
+            // Assign in reverse of catalog order to prove ordering is by catalog.
+            store.set_session_label(key, &b.id, true).unwrap();
+            store.set_session_label(key, &a.id, true).unwrap();
+        }
+        let catalog: Vec<String> = store
+            .list_labels()
+            .unwrap()
+            .into_iter()
+            .map(|l| l.id)
+            .collect();
+        let listed = store.list_sessions(&SessionQuery::default()).unwrap();
+        assert_eq!(listed.len(), 3);
+        for meta in listed {
+            let single = store.get_session(&meta.key).unwrap().unwrap();
+            assert_eq!(meta.labels, single.labels);
+            assert_eq!(meta.labels, catalog);
+            assert_eq!((meta.starred, meta.pinned), (single.starred, single.pinned));
+        }
     }
 }
