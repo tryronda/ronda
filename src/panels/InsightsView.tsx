@@ -24,7 +24,7 @@ type Board = 'agents' | 'projects' | 'models';
 
 const labels = {
   title: 'Insights', subtitle: 'Every session you have had with an agent, measured in one place.', eyebrow: 'Overview', sessions: 'Sessions',
-  prompts: 'Prompts', tokens: 'Tokens', activity: 'Activity', lastYear: 'Last 12 months',
+  prompts: 'Prompts', tokens: 'Tokens', activity: 'Activity', lastYear: 'Last 12 months', allTime: 'All time',
   less: 'Less', more: 'More', weekday: 'Weekdays', month: 'Months', hour: 'Hours',
   agents: 'Agents', projects: 'Projects', models: 'Models', empty: 'No sessions indexed yet.',
   retry: 'Retry', noData: 'No data yet', showAll: 'Show all', showTop: 'Show top 10',
@@ -125,15 +125,17 @@ export function InsightsView({ active = true }: { active?: boolean }) {
 
   const byWeekday = useMemo(() => {
     const values = Array(7).fill(0) as number[];
-    for (const [date, count] of data?.activity ?? []) values[new Date(`${date}T12:00:00`).getDay()] += count;
+    for (const cell of calendar) if (!cell.placeholder) values[new Date(`${cell.key}T12:00:00`).getDay()] += cell.count;
     return values;
-  }, [data]);
+  }, [calendar]);
 
   const byMonth = useMemo(() => {
     const values = Array(12).fill(0) as number[];
-    for (const [date, count] of data?.activity ?? []) values[Number(date.slice(5, 7)) - 1] += count;
+    for (const cell of calendar) if (!cell.placeholder) values[Number(cell.key.slice(5, 7)) - 1] += cell.count;
     return values;
-  }, [data]);
+  }, [calendar]);
+
+  const yearPrompts = useMemo(() => calendar.reduce((sum, cell) => sum + (cell.placeholder ? 0 : cell.count), 0), [calendar]);
 
   const copySummary = async () => {
     if (!data) return;
@@ -158,7 +160,7 @@ export function InsightsView({ active = true }: { active?: boolean }) {
     {!data?.sessions && !error && <p className="panel-empty">{t.empty}</p>}
     <section className="panel-card">
       <div className="panel-section-head"><h2>{t.activity}</h2><span>{t.lastYear}</span></div>
-      <div className="heatmap-scroll"><div className="heatmap" role="img" aria-label={`${t.activity}: ${data?.prompts ?? 0} ${t.prompts}`}>
+      <div className="heatmap-scroll"><div className="heatmap" role="img" aria-label={`${t.activity}: ${yearPrompts} ${t.prompts}`}>
         {calendar.map(cell => <span key={cell.key} className={`heat-cell ${cell.placeholder ? 'heat-pad' : ''}`}
           data-level={cell.count === 0 ? 0 : cell.count < 2 ? 1 : cell.count < 4 ? 2 : cell.count < 8 ? 3 : 4}
           title={cell.placeholder ? undefined : `${cell.key}: ${cell.count} ${t.prompts}`} />)}
@@ -167,9 +169,9 @@ export function InsightsView({ active = true }: { active?: boolean }) {
       <div className="heat-legend"><span>{t.less}</span>{[0, 1, 2, 3, 4].map(n => <i key={n} data-level={n} />)}<span>{t.more}</span></div>
     </section>
     <div className="insight-breakdowns">
-      <section className="panel-card"><h2>{t.weekday}</h2><MiniBars values={byWeekday} labels={['Sun','Mon','Tue','Wed','Thu','Fri','Sat']} names={['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']} /></section>
-      <section className="panel-card"><h2>{t.month}</h2><MiniBars values={byMonth} labels={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'narrow' }).format(new Date(2026, i, 1)))} names={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(2026, i, 1)))} /></section>
-      {data?.hours && <section className="panel-card"><h2>{t.hour}</h2><MiniBars values={Array.from({ length: 24 }, (_, i) => data.hours?.find(([hour]) => hour === i)?.[1] ?? 0)} labels={Array.from({ length: 24 }, (_, i) => i % 4 === 0 ? String(i) : '')} names={Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)} /></section>}
+      <section className="panel-card"><div className="panel-section-head"><h2>{t.weekday}</h2><span>{t.lastYear}</span></div><MiniBars values={byWeekday} labels={['Sun','Mon','Tue','Wed','Thu','Fri','Sat']} names={['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']} /></section>
+      <section className="panel-card"><div className="panel-section-head"><h2>{t.month}</h2><span>{t.lastYear}</span></div><MiniBars values={byMonth} labels={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'narrow' }).format(new Date(2026, i, 1)))} names={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(2026, i, 1)))} /></section>
+      {data?.hours && <section className="panel-card"><div className="panel-section-head"><h2>{t.hour}</h2><span>{t.allTime}</span></div><MiniBars values={Array.from({ length: 24 }, (_, i) => data.hours?.find(([hour]) => hour === i)?.[1] ?? 0)} labels={Array.from({ length: 24 }, (_, i) => i % 4 === 0 ? String(i) : '')} names={Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)} /></section>}
     </div>
     <section className="panel-card">
       <div className="panel-section-head insight-leader-head"><h2>{t[board]}</h2>

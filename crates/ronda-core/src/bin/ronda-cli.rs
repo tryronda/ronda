@@ -333,7 +333,8 @@ fn run() -> Result<String, (u8, String)> {
                 .collect();
             let error = words.join(" ");
             query::validate_search_text(&error).map_err(|e| (2, e.to_string()))?;
-            query::find_error(&store, &FindErrorArgs { error }).map_err(|e| (1, e.to_string()))
+            query::find_error_for(&store, &FindErrorArgs { error }, query::Surface::Cli)
+                .map_err(|e| (1, e.to_string()))
         }
         _ => Err((2, format!("unknown command: {command}"))),
     }

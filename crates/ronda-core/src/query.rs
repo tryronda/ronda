@@ -136,13 +136,21 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
         return Ok(Some(t.timestamp_millis()));
     }
     if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return Ok(Some(
+        let local_midnight = |d: NaiveDate| {
             Local
                 .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
                 .earliest()
-                .ok_or_else(|| anyhow!("ambiguous date"))?
-                .timestamp_millis(),
-        ));
+                .map(|t| t.timestamp_millis())
+                .ok_or_else(|| anyhow!("ambiguous date"))
+        };
+        // A bare date as an upper bound means the whole local day, so it ends just before the
+        // next local midnight; as a lower bound it starts at this day's midnight.
+        if name == "until" {
+            if let Some(next) = d.succ_opt() {
+                return Ok(Some(local_midnight(next)? - 1));
+            }
+        }
+        return Ok(Some(local_midnight(d)?));
     }
     if let Ok(t) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M") {
         return Ok(Some(
@@ -383,7 +391,8 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
             continue;
         }
         if let Some((_, snippets)) = grouped.iter_mut().find(|(s, _)| s.key == h.session.key) {
-            if snippets.len() < 3 {
+            // The title row (seq -1) is not an excerpt, so it never counts toward the cap.
+            if h.seq < 0 || snippets.iter().filter(|(seq, _)| *seq >= 0).count() < 3 {
                 snippets.push((h.seq, h.snippet));
             } else {
                 capped = true;
@@ -427,11 +436,18 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
             if s.archived { " · archived" } else { "" }
         ));
         for (seq, snippet) in snippets {
-            out.push_str(&format!(
-                "  - seq {seq}: {}\n    ref: ronda://session/{}#{seq}\n",
-                snippet.replace('\n', " "),
-                s.key
-            ));
+            let snippet = snippet.replace('\n', " ");
+            if *seq < 0 {
+                out.push_str(&format!(
+                    "  - title: {snippet}\n    ref: ronda://session/{}\n",
+                    s.key
+                ));
+            } else {
+                out.push_str(&format!(
+                    "  - seq {seq}: {snippet}\n    ref: ronda://session/{}#{seq}\n",
+                    s.key
+                ));
+            }
         }
     }
     out.push_str(&freshness(store)?);
@@ -868,7 +884,18 @@ pub fn insights(store: &Store, args: &InsightsArgs) -> Result<String> {
     Ok(out)
 }
 
+/// Which front end renders the text, so follow-up hints name a command that exists there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Surface {
+    Cli,
+    Mcp,
+}
+
 pub fn find_error(store: &Store, args: &FindErrorArgs) -> Result<String> {
+    find_error_for(store, args, Surface::Mcp)
+}
+
+pub fn find_error_for(store: &Store, args: &FindErrorArgs, surface: Surface) -> Result<String> {
     if args.error.trim().is_empty() {
         return Err(anyhow!("error text is empty"));
     }
@@ -885,7 +912,10 @@ pub fn find_error(store: &Store, args: &FindErrorArgs) -> Result<String> {
     if hits.len() > 20 {
         out.push_str(&format!("… and {} more\n", hits.len() - 20));
     }
-    out.push_str("\nRead one from that message with `ronda_get_session` (key and from_seq), including tools, to see how it was handled.\n");
+    out.push_str(match surface {
+        Surface::Mcp => "\nRead one from that message with `ronda_get_session` (key and from_seq), including tools, to see how it was handled.\n",
+        Surface::Cli => "\nRead one from that message with `ronda-cli show <ref> --tools`, using a ref above, to see how it was handled.\n",
+    });
     Ok(out)
 }
 
@@ -1104,6 +1134,22 @@ mod tests {
         assert!(time_ms(Some("7d"), "since").unwrap().is_some());
         assert!(time_ms(None, "since").unwrap().is_none());
     }
+
+    #[test]
+    fn date_only_until_covers_the_whole_local_day() {
+        let start = time_ms(Some("2024-03-05"), "since").unwrap().unwrap();
+        let end = time_ms(Some("2024-03-05"), "until").unwrap().unwrap();
+        let next = time_ms(Some("2024-03-06"), "since").unwrap().unwrap();
+        assert_eq!(end, next - 1);
+        assert!(end - start >= 23 * 3_600_000);
+        // Other forms are untouched by the date-only rule.
+        let minute = time_ms(Some("2024-03-05 10:30"), "until").unwrap().unwrap();
+        assert!(start < minute && minute < end);
+        let stamp = time_ms(Some("2024-03-05T10:30:00Z"), "until").unwrap();
+        assert_eq!(stamp, Some(1_709_634_600_000));
+        assert!(validate_window(Some("2024-03-05"), Some("2024-03-05")).is_ok());
+        assert!(validate_window(Some("2024-03-06"), Some("2024-03-05")).is_err());
+    }
     #[test]
     fn plural_uses_singular_only_for_one() {
         assert_eq!(plural(0usize, "session"), "0 sessions");
@@ -1160,6 +1206,114 @@ mod tests {
         )
         .unwrap();
     }
+    #[test]
+    fn date_only_until_lists_sessions_from_that_day() {
+        let path = std::env::temp_dir().join(format!("ronda-until-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        let at = |d: &str| {
+            time_ms(Some(&format!("{d} 15:00")), "since")
+                .unwrap()
+                .unwrap()
+        };
+        seeded(
+            &mut db,
+            "codex:day",
+            AgentId::Codex,
+            "/tmp/p",
+            at("2024-03-05"),
+            false,
+        );
+        seeded(
+            &mut db,
+            "codex:next",
+            AgentId::Codex,
+            "/tmp/p",
+            at("2024-03-06"),
+            false,
+        );
+        let list = |until: &str| {
+            list_sessions(
+                &db,
+                &ListArgs {
+                    until: Some(until.into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+        let out = list("2024-03-05");
+        assert!(
+            out.contains("codex:day") && !out.contains("codex:next"),
+            "{out}"
+        );
+        let search = |filter: ListArgs| {
+            search_capped(
+                &db,
+                &SearchArgs {
+                    query: "haystack".into(),
+                    filter,
+                },
+                10,
+            )
+            .unwrap()
+        };
+        let out = search(ListArgs {
+            since: Some("2024-03-05".into()),
+            until: Some("2024-03-05".into()),
+            ..Default::default()
+        });
+        assert!(
+            out.contains("codex:day") && !out.contains("codex:next"),
+            "{out}"
+        );
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn title_only_hits_are_labelled_and_open_by_plain_reference() {
+        let path = std::env::temp_dir().join(format!("ronda-title-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        seeded(
+            &mut db,
+            "codex:zebramigration",
+            AgentId::Codex,
+            "/tmp/p",
+            10,
+            false,
+        );
+        let out = search_capped(
+            &db,
+            &SearchArgs {
+                query: "zebramigration".into(),
+                filter: ListArgs::default(),
+            },
+            10,
+        )
+        .unwrap();
+        assert!(out.contains("1 session matches"), "{out}");
+        assert!(out.contains("  - title: "), "{out}");
+        assert!(!out.contains("seq -1") && !out.contains("#-1"), "{out}");
+        assert!(
+            out.contains("ref: ronda://session/codex:zebramigration\n"),
+            "{out}"
+        );
+        assert!(!out.contains("Up to 3 excerpts"), "{out}");
+        let shown = get_session(
+            &db,
+            &ShowArgs {
+                key: "ronda://session/codex:zebramigration".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(shown.contains("codex:zebramigration"), "{shown}");
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn filters_apply_before_the_hit_cap_and_archived_is_marked() {
         let path = std::env::temp_dir().join(format!("ronda-cap-{}.db", std::process::id()));

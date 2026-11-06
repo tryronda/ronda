@@ -219,7 +219,10 @@ impl AgentAdapter for FileAdapter {
                         && !m.text.trim().is_empty()
                 })
                 .map(|m| crate::adapter::fallback_title(&m.text))
-                .unwrap_or_else(|| source.native_id.clone());
+                .unwrap_or_else(|| "Untitled session".to_owned());
+        }
+        if parsed.title.contains('\n') {
+            parsed.title = crate::adapter::fallback_title(&parsed.title);
         }
         if is_child && self.0 == AgentId::ClaudeCode {
             if let Some(title) = sidechain_title(&source.path) {
@@ -953,7 +956,9 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
         }
     }
     if out.title.is_empty() {
-        out.title = ai_title.or(last_prompt).unwrap_or_default();
+        out.title = ai_title
+            .or_else(|| last_prompt.map(|p| crate::adapter::fallback_title(&p)))
+            .unwrap_or_default();
     }
     let chosen = match active {
         Some(None) => Vec::new(),
@@ -1341,6 +1346,33 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(parsed.meta.title, "Fix the build");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn qoder_prompt_title_uses_its_first_line() {
+        let data = concat!(
+            "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"Start\"}}\n",
+            "{\"type\":\"last-prompt\",\"lastPrompt\":\"\\nFix  the build\\nmore\"}\n"
+        );
+        let (root, sources) = fixture(AgentId::Qoder, "slug/s-title.jsonl", data);
+        let parsed = FileAdapter(AgentId::Qoder)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.meta.title, "Fix the build");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn promptless_session_is_titled_untitled_session() {
+        let data = "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}\n";
+        let (root, sources) = fixture(AgentId::ClaudeCode, "slug/s-promptless.jsonl", data);
+        let parsed = FileAdapter(AgentId::ClaudeCode)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.meta.title, "Untitled session");
         fs::remove_dir_all(root).unwrap();
     }
 
