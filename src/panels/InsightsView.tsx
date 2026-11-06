@@ -35,6 +35,12 @@ function dayKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+const monthNames = (month: 'narrow' | 'long') => { const format = new Intl.DateTimeFormat('en', { month }); return Array.from({ length: 12 }, (_, i) => format.format(new Date(2026, i, 1))); };
+const MONTH_LABELS = monthNames('narrow');
+const MONTH_NAMES = monthNames('long');
+const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => i % 4 === 0 ? String(i) : '');
+const HOUR_NAMES = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
+
 function shortNumber(value: number) {
   return new Intl.NumberFormat(undefined, { notation: value >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
 }
@@ -172,8 +178,8 @@ export function InsightsView({ active = true }: { active?: boolean }) {
     </section>
     <div className="insight-breakdowns">
       <section className="panel-card"><div className="panel-section-head"><h2>{t.weekday}</h2><span>{t.lastYear}</span></div><MiniBars values={byWeekday} labels={['Sun','Mon','Tue','Wed','Thu','Fri','Sat']} names={['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']} /></section>
-      <section className="panel-card"><div className="panel-section-head"><h2>{t.month}</h2><span>{t.lastYear}</span></div><MiniBars values={byMonth} labels={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'narrow' }).format(new Date(2026, i, 1)))} names={Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(2026, i, 1)))} /></section>
-      {data?.hours && <section className="panel-card"><div className="panel-section-head"><h2>{t.hour}</h2><span>{t.allTime}</span></div><MiniBars values={Array.from({ length: 24 }, (_, i) => data.hours?.find(([hour]) => hour === i)?.[1] ?? 0)} labels={Array.from({ length: 24 }, (_, i) => i % 4 === 0 ? String(i) : '')} names={Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)} /></section>}
+      <section className="panel-card"><div className="panel-section-head"><h2>{t.month}</h2><span>{t.lastYear}</span></div><MiniBars values={byMonth} labels={MONTH_LABELS} names={MONTH_NAMES} /></section>
+      {data?.hours && <section className="panel-card"><div className="panel-section-head"><h2>{t.hour}</h2><span>{t.allTime}</span></div><MiniBars values={Array.from({ length: 24 }, (_, i) => data.hours?.find(([hour]) => hour === i)?.[1] ?? 0)} labels={HOUR_LABELS} names={HOUR_NAMES} /></section>}
     </div>
     <section className="panel-card">
       <div className="panel-section-head insight-leader-head"><h2>{t[board]}</h2>
