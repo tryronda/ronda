@@ -221,14 +221,12 @@ impl AgentAdapter for FileAdapter {
                 .map(|m| crate::adapter::fallback_title(&m.text))
                 .unwrap_or_else(|| "Untitled session".to_owned());
         }
-        if parsed.title.contains('\n') {
-            parsed.title = crate::adapter::fallback_title(&parsed.title);
-        }
         if is_child && self.0 == AgentId::ClaudeCode {
             if let Some(title) = sidechain_title(&source.path) {
                 parsed.title = title;
             }
         }
+        parsed.title = crate::adapter::tidy_title(&parsed.title);
         let project = if self.0 == AgentId::Cursor {
             cursor_project(&source.path).or(parsed.cwd)
         } else {
@@ -1447,6 +1445,21 @@ mod tests {
         );
         assert!(!sub.meta.can_delete);
         assert!(adapter.resume(&sub.meta).is_none());
+        fs::write(
+            child_path.with_extension("meta.json"),
+            "{\"description\":\"Fix the build\\nthen test\"}",
+        )
+        .unwrap();
+        let multi = adapter
+            .parse(
+                sources
+                    .iter()
+                    .find(|s| s.native_id == "main:agent-review")
+                    .unwrap(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(multi.meta.title, "Fix the build");
         assert_eq!(fs::read_to_string(&child_path).unwrap(), child);
         fs::remove_dir_all(root).unwrap();
     }

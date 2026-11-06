@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Claude Code subagent sessions with a multi-line description show only its first line.
+
 ## [1.7.3] - 2026-11-06
 
 ### Changed
