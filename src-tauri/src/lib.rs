@@ -1376,7 +1376,7 @@ async fn resume_session(state: State<'_, Shared>, key: String) -> CommandResult<
                     "cd {} && {} -l -i -c {}",
                     shell_quote(&directory),
                     shell_quote(&shell),
-                    shell_quote(&command)
+                    shell_quote(&resume::command_then_shell(&command, &shell))
                 )
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")

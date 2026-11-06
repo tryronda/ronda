@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Open in Terminal on macOS keeps the window usable after the agent exits instead of showing "[Process completed]".
+
 ## [1.7.10] - 2026-11-06
 
 ### Fixed
