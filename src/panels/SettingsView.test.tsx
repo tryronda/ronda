@@ -86,6 +86,7 @@ test("Locations renders saved per-root states, current disabled settings, and om
     await act(async () => { locationsTab.click(); await Promise.resolve(); });
     const rowsText = Array.from(host.querySelectorAll(".location-row")).map(row => row.textContent ?? "").join("\n");
     expect(host.textContent).toContain("Last completed local scan");
+    expect(host.querySelector('[role="status"]')?.textContent).toMatch(/^Last completed local scan: [A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2}/);
     expect(host.textContent).toContain("zero does not prove that agent data is absent");
     expect(host.textContent).toContain("up to 512 locations; additional locations are omitted");
     expect(rowsText).toContain("Checked · 0 source records found");
@@ -303,4 +304,21 @@ test("each location and host button has its own name", async () => {
   try {
     expect(labels(remote.host)).toEqual(expect.arrayContaining(["Sync now with devbox", "Sync now with nas", "Remove host devbox", "Remove host nas"]));
   } finally { await act(async () => remote.root.unmount()); remote.host.remove(); }
+});
+
+test("last sync and last local scan use the short time label, with wording for zero", async () => {
+  const stamp = 1_760_000_000_000;
+  const { host, root } = await mountSettings([], [
+    { host: "a", enabled: true, last_sync_ms: stamp, last_error: null },
+    { host: "b", enabled: true, last_sync_ms: 0, last_error: null },
+  ], "Remote hosts");
+  try {
+    const syncs = Array.from(host.querySelectorAll(".remote-row small")).map(el => el.textContent);
+    expect(syncs[0]).toMatch(/^Last sync: [A-Z][a-z]{2} \d{1,2}(, \d{4})?, \d{2}:\d{2}/);
+    expect(syncs[0]).not.toContain("GMT");
+    expect(syncs[1]).toBe("Last sync: Never");
+    const nav = Array.from(host.querySelectorAll<HTMLButtonElement>("nav button")).find(button => button.textContent?.includes("Locations"))!;
+    await act(async () => { nav.click(); await Promise.resolve(); });
+    expect(host.querySelector('[role="status"]')?.textContent).toMatch(/^Last completed local scan: /);
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });

@@ -6,6 +6,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useState } from 'react';
 import { Switch } from '@/components/motion/switch';
 import { agentName } from '@/lib/agents';
+import { timeLabel } from '@/lib/utils';
 import { saveTheme, themes, type ThemePreference } from '@/lib/theme';
 import { PixelStrip } from '@/components/brand/pixel-field';
 import type { ScanReport } from '@/workbench/api';
@@ -244,7 +245,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </>}
         {section === 'locations' && <section className="panel-card">
           <h2>{t.sourceLocations}</h2><p className="panel-help">{t.locationsHelp}</p>
-          <p className="panel-help" role="status">{t.lastLocalScan}: {refreshHealth ? new Date(refreshHealth.completed_at_ms).toLocaleString() : t.noLocalScan}</p>
+          <p className="panel-help" role="status">{t.lastLocalScan}: {refreshHealth?.completed_at_ms ? timeLabel(refreshHealth.completed_at_ms) : t.noLocalScan}</p>
           {refreshHealth?.roots_truncated && <p className="panel-help">{t.rootsOmitted}</p>}
           <div className="location-list">{locations.length ? locations.map(location =>
             <div className="location-row" key={`${location.agent}:${location.path}`}>
@@ -282,7 +283,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             onChange={event => setHostInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !busy) addHost(); }} />
             <button disabled={busy || !hostInput.trim()} onClick={addHost}>{t.add}</button></div>
           {hosts.length ? <div className="remote-list">{hosts.map(host => <div className="remote-row" key={host.host}>
-            <div><strong>{host.host}</strong><small>{t.lastSync}: {host.last_sync_ms ? new Date(host.last_sync_ms).toLocaleString() : t.never}</small>
+            <div><strong>{host.host}</strong><small>{t.lastSync}: {host.last_sync_ms ? timeLabel(host.last_sync_ms) : t.never}</small>
               {host.last_error && <small className="panel-danger">{t.remoteError}: {host.last_error}</small>}</div>
             <div className="location-actions"><span className="panel-switch"><Switch checked={host.enabled}
               disabled={busy} onCheckedChange={() => toggleHost(host)} ariaLabel={host.host} /><span>{host.enabled ? t.enabled : t.disabled}</span></span>
