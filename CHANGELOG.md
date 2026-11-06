@@ -13,6 +13,7 @@ All notable changes to Ronda are recorded here.
 - Bulk labeling sessions that already have the label (or removing a label none have) now says so instead of "Labeled 0 sessions", and clears the stale Undo.
 - Open in Terminal on macOS keeps the window usable after the agent exits instead of showing "[Process completed]".
 - Moving a session to the Trash tombstones it as soon as its main file is trashed, so a failing sidecar file no longer leaves a ghost session; the sidecar failure is reported as a warning.
+- The site's changelog no longer shows an empty Unreleased entry.
 
 ## [1.7.10] - 2026-11-06
 

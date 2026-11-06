@@ -7,7 +7,7 @@ import { REPO_URL } from "../release";
 import { groupTone, parseChangelog, releaseAnchor, releaseDate, releaseTitle } from "./releases";
 
 export function Changelog() {
-  const releases = parseChangelog();
+  const releases = parseChangelog().filter(release => release.groups.length > 0);
   return <div className="min-h-full bg-background text-foreground">
     <SiteHeader page="changelog" />
     <main id="main" className="mx-auto grid max-w-[1240px] grid-cols-[minmax(0,1fr)] gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-16 lg:py-20">
@@ -34,7 +34,7 @@ export function Changelog() {
           {release.groups.map(group => <div key={group.kind} className="mt-6">
             <h3 className={cn("inline-block px-2 pt-0.5 pb-1 font-mono text-[12px] font-medium tracking-[0.025em] lowercase", groupTone[group.kind] ?? "bg-chip")}>{group.kind}</h3>
             <ul className="mt-3 grid gap-2.5">
-              {group.items.map(item => <li key={item} className="grid grid-cols-[12px_minmax(0,1fr)] gap-3 text-[16px] leading-normal tracking-[0.015em] text-ink-soft">
+              {group.items.map(item => <li key={`${group.kind}:${item}`} className="grid grid-cols-[12px_minmax(0,1fr)] gap-3 text-[16px] leading-normal tracking-[0.015em] text-ink-soft">
                 <span className="mt-[9px] size-1.5 bg-foreground/30" aria-hidden="true" /><span><Inline>{item}</Inline></span>
               </li>)}
             </ul>
