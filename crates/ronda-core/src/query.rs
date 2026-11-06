@@ -188,41 +188,58 @@ pub fn validate_project(project: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Distinct project paths of root sessions, archived ones included, newest first.
+fn known_project_paths(store: &Store) -> Result<Vec<String>> {
+    let sessions = store.list_sessions(&SessionQuery {
+        include_archived: true,
+        ..Default::default()
+    })?;
+    let mut paths: Vec<String> = Vec::new();
+    for s in sessions.iter().filter(|s| s.parent_key.is_none()) {
+        if let Some(p) = s.project_path.as_deref().filter(|p| !p.is_empty()) {
+            if !paths.iter().any(|known| known == p) {
+                paths.push(p.to_string());
+            }
+        }
+    }
+    Ok(paths)
+}
+
 fn project_paths(store: &Store, project: Option<&str>) -> Result<Option<Vec<String>>> {
     let Some(project) = project else {
         return Ok(None);
     };
     validate_project(Some(project))?;
-    let projects = store.projects()?;
+    let projects = known_project_paths(store)?;
     let mut matches = Vec::new();
     if Path::new(project).is_absolute() {
         let path = Path::new(project);
-        if projects.iter().any(|p| p.path == project) {
+        if projects.iter().any(|p| p == project) {
             return Ok(Some(vec![project.into()]));
         }
         let ancestor = projects
             .iter()
-            .filter(|p| path.starts_with(&p.path))
-            .max_by_key(|p| p.path.len());
+            .filter(|p| path.starts_with(p))
+            .max_by_key(|p| p.len());
         if let Some(p) = ancestor {
-            return Ok(Some(vec![p.path.clone()]));
+            return Ok(Some(vec![p.clone()]));
         }
         matches.extend(
             projects
                 .iter()
-                .filter(|p| Path::new(&p.path).starts_with(path))
-                .map(|p| p.path.clone()),
+                .filter(|p| Path::new(p).starts_with(path))
+                .cloned(),
         );
     } else {
         matches.extend(
             projects
                 .iter()
                 .filter(|p| {
-                    Path::new(&p.path)
+                    Path::new(p)
                         .file_name()
                         .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(project))
                 })
-                .map(|p| p.path.clone()),
+                .cloned(),
         );
     }
     Ok(Some(matches))
@@ -265,8 +282,8 @@ fn freshness(store: &Store) -> Result<String> {
 }
 fn unknown_project(store: &Store, name: &str) -> Result<String> {
     let mut out = format!("No indexed project matches `{name}`. Known projects:\n");
-    for p in store.projects()?.into_iter().take(30) {
-        out.push_str(&format!("- {}\n", p.path));
+    for p in known_project_paths(store)?.into_iter().take(30) {
+        out.push_str(&format!("- {p}\n"));
     }
     Ok(out)
 }
@@ -499,6 +516,23 @@ fn resolve_key(store: &Store, input: &str) -> Result<(String, Option<i64>)> {
 }
 
 pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
+    get_session_for(store, args, Surface::Mcp)
+}
+
+/// Single-quotes `value` for a shell unless it is made of safe characters only.
+fn shell_arg(value: &str) -> String {
+    let safe = !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-.:/#@".contains(c));
+    if safe {
+        value.into()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
+pub fn get_session_for(store: &Store, args: &ShowArgs, surface: Surface) -> Result<String> {
     let (key, from_ref) = resolve_key(store, &args.key)?;
     let main = store
         .get_session(&key)?
@@ -529,8 +563,12 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
         Some([child]) => (*child).clone(),
         Some([]) => {
             return Err(anyhow!(
-                "unknown subagent for `{}`; use `--subagent '*'` to list available IDs",
-                main.key
+                "unknown subagent for `{}`; use {} to list available IDs",
+                main.key,
+                match surface {
+                    Surface::Cli => "`--subagent '*'`",
+                    Surface::Mcp => "subagent \"*\"",
+                }
             ))
         }
         Some(_) => return Err(anyhow!("ambiguous subagent; use its full session key")),
@@ -633,7 +671,18 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
         if !m.images.is_empty() {
             body.push_str(&format!("\n[{} image(s)]", m.images.len()));
         }
-        let body: String = body.chars().take(per_message).collect();
+        let total = body.chars().count();
+        let mut body: String = body.chars().take(per_message).collect();
+        if total > per_message {
+            let raise = match surface {
+                Surface::Cli => "--message-chars",
+                Surface::Mcp => "max_message_chars",
+            };
+            body.push_str(&format!(
+                "… [clipped: {} more characters; raise {raise}]",
+                total - per_message
+            ));
+        }
         out.push_str(&format!("### [seq {}] {role}{time}\n{body}\n\n", m.seq));
         shown += 1;
     }
@@ -643,16 +692,36 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
         ));
     }
     if let Some(next) = next {
-        out.push_str(&format!(
-            "Showing {shown} messages; continue with from_seq={next}.\n"
-        ));
+        let subagent = args.subagent.as_deref();
+        match surface {
+            Surface::Cli => {
+                let extra = subagent
+                    .map(|id| format!(" --subagent {}", shell_arg(id)))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "Showing {shown} messages; continue with `ronda-cli show {} --from {next}{extra}`.\n",
+                    shell_arg(&main.key)
+                ));
+            }
+            Surface::Mcp => {
+                let extra = subagent
+                    .map(|id| format!(" and subagent=\"{id}\""))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "Showing {shown} messages; continue with from_seq={next}{extra}.\n"
+                ));
+            }
+        }
     } else {
         out.push_str("End of transcript.\n");
         if args.subagent.is_none() && !children.is_empty() {
             out.push_str(&format!("\nSubagents ({}):\n", children.len()));
             append_child_refs(&mut out, &main, &children, 30);
             if children.len() > 30 {
-                out.push_str("Use --subagent '*' for the full list.\n");
+                out.push_str(match surface {
+                    Surface::Cli => "Use `--subagent '*'` for the full list.\n",
+                    Surface::Mcp => "Use subagent \"*\" for the full list.\n",
+                });
             }
         }
     }
@@ -1328,6 +1397,116 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    fn show_fixture(db: &mut Store, key: &str, texts: &[&str]) {
+        seeded(db, key, AgentId::Codex, "/tmp/show", 5, false);
+        let mut session = ParsedSession {
+            meta: db.get_session(key).unwrap().unwrap(),
+            messages: Vec::new(),
+        };
+        session.messages = texts
+            .iter()
+            .enumerate()
+            .map(|(seq, text)| TranscriptMessage {
+                seq: seq as i64,
+                role: Role::User,
+                kind: MessageKind::Text,
+                text: (*text).into(),
+                timestamp: None,
+                model: None,
+                thinking: None,
+                tool_calls: Vec::new(),
+                images: Vec::new(),
+            })
+            .collect();
+        db.upsert(&session, "fixture").unwrap();
+    }
+    #[test]
+    fn show_hints_name_the_surface_that_shows_them() {
+        let path = std::env::temp_dir().join(format!("ronda-hints-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        show_fixture(&mut db, "codex:h", &["one", "two", "three"]);
+        let args = ShowArgs {
+            key: "codex:h".into(),
+            max_messages: Some(1),
+            ..Default::default()
+        };
+        let cli = get_session_for(&db, &args, Surface::Cli).unwrap();
+        assert!(
+            cli.contains("continue with `ronda-cli show codex:h --from 1`."),
+            "{cli}"
+        );
+        assert!(!cli.contains("from_seq"), "{cli}");
+        let mcp = get_session(&db, &args).unwrap();
+        assert!(mcp.contains("continue with from_seq=1."), "{mcp}");
+        assert!(!mcp.contains("ronda-cli"), "{mcp}");
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn show_marks_messages_cut_at_the_per_message_limit() {
+        let path = std::env::temp_dir().join(format!("ronda-clip-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        show_fixture(&mut db, "codex:long", &[&"x".repeat(500)]);
+        show_fixture(&mut db, "codex:short", &["short"]);
+        let show = |key: &str, surface| {
+            get_session_for(
+                &db,
+                &ShowArgs {
+                    key: key.into(),
+                    max_message_chars: Some(100),
+                    ..Default::default()
+                },
+                surface,
+            )
+            .unwrap()
+        };
+        let cli = show("codex:long", Surface::Cli);
+        assert!(
+            cli.contains("clipped: 400 more characters; raise --message-chars"),
+            "{cli}"
+        );
+        let mcp = show("codex:long", Surface::Mcp);
+        assert!(
+            mcp.contains("400 more") && mcp.contains("raise max_message_chars"),
+            "{mcp}"
+        );
+        assert!(!show("codex:short", Surface::Cli).contains("clipped"));
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn archived_only_projects_are_recognised() {
+        let path = std::env::temp_dir().join(format!("ronda-archived-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        seeded(&mut db, "codex:old", AgentId::Codex, "/tmp/old", 5, true);
+        let filter = ListArgs {
+            project: Some("old".into()),
+            ..Default::default()
+        };
+        let out = list_sessions(&db, &filter).unwrap();
+        assert!(out.contains("0 sessions"), "{out}");
+        assert!(!out.contains("No indexed project"), "{out}");
+        let out = search(
+            &db,
+            &SearchArgs {
+                query: "haystack".into(),
+                filter,
+            },
+        )
+        .unwrap();
+        assert!(out.contains("codex:old"), "{out}");
+        let out = list_sessions(
+            &db,
+            &ListArgs {
+                project: Some("nope".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(out.contains("- /tmp/old"), "{out}");
+        let _ = std::fs::remove_file(&path);
+    }
     #[test]
     fn filters_apply_before_the_hit_cap_and_archived_is_marked() {
         let path = std::env::temp_dir().join(format!("ronda-cap-{}.db", std::process::id()));

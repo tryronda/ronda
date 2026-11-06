@@ -4,6 +4,24 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-11-06
+
+### Added
+- `show` and `ronda_get_session` mark messages cut at the per-message limit and say how to raise it.
+
+### Changed
+- The docs explain how `--project` finds a project, list the allowed size ranges, and describe the new `show` hints and clamp notes.
+
+### Fixed
+- Claude Code subagent sessions with a multi-line description show only its first line.
+- Codex sessions keep their project folder when the Codex database has a blank one, and trim its stored title.
+- Codex sessions refresh when only the Codex database's write-ahead log changed.
+- The transcript header and library rows show the full title and project path on hover when they are shortened.
+- Intelligence's project picker tells apart folders with the same name and shows the full path on hover.
+- MCP tools say when a `limit` or `max_*` argument was clamped, as `ronda-cli` does.
+- `ronda-cli show` suggests `--from N` and `--subagent '*'` and MCP suggests `from_seq` and `subagent`, instead of mixing the two.
+- `--project` and MCP `project` recognise projects whose sessions are all archived.
+
 ## [1.7.3] - 2026-11-06
 
 ### Changed

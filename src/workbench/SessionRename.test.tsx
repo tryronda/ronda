@@ -130,3 +130,19 @@ test("an alias is written only to its own preference and never to other stored s
     expect(fake.other.join("\n")).not.toContain("CANARY-ALIAS-7731");
   } finally { await unmount(); }
 });
+
+test("shortened titles and paths carry full-text tooltips", async () => {
+  const fake = fakeApi(JSON.stringify({ version: 1, titles: { "codex:one": "My title" } }));
+  const { host, unmount } = await mount(fake.api);
+  try {
+    expect(host.querySelector("header h2")!.getAttribute("title")).toBe(`My title\nOriginal title: ${SOURCE}`);
+    const original = Array.from(host.querySelectorAll("p")).find(p => p.textContent?.startsWith("Original title:"))!;
+    expect(original.getAttribute("title")).toBe(`Original title: ${SOURCE}`);
+    expect(Array.from(host.querySelectorAll(".session-card span[title]")).some(e => e.getAttribute("title")!.startsWith("/"))).toBe(true);
+  } finally { await unmount(); }
+});
+
+test("an unaliased title is its own tooltip", async () => {
+  const { host, unmount } = await mount(fakeApi().api);
+  try { expect(host.querySelector("header h2")!.getAttribute("title")).toBe(SOURCE); } finally { await unmount(); }
+});

@@ -37,14 +37,28 @@ impl AgentAdapter for FileAdapter {
     }
     fn fingerprint(&self, source: &SourceRef) -> String {
         let extra = if self.0 == AgentId::Codex {
-            codex_db(&source.path)
-                .and_then(|p| p.metadata().ok())
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
+            let stamp = |path: Option<PathBuf>| {
+                path.and_then(|p| p.metadata().ok())
+                    .and_then(|m| {
+                        let ms = m
+                            .modified()
+                            .ok()?
+                            .duration_since(UNIX_EPOCH)
+                            .ok()?
+                            .as_millis();
+                        Some((ms, m.len()))
+                    })
+                    .unwrap_or((0, 0))
+            };
+            let db = codex_db(&source.path);
+            let wal = db
+                .as_ref()
+                .map(|p| PathBuf::from(format!("{}-wal", p.display())));
+            let (db_ms, _) = stamp(db);
+            let (wal_ms, wal_len) = stamp(wal);
+            format!("{db_ms}:{wal_ms}:{wal_len}")
         } else {
-            0
+            "0".to_owned()
         };
         format!("{}:{}:{extra}", source.modified_ms, source.size)
     }
@@ -221,14 +235,12 @@ impl AgentAdapter for FileAdapter {
                 .map(|m| crate::adapter::fallback_title(&m.text))
                 .unwrap_or_else(|| "Untitled session".to_owned());
         }
-        if parsed.title.contains('\n') {
-            parsed.title = crate::adapter::fallback_title(&parsed.title);
-        }
         if is_child && self.0 == AgentId::ClaudeCode {
             if let Some(title) = sidechain_title(&source.path) {
                 parsed.title = title;
             }
         }
+        parsed.title = crate::adapter::tidy_title(&parsed.title);
         let project = if self.0 == AgentId::Cursor {
             cursor_project(&source.path).or(parsed.cwd)
         } else {
@@ -452,8 +464,8 @@ fn codex_enrichment(path: &Path, id: &str) -> Option<CodexState> {
             let archived: Option<i64> = r.get(6)?;
             let created: Option<i64> = r.get(7)?;
             let updated: Option<i64> = r.get(8)?;
-            Ok(CodexState { title: name.filter(|s| !s.trim().is_empty()).or(title.filter(|s| !s.trim().is_empty())),
-                cwd, model, source, tokens, archived: archived.map(|n| n != 0), created, updated })
+            Ok(CodexState { title: name.filter(|s| !s.trim().is_empty()).or(title.filter(|s| !s.trim().is_empty())).map(|t| crate::adapter::tidy_title(&t)),
+                cwd: cwd.filter(|c| !c.trim().is_empty()), model, source, tokens, archived: archived.map(|n| n != 0), created, updated })
         }).ok()
 }
 
@@ -1447,6 +1459,21 @@ mod tests {
         );
         assert!(!sub.meta.can_delete);
         assert!(adapter.resume(&sub.meta).is_none());
+        fs::write(
+            child_path.with_extension("meta.json"),
+            "{\"description\":\"Fix the build\\nthen test\"}",
+        )
+        .unwrap();
+        let multi = adapter
+            .parse(
+                sources
+                    .iter()
+                    .find(|s| s.native_id == "main:agent-review")
+                    .unwrap(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(multi.meta.title, "Fix the build");
         assert_eq!(fs::read_to_string(&child_path).unwrap(), child);
         fs::remove_dir_all(root).unwrap();
     }
@@ -1512,6 +1539,27 @@ mod tests {
     }
 
     #[test]
+    fn codex_fingerprint_tracks_wal() {
+        let line = "{\"type\":\"session_meta\",\"payload\":{\"id\":\"123e4567-e89b-12d3-a456-426614174000\"}}\n";
+        let (root, sources) = fixture(
+            AgentId::Codex,
+            "sessions/rollout-2026-01-01T00-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl",
+            line,
+        );
+        fs::write(root.join("state_5.sqlite"), b"db").unwrap();
+        let adapter = FileAdapter(AgentId::Codex);
+        let before = adapter.fingerprint(&sources[0]);
+        assert_eq!(before, adapter.fingerprint(&sources[0]));
+        fs::write(root.join("state_5.sqlite-wal"), b"wal").unwrap();
+        assert_ne!(before, adapter.fingerprint(&sources[0]));
+        let other = FileAdapter(AgentId::Qoder);
+        let plain = other.fingerprint(&sources[0]);
+        fs::write(root.join("state_5.sqlite-wal"), b"longer wal").unwrap();
+        assert_eq!(plain, other.fingerprint(&sources[0]));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn codex_archived_and_internal() {
         let public = concat!(
             "{\"type\":\"session_meta\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"payload\":{\"id\":\"123e4567-e89b-12d3-a456-426614174000\",\"cwd\":\"/repo\",\"source\":\"cli\"}}\n",
@@ -1519,7 +1567,7 @@ mod tests {
         let (root, sources) = fixture(AgentId::Codex,
             "archived_sessions/rollout-2026-01-01T00-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl", public);
         let db = Connection::open(root.join("state_5.sqlite")).unwrap();
-        db.execute_batch("CREATE TABLE threads (id TEXT, title TEXT, name TEXT, cwd TEXT, model TEXT, source TEXT, tokens_used INTEGER, archived INTEGER, created_at_ms INTEGER, updated_at_ms INTEGER); INSERT INTO threads VALUES ('123e4567-e89b-12d3-a456-426614174000','DB title',NULL,'/repo','gpt-5','cli',42,1,1000,2000);").unwrap();
+        db.execute_batch("CREATE TABLE threads (id TEXT, title TEXT, name TEXT, cwd TEXT, model TEXT, source TEXT, tokens_used INTEGER, archived INTEGER, created_at_ms INTEGER, updated_at_ms INTEGER); INSERT INTO threads VALUES ('123e4567-e89b-12d3-a456-426614174000','  Padded  ',NULL,'','gpt-5','cli',42,1,1000,2000);").unwrap();
         drop(db);
         assert_eq!(sources.len(), 1);
         let parsed = FileAdapter(AgentId::Codex)
@@ -1531,7 +1579,8 @@ mod tests {
             "123e4567-e89b-12d3-a456-426614174000"
         );
         assert!(parsed.meta.archived);
-        assert_eq!(parsed.meta.title, "DB title");
+        assert_eq!(parsed.meta.title, "Padded");
+        assert_eq!(parsed.meta.project_path.as_deref(), Some("/repo"));
         assert_eq!(parsed.meta.source.as_deref(), Some("cli"));
         assert_eq!(parsed.meta.tokens, Some(42));
         assert_eq!(parsed.messages[0].text, "Fix 搜索");

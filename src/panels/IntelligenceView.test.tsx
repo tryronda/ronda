@@ -103,3 +103,16 @@ test("shows the real session total and an empty state when no session has an out
   expect(head.parentElement!.querySelector(".panel-empty")?.textContent).toBe("Nothing in this range.");
   await act(async () => { root.unmount(); });
 });
+
+test("project picker tells apart same-named folders and shows full paths", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  invoke.mockImplementation(async (command: string) => command === "list_projects" ? [{ path: "/a/app" }, { path: "/b/app" }, { path: "/c/web" }] : report);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<IntelligenceView />); });
+  const options = [...host.querySelectorAll<HTMLOptionElement>(".intel-project option")].slice(1);
+  expect(options.map(o => o.textContent)).toEqual(["app — a", "app — b", "web"]);
+  expect(options.map(o => o.title)).toEqual(["/a/app", "/b/app", "/c/web"]);
+  await act(async () => { root.unmount(); });
+});
