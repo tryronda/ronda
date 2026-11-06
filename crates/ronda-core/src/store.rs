@@ -10,25 +10,65 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Whitespace-separated query terms with surrounding double quotes removed, so a quoted
-/// phrase like `"connection refused"` matches the same words as the unquoted query.
-fn search_terms(query: &str) -> Vec<&str> {
-    query
-        .split_whitespace()
-        .map(|term| term.trim_matches('"'))
-        .filter(|term| !term.is_empty())
-        .collect()
+/// Query terms: whitespace-separated words, plus each balanced `"quoted span"` kept as one
+/// phrase term (whitespace collapsed). An unbalanced quote leaves the rest as plain words.
+fn search_terms(query: &str) -> Vec<String> {
+    let mut terms = Vec::new();
+    let mut rest = query;
+    while !rest.is_empty() {
+        let Some(open) = rest.find('"') else {
+            terms.extend(rest.split_whitespace().map(str::to_owned));
+            break;
+        };
+        terms.extend(rest[..open].split_whitespace().map(str::to_owned));
+        let after = &rest[open + 1..];
+        match after.find('"') {
+            Some(close) => {
+                let phrase = after[..close]
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if !phrase.is_empty() {
+                    terms.push(phrase);
+                }
+                rest = &after[close + 1..];
+            }
+            None => {
+                terms.extend(after.split_whitespace().map(str::to_owned));
+                break;
+            }
+        }
+    }
+    terms
+}
+
+/// True when every term occurs in `text`; phrases match across any whitespace run.
+fn terms_match(terms: &[String], text: &str) -> bool {
+    let folded = text.to_lowercase();
+    let collapsed = terms
+        .iter()
+        .any(|term| term.contains(' '))
+        .then(|| folded.split_whitespace().collect::<Vec<_>>().join(" "));
+    terms.iter().all(|term| {
+        if term.contains(' ') {
+            collapsed.as_deref().unwrap_or("").contains(term.as_str())
+        } else {
+            folded.contains(term.as_str())
+        }
+    })
 }
 
 fn search_expression(query: &str) -> (String, bool) {
     let all = search_terms(query);
+    // The trigram index needs a literal single-space match for a phrase, so index each word
+    // of a phrase on its own and let the post-filter enforce the exact phrase.
     let indexed: Vec<_> = all
         .iter()
-        .copied()
-        .filter(|term| term.chars().count() >= 3)
+        .flat_map(|term| term.split(' '))
+        .filter(|word| word.chars().count() >= 3)
         .collect();
     if indexed.is_empty() {
-        (all.first().copied().unwrap_or("").to_string(), false)
+        (all.first().cloned().unwrap_or_default(), false)
     } else {
         (
             indexed
@@ -549,8 +589,8 @@ impl Store {
             return Ok(Vec::new());
         }
         let terms: Vec<String> = search_terms(query)
-            .into_iter()
-            .map(str::to_lowercase)
+            .iter()
+            .map(|term| term.to_lowercase())
             .collect();
         if terms.is_empty() {
             return Ok(Vec::new());
@@ -573,8 +613,7 @@ impl Store {
         let mut sessions: HashMap<String, Option<SessionMeta>> = HashMap::new();
         for row in rows {
             let (key, seq, full) = row?;
-            let haystack = full.to_lowercase();
-            if !terms.iter().all(|term| haystack.contains(term)) {
+            if !terms_match(&terms, &full) {
                 continue;
             }
             let session = match sessions.get(&key) {
@@ -614,8 +653,8 @@ impl Store {
     ) -> Result<Vec<(SearchHit, f64)>> {
         filter.validate()?;
         let terms: Vec<String> = search_terms(query)
-            .into_iter()
-            .map(str::to_lowercase)
+            .iter()
+            .map(|term| term.to_lowercase())
             .collect();
         if terms.is_empty() {
             return Ok(Vec::new());
@@ -674,8 +713,7 @@ impl Store {
         let mut hits = Vec::new();
         for row in rows {
             let (json, starred, pinned, seq, text, score) = row?;
-            let folded = text.to_lowercase();
-            if !terms.iter().all(|term| folded.contains(term)) {
+            if !terms_match(&terms, &text) {
                 continue;
             }
             let session = if let Some(session) = metadata.get(&json) {
@@ -1149,47 +1187,59 @@ mod search_tests {
         assert_eq!(order(&store), first);
     }
 
-    #[test]
-    fn quoted_phrases_search_like_their_unquoted_words() {
+    fn phrase_store(texts: &[&str]) -> Store {
         let mut store = Store::open(Path::new(":memory:")).unwrap();
-        let meta: SessionMeta = serde_json::from_value(serde_json::json!({
-            "key":"q","native_id":"q","agent":"claude-code","host":null,"parent_key":null,
-            "title":"q","project_path":"/p","source_path":"/missing-fixture","created_at":1,"updated_at":5,
-            "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
-        }))
-        .unwrap();
-        let messages = vec![TranscriptMessage {
-            seq: 0,
-            role: Role::User,
-            kind: MessageKind::Text,
-            text: "connection refused by host".into(),
-            timestamp: None,
-            model: None,
-            thinking: None,
-            tool_calls: vec![],
-            images: vec![],
-        }];
-        store
-            .upsert(&ParsedSession { meta, messages }, "1")
+        for (n, text) in texts.iter().enumerate() {
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":format!("q{n}"),"native_id":format!("q{n}"),"agent":"claude-code","host":null,"parent_key":null,
+                "title":"q","project_path":"/p","source_path":"/missing-fixture","created_at":1,"updated_at":5 + n as i64,
+                "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
+            }))
             .unwrap();
-        let filter = SessionQuery::default();
-        for query in ["\"connection refused\"", "connection refused"] {
-            assert_eq!(
-                store.search(query, &filter, 10).unwrap().len(),
-                1,
-                "{query}"
-            );
-            assert_eq!(
-                store
-                    .search_grouped(query, &filter, SearchSort::Recent, 0, 10)
-                    .unwrap()
-                    .total_sessions,
-                1,
-                "{query}"
-            );
+            let messages = vec![TranscriptMessage {
+                seq: 0,
+                role: Role::User,
+                kind: MessageKind::Text,
+                text: (*text).into(),
+                timestamp: None,
+                model: None,
+                thinking: None,
+                tool_calls: vec![],
+                images: vec![],
+            }];
+            store
+                .upsert(&ParsedSession { meta, messages }, "1")
+                .unwrap();
         }
+        store
+    }
+
+    #[test]
+    fn quoted_searches_match_the_exact_phrase() {
+        let store = phrase_store(&["refused connection", "connection  refused\nby host"]);
+        let filter = SessionQuery::default();
+        for query in ["\"connection refused\"", "\"ConNection   refused\""] {
+            let hits = store.search(query, &filter, 10).unwrap();
+            assert_eq!(hits.len(), 1, "{query}");
+            assert_eq!(hits[0].session.key, "q1");
+            let grouped = store
+                .search_grouped(query, &filter, SearchSort::Recent, 0, 10)
+                .unwrap();
+            assert_eq!(grouped.total_sessions, 1, "{query}");
+        }
+        assert_eq!(
+            store
+                .search("connection refused", &filter, 10)
+                .unwrap()
+                .len(),
+            2
+        );
+        // A short phrase takes the instr fallback.
+        let short = phrase_store(&["a b", "b a"]);
+        assert_eq!(short.search("\"a b\"", &filter, 10).unwrap().len(), 1);
         assert!(store.search("\"\"", &filter, 10).unwrap().is_empty());
-        assert_eq!(search_terms("\"a b\" \"\" c\""), ["a", "b", "c"]);
+        assert_eq!(search_terms("\"a  b\" \"\" c\""), ["a b", "c"]);
+        assert_eq!(search_terms("x \"a b"), ["x", "a", "b"]);
     }
 
     #[test]
