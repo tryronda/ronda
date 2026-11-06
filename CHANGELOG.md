@@ -7,6 +7,9 @@ All notable changes to Ronda are recorded here.
 ### Added
 - `show` and `ronda_get_session` mark tool calls that failed.
 
+### Changed
+- The MCP tool schemas state the time formats, size ranges, and valid agent ids.
+
 ### Fixed
 - Intelligence, `ronda-cli insights`, and project overviews list tied recurring errors in a stable order.
 

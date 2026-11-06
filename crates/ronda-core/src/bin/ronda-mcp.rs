@@ -1,6 +1,6 @@
 use ronda_core::{
     query::{self, FindErrorArgs, InsightsArgs, ListArgs, SearchArgs, ShowArgs},
-    Store,
+    AgentId, Store,
 };
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -20,13 +20,36 @@ struct ProjectsArgs {
     reverse: bool,
 }
 
+const TIME_FORMATS: &str = "a duration such as 30m, 12h, 7d, or 2w (that long ago), a date such as 2026-01-31, a local time such as 2026-01-31 14:30, or an RFC 3339 timestamp";
+
+fn since_property() -> Value {
+    json!({"type":"string","description":format!("Only sessions at or after this time: {TIME_FORMATS}.")})
+}
+
+fn until_property() -> Value {
+    json!({"type":"string","description":format!("Only sessions at or before this time: {TIME_FORMATS}. A bare date includes that whole local day.")})
+}
+
+fn limit_property(bounds: (usize, usize)) -> Value {
+    json!({"type":"integer","minimum":bounds.0,"maximum":bounds.1,"description":format!("Maximum results, {} to {}; values outside the range are clamped.", bounds.0, bounds.1)})
+}
+
+fn size_property(what: &str, bounds: (usize, usize)) -> Value {
+    json!({"type":"integer","minimum":bounds.0,"maximum":bounds.1,"description":format!("{what}, {} to {}; values outside the range are clamped.", bounds.0, bounds.1)})
+}
+
+fn agents_property() -> Value {
+    let ids: Vec<&str> = AgentId::ALL.iter().map(|a| a.as_str()).collect();
+    json!({"type":"array","items":{"type":"string"},"description":format!("Only these agents. Valid ids: {}.", ids.join(", "))})
+}
+
 fn tools() -> Value {
     json!([
-        {"name":"ronda_search","description":"Search indexed coding-agent sessions and return message references.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"agents":{"type":"array","items":{"type":"string"}},"since":{"type":"string"},"until":{"type":"string"},"limit":{"type":"integer"},"starred":{"type":"boolean"}},"required":["query"]}},
-        {"name":"ronda_list_sessions","description":"List recent sessions by project, agent, or time.","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"agents":{"type":"array","items":{"type":"string"}},"since":{"type":"string"},"until":{"type":"string"},"limit":{"type":"integer"},"starred":{"type":"boolean"},"reverse":{"type":"boolean"}}}},
-        {"name":"ronda_get_session","description":"Read a paginated transcript by session key or ronda:// reference; select an indexed child with subagent, or use * to list children.","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"subagent":{"type":"string"},"from_seq":{"type":"integer"},"max_messages":{"type":"integer"},"max_chars":{"type":"integer"},"max_message_chars":{"type":"integer"},"include_tools":{"type":"boolean"},"include_thinking":{"type":"boolean"}},"required":["key"]}},
-        {"name":"ronda_list_projects","description":"List indexed projects with session counts.","inputSchema":{"type":"object","properties":{"since":{"type":"string"},"limit":{"type":"integer"},"reverse":{"type":"boolean"}}}},
-        {"name":"ronda_insights","description":"Summarize coding sessions: where time went, agent failures, recurring errors, tech stack, and how sessions ended. since defaults to 30d; use all for all time.","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"since":{"type":"string"}}}},
+        {"name":"ronda_search","description":"Search indexed coding-agent sessions and return message references.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"agents":agents_property(),"since":since_property(),"until":until_property(),"limit":limit_property(query::SEARCH_LIMIT),"starred":{"type":"boolean"}},"required":["query"]}},
+        {"name":"ronda_list_sessions","description":"List recent sessions by project, agent, or time.","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"agents":agents_property(),"since":since_property(),"until":until_property(),"limit":limit_property(query::SESSIONS_LIMIT),"starred":{"type":"boolean"},"reverse":{"type":"boolean"}}}},
+        {"name":"ronda_get_session","description":"Read a paginated transcript by session key or ronda:// reference; select an indexed child with subagent, or use * to list children.","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"subagent":{"type":"string"},"from_seq":{"type":"integer","minimum":0,"description":"Message sequence number to start from."},"max_messages":size_property("Maximum messages to return", query::SHOW_MESSAGES),"max_chars":size_property("Maximum characters in the whole transcript", query::SHOW_CHARS),"max_message_chars":size_property("Maximum characters per message", query::SHOW_MESSAGE_CHARS),"include_tools":{"type":"boolean"},"include_thinking":{"type":"boolean"}},"required":["key"]}},
+        {"name":"ronda_list_projects","description":"List indexed projects with session counts.","inputSchema":{"type":"object","properties":{"since":since_property(),"limit":limit_property(query::PROJECTS_LIMIT),"reverse":{"type":"boolean"}}}},
+        {"name":"ronda_insights","description":"Summarize coding sessions: where time went, agent failures, recurring errors, tech stack, and how sessions ended. since defaults to 30d; use all for all time.","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"since":{"type":"string","description":format!("Start of the range, default 30d: all for all time, {TIME_FORMATS}.")}}}},
         {"name":"ronda_find_error","description":"Before fixing an error, check whether earlier sessions hit the same one and how they ended. Pass the error message or failing output.","inputSchema":{"type":"object","properties":{"error":{"type":"string"}},"required":["error"]}}
     ])
 }
@@ -272,6 +295,46 @@ mod tests {
             json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
         );
         assert!(no_reply.is_none());
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn tool_schemas_state_formats_ranges_and_agent_ids() {
+        let path = std::env::temp_dir().join(format!("ronda-mcp-schema-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let store = Store::open(&path).unwrap();
+        let list = reply(
+            &store,
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+        )
+        .unwrap();
+        let tools = list["result"]["tools"].as_array().unwrap();
+        let props = |name: &str| {
+            tools.iter().find(|t| t["name"] == name).unwrap()["inputSchema"]["properties"].clone()
+        };
+        let search = props("ronda_search");
+        assert_eq!(search["limit"]["minimum"], 1);
+        assert_eq!(search["limit"]["maximum"], 30);
+        let agents = search["agents"]["description"].as_str().unwrap();
+        for id in AgentId::ALL {
+            assert!(agents.contains(id.as_str()), "{agents}");
+        }
+        assert!(search["agents"].get("enum").is_none() && search["items"].is_null());
+        for field in ["since", "until"] {
+            let d = search[field]["description"].as_str().unwrap();
+            assert!(
+                d.contains("30m") && d.contains("2026-01-31") && d.contains("RFC 3339"),
+                "{d}"
+            );
+        }
+        let show = props("ronda_get_session");
+        assert_eq!(show["max_chars"]["minimum"], 200);
+        assert_eq!(show["max_chars"]["maximum"], 100_000);
+        assert_eq!(show["max_messages"]["maximum"], 200);
+        assert_eq!(show["max_message_chars"]["minimum"], 100);
+        assert_eq!(props("ronda_list_sessions")["limit"]["maximum"], 100);
+        assert_eq!(props("ronda_list_projects")["limit"]["maximum"], 200);
         drop(store);
         let _ = std::fs::remove_file(&path);
     }

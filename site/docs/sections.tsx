@@ -229,6 +229,7 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
           ["`--tools`, `--thinking`", "`include_tools`, `include_thinking`"],
         ] as const).map(([flag, argument]) => <tr key={flag}><td><Inline>{flag}</Inline></td><td><Inline>{argument}</Inline></td></tr>)}
       </tbody></table>
+      <P>The tool schemas list the accepted `since` and `until` formats, the allowed range of each `limit` and `max_*` argument, and the valid `agents` ids.</P>
       <P>Over MCP, a result starts with a note when a `limit` or `max_*` argument was clamped to its allowed range.</P>
       <P>An argument a tool does not define is rejected as an invalid parameter. Project names may start with a dot; a relative path such as `./x` is a usage error. Blank input lines on the MCP server are ignored.</P>
       <P>**Settings → Connect** shows the installed path and ready-to-copy setup for Claude Code, Codex, and other MCP clients, plus a command-line snippet to paste into AGENTS.md or CLAUDE.md. For Claude Code on macOS:</P>
