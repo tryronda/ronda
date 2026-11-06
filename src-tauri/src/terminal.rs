@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
     sync::{
         atomic::{AtomicU32, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
 };
 
@@ -23,7 +23,7 @@ struct Session {
 #[derive(Default)]
 pub struct Terminals {
     next: AtomicU32,
-    sessions: Mutex<HashMap<u32, Session>>,
+    sessions: Arc<Mutex<HashMap<u32, Session>>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -118,8 +118,13 @@ impl Terminals {
                 }
             }
         });
+        let sessions = Arc::clone(&self.sessions);
         std::thread::spawn(move || {
             let code = child.wait().ok().map(|status| status.exit_code());
+            // Release the PTY as soon as the child is gone; close() stays a no-op afterwards.
+            if let Ok(mut sessions) = sessions.lock() {
+                sessions.remove(&id);
+            }
             on_exit(TerminalEvent::Exit { code });
         });
         Ok(id)
@@ -195,6 +200,14 @@ mod tests {
         terminals.write(id, b"exit 3\n").unwrap();
         let TerminalEvent::Exit { code } = exit.recv_timeout(Duration::from_secs(10)).unwrap();
         assert_eq!(code, Some(3));
+        let start = Instant::now();
+        while !terminals.sessions.lock().unwrap().is_empty() {
+            assert!(
+                start.elapsed() < Duration::from_secs(2),
+                "exited session was not released"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
         terminals.close(id).unwrap();
     }
 }

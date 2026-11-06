@@ -10,6 +10,10 @@ All notable changes to Ronda are recorded here.
 - Find error history from a long tool output no longer opens with text over the 20,000 character limit.
 - Long thinking blocks are clamped with a Show all lines button like tool output.
 - The site's metadata lists macOS on Apple silicon as the only platform and gives every page's link card an image description.
+- Terminals whose command has exited release their pseudo-terminal right away instead of holding it until the tab is closed.
+- Exporting a session writes the file atomically, so a failed export no longer leaves a half-written file.
+- Remote sync gives up on unreachable hosts instead of hanging, ignores files that vanish mid-transfer, and shows rsync's error when a transfer fails.
+- Syncing a remote host no longer fails with an empty "SSH failed" message when the host lacks some of the session folders.
 
 ## [1.7.7] - 2026-11-06
 

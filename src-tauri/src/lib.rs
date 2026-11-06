@@ -880,7 +880,7 @@ async fn export_session(
 ) -> CommandResult<()> {
     off_main(state, move |state| {
         let output = session_markdown_for(state, &key, options.unwrap_or_default())?;
-        std::fs::write(destination, output).map_err(error)
+        write_export(Path::new(&destination), output.as_bytes())
     })
     .await
 }
@@ -1112,7 +1112,7 @@ fn sync_host(state: &Shared, host: &str) -> CommandResult<ScanReport> {
     }
     let home = remote_cache(host)?;
     let probe = format!(
-        "for p in {}; do test -e \"$HOME/$p\" && printf '%s\\n' \"$p\"; done",
+        "for p in {}; do test -e \"$HOME/$p\" && printf '%s\\n' \"$p\"; done; exit 0",
         REMOTE_PATHS
             .iter()
             .map(|p| shell_quote(p))
@@ -1158,13 +1158,30 @@ fn sync_host(state: &Shared, host: &str) -> CommandResult<ScanReport> {
             .to_path_buf();
         std::fs::create_dir_all(&local_parent).map_err(error)?;
         let remote = format!("{}:{}", host, shell_quote(relative));
-        let status = Command::new("rsync")
-            .args(["-a", "--delete", "-e", "ssh -o BatchMode=yes", &remote])
+        let output = Command::new("rsync")
+            .args([
+                "-a",
+                "--delete",
+                "-e",
+                "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3",
+                &remote,
+            ])
             .arg(&local_parent)
-            .status()
+            .output()
             .map_err(error)?;
-        if !status.success() {
-            let message = format!("rsync failed for {relative}");
+        // Exit 24: source files vanished mid-transfer, which is normal for live sessions.
+        if !output.status.success() && output.status.code() != Some(24) {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = stderr.trim();
+            let tail: String = {
+                let chars: Vec<char> = stderr.chars().collect();
+                chars[chars.len().saturating_sub(300)..].iter().collect()
+            };
+            let message = if tail.is_empty() {
+                format!("rsync failed for {relative}")
+            } else {
+                format!("rsync failed for {relative}: {}", tail.trim())
+            };
             state
                 .store
                 .lock()
@@ -2096,6 +2113,24 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
+    #[test]
+    fn write_export_writes_content_and_leaves_no_temporary_file() {
+        let root =
+            std::env::temp_dir().join(format!("ronda session export {}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let destination = root.join("session.md");
+        fs::write(&destination, "old").unwrap();
+        write_export(Path::new(destination.to_str().unwrap()), b"# Session\n").unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "# Session\n");
+        let names: Vec<_> = fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("session.md")]);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
     fn executable(path: &Path, body: &str) {
         fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
         fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
@@ -2128,7 +2163,14 @@ mod tests {
         std::env::set_var("RONDA_DB", &db);
         std::env::set_var("PATH", &bin);
         std::env::set_var("RONDA_FAKE_REMOTE_HOME", &remote);
-        executable(&bin.join("ssh"), "printf '.claude/projects\\n'");
+        let probe_home = root.join("probe home");
+        fs::create_dir_all(probe_home.join(".claude/projects")).unwrap();
+        std::env::set_var("RONDA_FAKE_PROBE_HOME", &probe_home);
+        // Runs the probe for real; the host lacks every path after .claude/projects.
+        executable(
+            &bin.join("ssh"),
+            "for last; do :; done\nHOME=\"$RONDA_FAKE_PROBE_HOME\" /bin/sh -c \"$last\"",
+        );
         executable(&bin.join("rsync"), "for last; do :; done\n/bin/cp -R \"$RONDA_FAKE_REMOTE_HOME/.claude/projects\" \"$last/\"");
         let state = Arc::new(AppState {
             store: Mutex::new(Store::open(&db).unwrap()),
@@ -2171,6 +2213,31 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("authentication failed"));
+        // Vanished source files (rsync exit 24) are not a failure.
+        executable(
+            &bin.join("ssh"),
+            "for last; do :; done\nHOME=\"$RONDA_FAKE_PROBE_HOME\" /bin/sh -c \"$last\"",
+        );
+        executable(&bin.join("rsync"), "exit 24");
+        sync_host(&state, "box").unwrap();
+        // Other failures surface rsync's stderr, and ssh gets connection timeouts.
+        let args_file = root.join("rsync-args");
+        std::env::set_var("RONDA_FAKE_RSYNC_ARGS", &args_file);
+        executable(
+            &bin.join("rsync"),
+            "printf '%s\\n' \"$@\" > \"$RONDA_FAKE_RSYNC_ARGS\"\necho boom >&2\nexit 23",
+        );
+        let failure = sync_host(&state, "box").unwrap_err();
+        assert!(failure.contains("boom"), "{failure}");
+        assert!(state.store.lock().unwrap().remote_hosts().unwrap()[0]
+            .3
+            .as_deref()
+            .unwrap()
+            .contains("boom"));
+        let args = fs::read_to_string(&args_file).unwrap();
+        assert!(args.contains("ConnectTimeout=10"), "{args}");
+        assert!(args.contains("ServerAliveInterval=15"), "{args}");
+        std::env::remove_var("RONDA_FAKE_RSYNC_ARGS");
         fs::remove_file(bin.join("ssh")).unwrap();
         assert!(sync_host(&state, "box").is_err());
         if let Some(value) = old_db {
@@ -2184,6 +2251,7 @@ mod tests {
             std::env::remove_var("PATH");
         }
         std::env::remove_var("RONDA_FAKE_REMOTE_HOME");
+        std::env::remove_var("RONDA_FAKE_PROBE_HOME");
         drop(state);
         fs::remove_dir_all(root).unwrap();
     }
