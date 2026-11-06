@@ -350,3 +350,23 @@ fn find_error_says_when_history_is_truncated() {
     assert_eq!(text.matches("- ronda://session/").count(), 20, "{text}");
     assert!(text.contains("… and 1 more\n"), "{text}");
 }
+
+#[test]
+fn dot_named_projects_resolve_and_relative_paths_are_usage_errors() {
+    let db = db();
+    seed(&db, "dot", "/home/u/.dotfiles", 1_760_000_000_000);
+    let o = cli(&db, &["sessions", "--project", ".dotfiles"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert!(out(&o).contains("Title dot"), "{}", out(&o));
+    for bad in ["./x", "..", ".", "../x"] {
+        for args in [
+            vec!["sessions", "--project", bad],
+            vec!["search", "x", "--project", bad],
+            vec!["insights", "--project", bad],
+        ] {
+            let o = cli(&db, &args);
+            assert_eq!(o.status.code(), Some(2), "{args:?}: {}", stderr(&o));
+            assert!(stderr(&o).contains("project path must be absolute"));
+        }
+    }
+}

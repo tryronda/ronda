@@ -244,6 +244,7 @@ fn run() -> Result<String, (u8, String)> {
                 return Err((2, "search needs a query".into()));
             }
             query::validate_search_text(&words.join(" ")).map_err(|e| (2, e.to_string()))?;
+            query::validate_project(filter.project.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_agents(&filter.agents).map_err(|e| (2, e.to_string()))?;
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
@@ -261,6 +262,7 @@ fn run() -> Result<String, (u8, String)> {
         }
         "sessions" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
+            query::validate_project(filter.project.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_agents(&filter.agents).map_err(|e| (2, e.to_string()))?;
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
@@ -310,6 +312,7 @@ fn run() -> Result<String, (u8, String)> {
             {
                 return Err((2, "insights only accepts --project and --since".into()));
             }
+            query::validate_project(filter.project.as_deref()).map_err(|e| (2, e.to_string()))?;
             if filter.since.as_deref() != Some("all") {
                 query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             }

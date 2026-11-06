@@ -42,6 +42,7 @@ fn parsed<T: DeserializeOwned>(args: Value) -> Result<T, CallError> {
 
 fn validate_filter(a: &ListArgs) -> Result<(), CallError> {
     let invalid = |e: anyhow::Error| CallError::Invalid(e.to_string());
+    query::validate_project(a.project.as_deref()).map_err(invalid)?;
     query::validate_agents(&a.agents).map_err(invalid)?;
     query::validate_since(a.since.as_deref()).map_err(invalid)?;
     query::validate_until(a.until.as_deref()).map_err(invalid)
@@ -103,6 +104,8 @@ fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
         }
         "ronda_insights" => {
             let a: InsightsArgs = parsed(args)?;
+            query::validate_project(a.project.as_deref())
+                .map_err(|e| CallError::Invalid(e.to_string()))?;
             if a.since.as_deref() != Some("all") {
                 query::validate_since(a.since.as_deref())
                     .map_err(|e| CallError::Invalid(e.to_string()))?;
@@ -252,6 +255,9 @@ mod tests {
             ("ronda_search", json!({"query": "x", "agents": ["nope"]})),
             ("ronda_search", json!({"query": "x", "agent": "codex"})),
             ("ronda_list_projects", json!({"project": "/p"})),
+            ("ronda_list_sessions", json!({"project": "./x"})),
+            ("ronda_search", json!({"query": "x", "project": ".."})),
+            ("ronda_insights", json!({"project": "../x"})),
             ("unknown_tool", json!({})),
         ] {
             let response = reply(&store, json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).unwrap();

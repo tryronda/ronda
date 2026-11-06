@@ -172,13 +172,27 @@ pub fn validate_since(raw: Option<&str>) -> Result<()> {
     since_ms(raw).map(|_| ())
 }
 
+/// Rejects relative paths. Names that merely start with a dot, such as `.dotfiles`, are fine.
+pub fn validate_project(project: Option<&str>) -> Result<()> {
+    let Some(project) = project else {
+        return Ok(());
+    };
+    let relative = project == "."
+        || project == ".."
+        || ["./", "../", ".\\", "..\\"]
+            .iter()
+            .any(|prefix| project.starts_with(prefix));
+    if relative {
+        return Err(anyhow!("project path must be absolute, or a project name"));
+    }
+    Ok(())
+}
+
 fn project_paths(store: &Store, project: Option<&str>) -> Result<Option<Vec<String>>> {
     let Some(project) = project else {
         return Ok(None);
     };
-    if project.starts_with('.') {
-        return Err(anyhow!("project path must be absolute, or a project name"));
-    }
+    validate_project(Some(project))?;
     let projects = store.projects()?;
     let mut matches = Vec::new();
     if Path::new(project).is_absolute() {
