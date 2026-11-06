@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Intelligence no longer shows “1 session” under “How sessions end” when no session has an outcome.
+
 ## [1.7.2] - 2026-11-06
 
 ### Changed

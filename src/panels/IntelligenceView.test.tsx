@@ -89,3 +89,17 @@ test("shows every recurring error and stack row and copies a Markdown summary", 
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("denied");
   await act(async () => { root.unmount(); });
 });
+
+test("shows the real session total and an empty state when no session has an outcome", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  invoke.mockImplementation(async (command: string) => command === "list_projects" ? [{ path: "/repo" }] : { ...report, totals: { ...report.totals, sessions: 3 }, outcomes: [] });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<IntelligenceView />); });
+  const head = Array.from(host.querySelectorAll("h2")).find(h => h.textContent === "How sessions end")!.parentElement!;
+  expect(head.textContent).toContain("0 sessions");
+  expect(head.textContent).not.toContain("1 session");
+  expect(head.parentElement!.querySelector(".panel-empty")?.textContent).toBe("Nothing in this range.");
+  await act(async () => { root.unmount(); });
+});
