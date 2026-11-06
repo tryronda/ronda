@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Performance
+- Session dates in the library reuse two date formatters instead of building one per row.
+
 ## [1.7.6] - 2026-11-06
 
 ### Changed
