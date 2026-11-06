@@ -291,6 +291,7 @@ fn finish(
     }
     let name = explicit_title
         .filter(|s| !s.trim().is_empty())
+        .map(|s| crate::adapter::tidy_title(&s))
         .unwrap_or_else(|| title(&messages));
     let last_message = messages
         .iter()
@@ -1090,6 +1091,30 @@ mod tests {
         rows(&path, |v| seen.push(v["n"].as_i64().unwrap())).unwrap();
         assert_eq!(seen, vec![1, 2]);
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn multi_line_stored_title_shows_first_line() {
+        let h = home();
+        put(
+            &h,
+            ".grok/sessions/project/grok-ml/summary.json",
+            "{\"info\":{\"cwd\":\"/tmp/grok\"},\"generated_title\":\"Line one\\nLine two\"}",
+        );
+        put(
+            &h,
+            ".grok/sessions/project/grok-ml/updates.jsonl",
+            "{\"timestamp\":1700000000,\"params\":{\"update\":{\"sessionUpdate\":\"user_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Hi\"}}}}\n",
+        );
+        let adapter = adapters()
+            .into_iter()
+            .find(|a| a.agent() == AgentId::Grok)
+            .unwrap();
+        let root = adapter.roots(&h).remove(0);
+        let found = adapter.discover(&root).unwrap();
+        let parsed = adapter.parse(&found[0]).unwrap().unwrap();
+        assert_eq!(parsed.meta.title, "Line one");
+        let _ = fs::remove_dir_all(&h);
     }
 
     fn put(home: &Path, rel: &str, content: &str) -> PathBuf {

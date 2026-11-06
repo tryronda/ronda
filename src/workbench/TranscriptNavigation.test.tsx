@@ -70,6 +70,7 @@ test("scopes shortcuts, wraps matches, opens tools, preserves refresh, and close
     expect(host.querySelector('input[type="search"]')).toBeNull();
     active=false;await render();expect((await key(scope.current!,"f",{ctrlKey:true})).defaultPrevented).toBe(false);
     expect(host.querySelector('[aria-label="Transcript navigation"]')?.classList.contains("hidden")).toBe(true);
+    expect(host.querySelector('[role="group"][aria-label="Transcript navigation"]')).not.toBeNull();
   } finally {await act(async()=>root.unmount());host.remove();}
 });
 

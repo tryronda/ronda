@@ -172,7 +172,8 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
     [t.recurring, data?.totals.recurring_bugs ?? 0, n => Math.round(n).toLocaleString()],
   ];
   const maxFailure = Math.max(1, ...(data?.failures.map(f => f.sessions) ?? []));
-  const outcomeTotal = Math.max(1, data?.outcomes.reduce((sum, o) => sum + o.sessions, 0) ?? 0);
+  const outcomeTotal = data?.outcomes.reduce((sum, o) => sum + o.sessions, 0) ?? 0;
+  const outcomeDivisor = Math.max(1, outcomeTotal);
 
   return <div className="ronda-panel insights-panel intel-panel">
     {header}{controls}
@@ -252,13 +253,13 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
 
         <section className="panel-card">
           <div className="panel-section-head"><h2>{t.outcomes}</h2><span>{t.sessionsCount(outcomeTotal)}</span></div>
-          <ul className="intel-outcomes">
+          {data.outcomes.length ? <ul className="intel-outcomes">
             {data.outcomes.map((row, index) => <li key={row.outcome}>
-              <strong>{Math.round(row.sessions / outcomeTotal * 100)}%</strong>
-              <div className="intel-outcome-track"><motion.div style={{ background: tone[row.outcome] }} {...grow(row.sessions / outcomeTotal * 100, index * 0.05)} /></div>
+              <strong>{Math.round(row.sessions / outcomeDivisor * 100)}%</strong>
+              <div className="intel-outcome-track"><motion.div style={{ background: tone[row.outcome] }} {...grow(row.sessions / outcomeDivisor * 100, index * 0.05)} /></div>
               <span>{row.label}</span><small>{t.sessionsCount(row.sessions)} · {hours(row.active_ms)}</small>
             </li>)}
-          </ul>
+          </ul> : <p className="panel-empty">{t.none}</p>}
         </section>
       </div>
     </>}

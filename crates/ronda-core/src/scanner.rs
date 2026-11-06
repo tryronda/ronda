@@ -75,19 +75,24 @@ impl Scanner {
             .unwrap_or_default();
         let mut locations = Vec::new();
         for adapter in &self.adapters {
-            for (root, is_custom) in adapter
-                .roots(&self.home)
+            let defaults = adapter.roots(&self.home);
+            let extra: Vec<PathBuf> = custom
+                .get(adapter.agent().as_str())
                 .into_iter()
+                .flatten()
+                .filter(|root| !defaults.contains(root))
+                .cloned()
+                .collect();
+            let mut seen = HashSet::new();
+            for (root, is_custom) in defaults
+                .iter()
+                .cloned()
                 .map(|root| (root, false))
-                .chain(
-                    custom
-                        .get(adapter.agent().as_str())
-                        .into_iter()
-                        .flatten()
-                        .cloned()
-                        .map(|root| (root, true)),
-                )
+                .chain(extra.into_iter().map(|root| (root, true)))
             {
+                if !seen.insert(root.clone()) {
+                    continue;
+                }
                 let path = root.to_string_lossy().into_owned();
                 locations.push(Location {
                     agent: adapter.agent().as_str().into(),
@@ -322,5 +327,41 @@ pub fn session_key(agent: &str, host: Option<&str>, id: &str) -> String {
     match host {
         Some(host) => format!("{agent}:{host}:{id}"),
         None => format!("{agent}:{id}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_root_matching_a_default_is_listed_once() {
+        let home = std::env::temp_dir().join(format!("ronda-loc-{}", std::process::id()));
+        let scanner = Scanner::new(home.clone());
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        let adapter = &scanner.adapters[0];
+        let agent = adapter.agent().as_str().to_owned();
+        let default = adapter.roots(&home).remove(0);
+        let extra = home.join("elsewhere");
+        let prefs = HashMap::from([(agent.clone(), vec![default.clone(), extra.clone(), extra])]);
+        store
+            .pref_set("custom_roots", &serde_json::to_string(&prefs).unwrap())
+            .unwrap();
+        let path = default.to_string_lossy();
+        let locations: Vec<_> = scanner
+            .locations(&store)
+            .unwrap()
+            .into_iter()
+            .filter(|l| l.agent == agent && l.path == path)
+            .collect();
+        assert_eq!(locations.len(), 1);
+        assert!(!locations[0].custom);
+        let custom_count = scanner
+            .locations(&store)
+            .unwrap()
+            .iter()
+            .filter(|l| l.agent == agent && l.custom)
+            .count();
+        assert_eq!(custom_count, 1);
     }
 }

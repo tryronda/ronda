@@ -4,6 +4,22 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-11-06
+
+### Changed
+- The docs list every MCP argument next to its `ronda-cli` flag and describe the empty-index, dot-named-project, and blank-line behaviour.
+
+### Fixed
+- Sessions with a multi-line stored title, such as from Grok, OpenCode, or Hermes, show only its first line.
+- Settings → Locations no longer lists a folder twice when a custom location matches a default one.
+- Intelligence no longer shows “1 session” under “How sessions end” when no session has an outcome.
+- Insights activity tooltips and the chart label say “1 prompt” or “N prompts” instead of “1 Prompts”.
+- Screen readers announce starred and pinned sessions in the list and the transcript navigation toolbar.
+- `ronda-mcp` rejects unknown argument names as invalid parameters instead of silently ignoring them.
+- `ronda-mcp` ignores blank input lines instead of replying with a parse error.
+- `--project` and MCP `project` accept names that start with a dot, such as `.dotfiles`, and relative paths are a usage error.
+- `ronda-cli index` indexes an existing but empty database instead of saying it already exists, and lists the first scan errors.
+
 ## [1.7.2] - 2026-11-06
 
 ### Changed

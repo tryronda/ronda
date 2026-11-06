@@ -42,6 +42,8 @@ function shortNumber(value: number) {
 type Cell = { key: string; count: number; placeholder?: boolean };
 
 /** Plain-language facts about the heatmap for screen readers; cells are ordered oldest to newest. */
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 export function heatmapSummary(calendar: Cell[]): string {
   const days = calendar.filter(cell => !cell.placeholder);
   if (!days.length) return 'No activity data.';
@@ -54,7 +56,6 @@ export function heatmapSummary(calendar: Cell[]): string {
     run = day.count > 0 ? run + 1 : 0;
     longest = Math.max(longest, run);
   }
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   return `${plural(active.length, 'active day')} from ${range}. Busiest day: ${busiest.key} with ${plural(busiest.count, 'prompt')}. Longest streak: ${plural(longest, 'day')}.`;
 }
 
@@ -160,10 +161,10 @@ export function InsightsView({ active = true }: { active?: boolean }) {
     {!data?.sessions && !error && <p className="panel-empty">{t.empty}</p>}
     <section className="panel-card">
       <div className="panel-section-head"><h2>{t.activity}</h2><span>{t.lastYear}</span></div>
-      <div className="heatmap-scroll"><div className="heatmap" role="img" aria-label={`${t.activity}: ${yearPrompts} ${t.prompts}`}>
+      <div className="heatmap-scroll"><div className="heatmap" role="img" aria-label={`${t.activity}: ${plural(yearPrompts, 'prompt')}`}>
         {calendar.map(cell => <span key={cell.key} className={`heat-cell ${cell.placeholder ? 'heat-pad' : ''}`}
           data-level={cell.count === 0 ? 0 : cell.count < 2 ? 1 : cell.count < 4 ? 2 : cell.count < 8 ? 3 : 4}
-          title={cell.placeholder ? undefined : `${cell.key}: ${cell.count} ${t.prompts}`} />)}
+          title={cell.placeholder ? undefined : `${cell.key}: ${plural(cell.count, 'prompt')}`} />)}
       </div></div>
       <p className="panel-help" style={{ margin: '10px 0 0' }} data-testid="heatmap-summary">{heatmapSummary(calendar)}</p>
       <div className="heat-legend"><span>{t.less}</span>{[0, 1, 2, 3, 4].map(n => <i key={n} data-level={n} />)}<span>{t.more}</span></div>
