@@ -866,15 +866,26 @@ impl Store {
         let mut hours = [0usize; 24];
         let mut prompts = 0;
         let mut tokens = 0;
+        let mut written = HashMap::<String, Vec<Option<i64>>>::new();
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT session_key, json_extract(payload,'$.timestamp') FROM messages \
+                 WHERE json_extract(payload,'$.role')='user' \
+                 AND json_extract(payload,'$.kind')='text' ORDER BY session_key, seq",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+            })?;
+            for row in rows {
+                let (key, timestamp) = row?;
+                written.entry(key).or_default().push(timestamp);
+            }
+        }
         for session in &sessions {
-            let messages = self.get_transcript(&session.key)?;
-            let written = |m: &&crate::TranscriptMessage| {
-                matches!(m.role, crate::Role::User) && matches!(m.kind, crate::MessageKind::Text)
-            };
-            let count = messages.iter().filter(written).count();
-            for message in messages.iter().filter(written) {
-                let time = message
-                    .timestamp
+            let stamps = written.remove(&session.key).unwrap_or_default();
+            let count = stamps.len();
+            for timestamp in stamps {
+                let time = timestamp
                     .and_then(chrono::DateTime::from_timestamp_millis)
                     .or_else(|| chrono::DateTime::from_timestamp_millis(session.updated_at));
                 if let Some(time) = time {
@@ -882,7 +893,7 @@ impl Store {
                     *activity
                         .entry(local.format("%Y-%m-%d").to_string())
                         .or_default() += 1;
-                    if message.timestamp.is_some() {
+                    if timestamp.is_some() {
                         hours[local.format("%H").to_string().parse::<usize>()?] += 1;
                     }
                 }
@@ -1747,6 +1758,47 @@ mod search_tests {
         assert_eq!(insights.prompts, 1);
         assert_eq!(insights.agents[0].prompts, 1);
         assert_eq!(insights.activity.iter().map(|(_, n)| n).sum::<usize>(), 1);
+    }
+
+    #[test]
+    fn insights_mix_kinds_and_missing_timestamps() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        seeded_session(
+            &mut store,
+            "a",
+            "/repo",
+            86_400_000 * 10,
+            &[
+                crate::MessageKind::Text,
+                crate::MessageKind::Meta,
+                crate::MessageKind::Text,
+                crate::MessageKind::CompactSummary,
+            ],
+        );
+        let stamp = 86_400_000i64 * 3 + 12 * 3_600_000;
+        let mut parsed = crate::ParsedSession {
+            meta: store.get_session("a").unwrap().unwrap(),
+            messages: store.get_transcript("a").unwrap(),
+        };
+        parsed.messages[0].timestamp = Some(stamp);
+        parsed.messages[1].timestamp = Some(stamp);
+        store.upsert(&parsed, "fixture").unwrap();
+        let insights = store.insights().unwrap();
+        let local = |ms: i64| {
+            chrono::DateTime::from_timestamp_millis(ms)
+                .unwrap()
+                .with_timezone(&chrono::Local)
+        };
+        assert_eq!(insights.prompts, 2);
+        assert_eq!(insights.hours.iter().map(|(_, n)| n).sum::<usize>(), 1);
+        let hour: usize = local(stamp).format("%H").to_string().parse().unwrap();
+        assert_eq!(insights.hours[hour].1, 1);
+        let mut expected = vec![
+            (local(stamp).format("%Y-%m-%d").to_string(), 1),
+            (local(86_400_000 * 10).format("%Y-%m-%d").to_string(), 1),
+        ];
+        expected.sort();
+        assert_eq!(insights.activity, expected);
     }
 
     #[test]

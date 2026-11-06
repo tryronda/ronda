@@ -81,12 +81,17 @@ test("shows every recurring error and stack row and copies a Markdown summary", 
   const text = writeText.mock.calls[0][0];
   expect(text).toContain("- Range: 30 days");
   expect(text).toContain("- Project: All projects");
-  expect(text).toContain("bad \\| pipe line");
+  expect(text).toMatch(/^- bad \| pipe line · 2 sessions · claude-code, codex · last seen \d{4}-\d\d-\d\d \d\d:\d\d:\d\d · came back after a committed fix$/m);
+  expect(text).toContain("· came back after a committed fix");
+  expect(text).toContain("  - ronda://session/claude-code:a#3 · Fix reindex");
+  expect(text).toContain("- Edit loop: 1 session\n  - ronda://session/codex:b#9 · Add import");
+  expect(text.split("\n").some(line => line.startsWith("|"))).toBe(false);
   expect(text).toContain("Error 10");
-  for (const heading of ["## Where time goes (excluding recovery)", "## How sessions end", "## Agent failures", "## Recurring errors", "## Stack"]) expect(text).toContain(heading);
+  for (const heading of ["## Where time goes (excluding recovery)", "## How sessions end", "## Agent failures", "## Recurring errors", "## Stack (share of sessions with tool calls)"]) expect(text).toContain(heading);
   expect(text).not.toContain("| Recovering from failing commands |");
-  expect(text).toContain("| committed | 3 | 50 min |");
-  expect(text).toContain("| Tech0 | 10% | 1 |");
+  expect(text).toContain("- Fixing bugs: 1.0 h · 2 sessions");
+  expect(text).toContain("- committed: 3 sessions · 50 min");
+  expect(text).toContain("- Tech0: 10% · 1 session\n");
   expect(host.querySelector('[role="status"]')?.textContent).toBe("Summary copied");
 
   writeText.mockRejectedValueOnce(new Error("denied"));
