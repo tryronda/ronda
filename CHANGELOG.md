@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- `ronda-mcp` rejects unknown argument names as invalid parameters instead of silently ignoring them.
+
 ## [1.7.2] - 2026-11-06
 
 ### Changed

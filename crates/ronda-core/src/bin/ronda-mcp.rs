@@ -47,10 +47,32 @@ fn validate_filter(a: &ListArgs) -> Result<(), CallError> {
     query::validate_until(a.until.as_deref()).map_err(invalid)
 }
 
+fn reject_unknown_arguments(name: &str, args: &Value) -> Result<(), CallError> {
+    let roster = tools();
+    let Some(properties) = roster
+        .as_array()
+        .and_then(|all| all.iter().find(|t| t["name"] == name))
+        .and_then(|t| t["inputSchema"]["properties"].as_object())
+    else {
+        return Ok(());
+    };
+    let Some(given) = args.as_object() else {
+        return Ok(());
+    };
+    match given.keys().find(|k| !properties.contains_key(*k)) {
+        Some(unknown) => Err(CallError::Invalid(format!(
+            "unknown argument `{unknown}`; valid: {}",
+            properties.keys().cloned().collect::<Vec<_>>().join(", ")
+        ))),
+        None => Ok(()),
+    }
+}
+
 fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
     if !args.is_object() {
         return Err(CallError::Invalid("arguments must be an object".into()));
     }
+    reject_unknown_arguments(name, &args)?;
     match name {
         "ronda_search" => {
             let a: SearchArgs = parsed(args)?;
@@ -222,10 +244,19 @@ mod tests {
             ("ronda_list_sessions", json!({"agents": ["nope"]})),
             ("ronda_search", json!({"query": "x", "until": "30x"})),
             ("ronda_search", json!({"query": "x", "agents": ["nope"]})),
+            ("ronda_search", json!({"query": "x", "agent": "codex"})),
+            ("ronda_list_projects", json!({"project": "/p"})),
             ("unknown_tool", json!({})),
         ] {
             let response = reply(&store, json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).unwrap();
             assert_eq!(response["error"]["code"], -32602);
+        }
+        for (name, arguments) in [
+            ("ronda_search", json!({"query": "x", "agents": ["codex"]})),
+            ("ronda_list_projects", json!({"limit": 3})),
+        ] {
+            let ok = reply(&store, json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).unwrap();
+            assert!(ok.get("error").is_none(), "{ok}");
         }
         let missing = reply(&store, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ronda_get_session","arguments":{}}})).unwrap();
         assert_eq!(missing["result"]["isError"], true);
