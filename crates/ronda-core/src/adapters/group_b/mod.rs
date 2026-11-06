@@ -1265,9 +1265,10 @@ mod tests {
                 AgentId::Kimi,
                 ".kimi-code/sessions/wd_a/session_e-1/agents/main/wire.jsonl",
             ),
+            (AgentId::Dsh, ".dsh/sessions/p/e-1/session.jsonl"),
         ];
         let header_only = |agent: AgentId| match agent {
-            AgentId::Pi | AgentId::Omp => {
+            AgentId::Pi | AgentId::Omp | AgentId::Dsh => {
                 "{\"type\":\"session\",\"id\":\"e-1\",\"cwd\":\"/tmp/e\"}\n"
             }
             AgentId::Gemini => "{\"sessionId\":\"e\",\"startTime\":\"2026-01-01T00:00:00Z\"}\n",
