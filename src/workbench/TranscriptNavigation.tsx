@@ -116,7 +116,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
     target.scrollIntoView({ block: "start", behavior: reducedMotion ? "instant" : "smooth" });
   };
   const setAllDetails = (value: boolean) => container.current?.querySelectorAll("details").forEach(details => { details.open = value; });
-  return <div hidden={!active} className={`${active ? "flex" : "hidden"} flex-none flex-wrap items-center gap-3 border-b border-border px-5 py-2 text-[13px]`} aria-label="Transcript navigation">
+  return <div hidden={!active} className={`${active ? "flex" : "hidden"} flex-none flex-wrap items-center gap-3 border-b border-border px-5 py-2 text-[13px]`} role="group" aria-label="Transcript navigation">
     <button ref={toggle} type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>Find in transcript</button>
     <button type="button" onClick={() => edge(false)}>First message</button>
     <button type="button" onClick={() => edge(true)}>Last message</button>

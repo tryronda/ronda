@@ -72,6 +72,22 @@ test("Continue reading is an explicit jump to the current exact anchor", async (
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
+test("starred and pinned sessions are announced in the list", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const marked = { ...session, starred: true, pinned: true };
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [marked], listProjects: async () => [],
+    getSession: async () => marked, getTranscript: async () => [], onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [marked].slice(offset, offset + limit), total: 1, offset, limit });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    const card = host.querySelector(".session-card")!;
+    expect(card.querySelector('[role="img"][aria-label="Starred"]')).not.toBeNull();
+    expect(card.querySelector('[role="img"][aria-label="Pinned"]')).not.toBeNull();
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
 test("a stale saved anchor reports its state and never moves the transcript", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const transcript: TranscriptMessage[] = [{ seq: 8, role: "assistant", kind: "text", text: "Changed message",
