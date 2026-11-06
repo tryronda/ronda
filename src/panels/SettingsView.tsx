@@ -47,7 +47,7 @@ const copy = {
   copy: 'Copy', copied: 'Copied', index: 'Index database', refresh: 'Rebuild index',
   dataHelp: 'Re-read local agent files and refresh Ronda’s searchable index. The result does not include remote sync health.',
   updateHelp: 'Check the latest release only when you ask.', check: 'Check for updates',
-  latest: 'Open latest release', noRelease: 'No public release found.',
+  latest: 'Open latest release', noRelease: 'Ronda is up to date.',
   aboutText: 'A local library for coding-agent sessions. Agent files stay on your computer.',
   version: 'Version', saved: 'Saved', synced: 'Host synced',
   loading: 'Loading settings…', working: 'Working…',
