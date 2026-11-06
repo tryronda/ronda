@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The docs explain how `--project` finds a project, list the allowed size ranges, and describe the new `show` hints and clamp notes.
+
 ### Fixed
 - The transcript header and library rows show the full title and project path on hover when they are shortened.
 - Intelligence's project picker tells apart folders with the same name and shows the full path on hover.
