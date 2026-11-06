@@ -219,7 +219,7 @@ impl AgentAdapter for FileAdapter {
                         && !m.text.trim().is_empty()
                 })
                 .map(|m| crate::adapter::fallback_title(&m.text))
-                .unwrap_or_else(|| source.native_id.clone());
+                .unwrap_or_else(|| "Untitled session".to_owned());
         }
         if parsed.title.contains('\n') {
             parsed.title = crate::adapter::fallback_title(&parsed.title);
@@ -1360,6 +1360,18 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(parsed.meta.title, "Fix the build");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn promptless_session_is_titled_untitled_session() {
+        let data = "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}\n";
+        let (root, sources) = fixture(AgentId::ClaudeCode, "slug/s-promptless.jsonl", data);
+        let parsed = FileAdapter(AgentId::ClaudeCode)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.meta.title, "Untitled session");
         fs::remove_dir_all(root).unwrap();
     }
 

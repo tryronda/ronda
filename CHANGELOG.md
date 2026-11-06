@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Sessions without a written prompt are titled “Untitled session” for every agent instead of showing an id.
+
 ### Fixed
 - Qoder sessions titled from a prompt use its first line, so titles never span several lines.
 
