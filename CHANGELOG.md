@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- The site's metadata lists macOS on Apple silicon as the only platform and gives every page's link card an image description.
+
 ## [1.7.7] - 2026-11-06
 
 ### Changed
