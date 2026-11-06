@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- `show` and `ronda_get_session` mark tool calls that failed.
+
 ### Fixed
 - Intelligence, `ronda-cli insights`, and project overviews list tied recurring errors in a stable order.
 

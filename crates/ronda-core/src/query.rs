@@ -646,6 +646,9 @@ pub fn get_session_for(store: &Store, args: &ShowArgs, surface: Surface) -> Resu
         }
         for tool in m.tool_calls.iter().take(40) {
             body.push_str(&format!("\n- 🔧 {}", tool.name));
+            if tool.is_error {
+                body.push_str(" (failed)");
+            }
             if let Some(input) = &tool.input {
                 body.push_str(&format!(
                     ": {}",
@@ -1419,6 +1422,49 @@ mod tests {
             })
             .collect();
         db.upsert(&session, "fixture").unwrap();
+    }
+    #[test]
+    fn show_marks_failed_tool_calls_on_both_surfaces() {
+        let path = std::env::temp_dir().join(format!("ronda-failed-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        show_fixture(&mut db, "codex:f", &["run it"]);
+        let mut session = ParsedSession {
+            meta: db.get_session("codex:f").unwrap().unwrap(),
+            messages: Vec::new(),
+        };
+        let call = |id: &str, name: &str, is_error: bool| crate::ToolCall {
+            id: id.into(),
+            name: name.into(),
+            input: Some("{}".into()),
+            output: None,
+            is_error,
+        };
+        session.messages.push(TranscriptMessage {
+            seq: 0,
+            role: Role::Assistant,
+            kind: MessageKind::Text,
+            text: "ran".into(),
+            timestamp: None,
+            model: None,
+            thinking: None,
+            tool_calls: vec![call("1", "Bash", true), call("2", "Read", false)],
+            images: Vec::new(),
+        });
+        db.upsert(&session, "fixture").unwrap();
+        let args = ShowArgs {
+            key: "codex:f".into(),
+            ..Default::default()
+        };
+        for out in [
+            get_session_for(&db, &args, Surface::Cli).unwrap(),
+            get_session(&db, &args).unwrap(),
+        ] {
+            assert!(out.contains("- 🔧 Bash (failed): {}"), "{out}");
+            assert!(out.contains("- 🔧 Read: {}"), "{out}");
+            assert!(!out.contains("Read (failed)"), "{out}");
+        }
+        let _ = std::fs::remove_file(&path);
     }
     #[test]
     fn show_hints_name_the_surface_that_shows_them() {
