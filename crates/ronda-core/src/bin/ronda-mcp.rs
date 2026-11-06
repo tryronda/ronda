@@ -265,17 +265,25 @@ fn run() -> Result<(), (u8, String)> {
             ),
         )
     })?;
-    let stdin = io::stdin();
-    let mut stdout = io::stdout().lock();
-    for line in stdin.lock().lines() {
-        let line = line.map_err(|e| (1, e.to_string()))?;
-        if let Some(response) = handle_line(&store, &line) {
-            serde_json::to_writer(&mut stdout, &response).map_err(|e| (1, e.to_string()))?;
-            stdout.write_all(b"\n").map_err(|e| (1, e.to_string()))?;
-            stdout.flush().map_err(|e| (1, e.to_string()))?;
+    serve(&store, io::stdin().lock(), io::stdout().lock()).map_err(|e| (1, e.to_string()))
+}
+
+/// Reads newline-delimited JSON-RPC from `input`, writing replies to `output`. Invalid UTF-8
+/// is decoded lossily so a bad line gets a parse error instead of ending the server.
+fn serve(store: &Store, mut input: impl BufRead, mut output: impl Write) -> io::Result<()> {
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        if input.read_until(b'\n', &mut buf)? == 0 {
+            return Ok(());
+        }
+        let line = String::from_utf8_lossy(&buf);
+        if let Some(response) = handle_line(store, &line) {
+            serde_json::to_writer(&mut output, &response).map_err(io::Error::from)?;
+            output.write_all(b"\n")?;
+            output.flush()?;
         }
     }
-    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -291,6 +299,29 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn invalid_utf8_line_gets_a_parse_error_and_the_loop_continues() {
+        let path = std::env::temp_dir().join(format!("ronda-mcp-utf8-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let store = Store::open(&path).unwrap();
+        let mut input = b"\xff\xfe\n".to_vec();
+        input.extend_from_slice(br#"{"jsonrpc":"2.0","id":7,"method":"ping"}"#);
+        input.push(b'\n');
+        let mut out = Vec::new();
+        serve(&store, &input[..], &mut out).unwrap();
+        let lines: Vec<Value> = String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0]["error"]["code"], -32700);
+        assert_eq!(lines[1]["id"], 7);
+        assert_eq!(lines[1]["result"], json!({}));
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn handshake_and_tool_roster() {
         let path = std::env::temp_dir().join(format!("ronda-mcp-test-{}.db", std::process::id()));
