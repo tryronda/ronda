@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Intelligence shows the selected project in its picker even when the project has only archived sessions.
+
 ## [1.7.4] - 2026-11-06
 
 ### Added

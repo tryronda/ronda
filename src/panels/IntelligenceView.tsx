@@ -167,7 +167,7 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
     {feedback && <span role={feedback.ok ? 'status' : 'alert'} className={feedback.ok ? 'panel-help' : 'text-destructive'}>{feedback.text}</span>}
     <select className="intel-project" aria-label={t.project} title={project || t.allProjects} value={project} onChange={event => setProject(event.target.value)}>
       <option value="">{t.allProjects}</option>
-      {projectLabels(projects).map(([path, label]) => <option key={path} value={path} title={path}>{label}</option>)}
+      {projectLabels(project && !projects.includes(project) ? [project, ...projects] : projects).map(([path, label]) => <option key={path} value={path} title={path}>{label}</option>)}
     </select>
     {(hostScope.host || hostScope.local_only) && <p>{hostScope.local_only ? 'Local sessions' : `Remote host: ${hostScope.host}`} · <button type="button" onClick={()=>setHostScope({host:null,local_only:false})}>All hosts</button></p>}
   </div>;
