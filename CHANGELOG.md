@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- A failed startup scan now shows an error with a retry, and the first launch shows a loading state instead of "No sessions found" while the first scan runs.
 - Library refreshes keep the sessions you have loaded and your scroll position instead of jumping back to the top.
 
 ## [1.7.9] - 2026-11-06
