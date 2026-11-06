@@ -10,16 +10,25 @@ use std::{
     path::{Path, PathBuf},
 };
 
-fn search_expression(query: &str) -> (String, bool) {
-    let indexed: Vec<_> = query
+/// Whitespace-separated query terms with surrounding double quotes removed, so a quoted
+/// phrase like `"connection refused"` matches the same words as the unquoted query.
+fn search_terms(query: &str) -> Vec<&str> {
+    query
         .split_whitespace()
+        .map(|term| term.trim_matches('"'))
+        .filter(|term| !term.is_empty())
+        .collect()
+}
+
+fn search_expression(query: &str) -> (String, bool) {
+    let all = search_terms(query);
+    let indexed: Vec<_> = all
+        .iter()
+        .copied()
         .filter(|term| term.chars().count() >= 3)
         .collect();
     if indexed.is_empty() {
-        (
-            query.split_whitespace().next().unwrap_or("").to_string(),
-            false,
-        )
+        (all.first().copied().unwrap_or("").to_string(), false)
     } else {
         (
             indexed
@@ -539,7 +548,13 @@ impl Store {
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let terms: Vec<String> = search_terms(query)
+            .into_iter()
+            .map(str::to_lowercase)
+            .collect();
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
         let anchor = snippet_anchor(&terms).to_owned();
         let (match_query, indexed) = search_expression(query);
         let mut results = Vec::new();
@@ -598,7 +613,10 @@ impl Store {
         session_key: Option<&str>,
     ) -> Result<Vec<(SearchHit, f64)>> {
         filter.validate()?;
-        let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let terms: Vec<String> = search_terms(query)
+            .into_iter()
+            .map(str::to_lowercase)
+            .collect();
         if terms.is_empty() {
             return Ok(Vec::new());
         }
@@ -1129,6 +1147,49 @@ mod search_tests {
         assert_eq!(first.len(), 12);
         assert_eq!(first, expected);
         assert_eq!(order(&store), first);
+    }
+
+    #[test]
+    fn quoted_phrases_search_like_their_unquoted_words() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+            "key":"q","native_id":"q","agent":"claude-code","host":null,"parent_key":null,
+            "title":"q","project_path":"/p","source_path":"/missing-fixture","created_at":1,"updated_at":5,
+            "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
+        }))
+        .unwrap();
+        let messages = vec![TranscriptMessage {
+            seq: 0,
+            role: Role::User,
+            kind: MessageKind::Text,
+            text: "connection refused by host".into(),
+            timestamp: None,
+            model: None,
+            thinking: None,
+            tool_calls: vec![],
+            images: vec![],
+        }];
+        store
+            .upsert(&ParsedSession { meta, messages }, "1")
+            .unwrap();
+        let filter = SessionQuery::default();
+        for query in ["\"connection refused\"", "connection refused"] {
+            assert_eq!(
+                store.search(query, &filter, 10).unwrap().len(),
+                1,
+                "{query}"
+            );
+            assert_eq!(
+                store
+                    .search_grouped(query, &filter, SearchSort::Recent, 0, 10)
+                    .unwrap()
+                    .total_sessions,
+                1,
+                "{query}"
+            );
+        }
+        assert!(store.search("\"\"", &filter, 10).unwrap().is_empty());
+        assert_eq!(search_terms("\"a b\" \"\" c\""), ["a", "b", "c"]);
     }
 
     #[test]

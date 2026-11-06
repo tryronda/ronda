@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Searching for a phrase in double quotes now finds it instead of returning nothing.
+
 ## [1.7.7] - 2026-11-06
 
 ### Changed
