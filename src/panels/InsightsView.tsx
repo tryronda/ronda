@@ -1,6 +1,6 @@
 import { invoke } from '@/lib/tauri';
 import { sameJson, useLibraryRefresh } from '@/lib/hooks/use-library-refresh';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatedNumber } from '@/components/motion/animated-number';
 import { Tabs, TabsList, TabsTrigger } from '@/components/motion/tabs';
 import { PixelStrip } from '@/components/brand/pixel-field';
@@ -102,6 +102,7 @@ export function InsightsView({ active = true }: { active?: boolean }) {
   const [board, setBoard] = useState<Board>('agents');
   const [expanded, setExpanded] = useState<Record<Board, boolean>>({ agents: false, projects: false, models: false });
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => setFeedback(null), [board, metric, data]);
 
   useLibraryRefresh(() => {
     let live = true;

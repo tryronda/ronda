@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Insights clears “Summary copied” when you switch the board or metric.
+
 ## [1.7.5] - 2026-11-06
 
 ### Added

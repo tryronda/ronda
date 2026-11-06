@@ -65,6 +65,16 @@ test("Copy summary writes Markdown for totals and the current board, and reports
   await act(async () => root.unmount());
 });
 
+test("the Summary copied message clears when the board changes", async () => {
+  const { host, root } = await mount();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(async (_text: string) => {}) } });
+  await act(async () => { button(host, "Copy summary").click(); });
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("Summary copied");
+  await act(async () => { tab(host, "Projects").click(); });
+  expect(host.textContent).not.toContain("Summary copied");
+  await act(async () => root.unmount());
+});
+
 test("heatmapSummary reports active days, busiest day, longest streak, and range, and handles empty data", () => {
   const cell = (key: string, count: number) => ({ key, count });
   expect(heatmapSummary([])).toBe("No activity data.");
