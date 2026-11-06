@@ -423,6 +423,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const transcriptRef = useRef<HTMLDivElement>(null);
   const loadedKey = useRef<string | null>(null);
   const reloadRun = useRef(0);
+  const reloadedFilter = useRef<SessionQuery | null>(null);
   const scrollRestore = useRef<{ bottom: boolean; seq: string | null; offset: number; top: number } | null>(null);
   const unavailableRef = useRef(unavailable);
   unavailableRef.current = unavailable;
@@ -509,10 +510,14 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     const run = ++reloadRun.current;
     browseBusy.current = false; setLoadingMore(false); setLoading(true);
     if (dates.error) { setLoading(false); return; }
+    // Keep loaded pages and scroll position across a refresh of the same filter; only a new filter starts over.
+    const sameFilter = reloadedFilter.current === filter;
+    const limit = sameFilter ? Math.min(1000, Math.max(100, browseOffset.current)) : 100;
     try {
-      const [page, nextOptions, nextLabels] = await Promise.all([api.sessionPage(filter,0,100), api.libraryOptions(), api.listSessionLabels()]);
+      const [page, nextOptions, nextLabels] = await Promise.all([api.sessionPage(filter,0,limit), api.libraryOptions(), api.listSessionLabels()]);
       if (run !== reloadRun.current) return;
-      if (sessionListRef.current) sessionListRef.current.scrollTop = 0;
+      reloadedFilter.current = filter;
+      if (!sameFilter && sessionListRef.current) sessionListRef.current.scrollTop = 0;
       setSessions(page.items); setSessionTotal(page.total); browseOffset.current = page.offset + page.items.length;
       setProjects(nextOptions.projects);
       setOptions(nextOptions);

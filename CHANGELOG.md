@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Library refreshes keep the sessions you have loaded and your scroll position instead of jumping back to the top.
+
 ## [1.7.9] - 2026-11-06
 
 ### Fixed
