@@ -136,10 +136,16 @@ fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
                 .map_err(|e| CallError::Tool(e.to_string()))
         }
         "ronda_get_session" => {
-            if args.get("key").is_none() {
-                return Err(CallError::Tool("missing session key".into()));
+            let key = args.get("key").and_then(Value::as_str);
+            if key.is_none_or(|k| k.trim().is_empty()) {
+                return Err(CallError::Invalid("missing session key".into()));
             }
             let a = parsed::<ShowArgs>(args)?;
+            if a.from_seq.is_some_and(|n| n < 0) {
+                return Err(CallError::Invalid(
+                    "from_seq must be a nonnegative integer".into(),
+                ));
+            }
             let notes = vec![
                 query::clamp_note("max_messages", a.max_messages, query::SHOW_MESSAGES),
                 query::clamp_note("max_chars", a.max_chars, query::SHOW_CHARS),
