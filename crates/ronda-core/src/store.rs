@@ -56,7 +56,15 @@ fn search_snippet(full: &str, first: &str) -> String {
         .unwrap_or(0);
     let start = full.floor_char_boundary(match_start.saturating_sub(60));
     let end = full.ceil_char_boundary((start + 260).min(full.len()));
-    full[start..end].replace('\n', " ")
+    let mut snippet = String::with_capacity(end - start + 6);
+    if start > 0 {
+        snippet.push('…');
+    }
+    snippet.push_str(&full[start..end].replace('\n', " "));
+    if end < full.len() {
+        snippet.push('…');
+    }
+    snippet
 }
 
 pub struct Store {
@@ -1128,6 +1136,22 @@ mod search_tests {
     }
 
     #[test]
+    fn excerpts_mark_where_the_text_continues() {
+        let long = format!("{} needle {}", "a".repeat(300), "b".repeat(300));
+        let cut = search_snippet(&long, "needle");
+        assert!(cut.starts_with('…') && cut.ends_with('…'));
+        assert!(cut.contains("needle"));
+        let head = search_snippet(&format!("needle {}", "b".repeat(300)), "needle");
+        assert!(!head.starts_with('…') && head.ends_with('…'));
+        let tail = search_snippet(&format!("{} needle", "a".repeat(300)), "needle");
+        assert!(tail.starts_with('…') && !tail.ends_with('…'));
+        assert_eq!(
+            search_snippet("short needle\ntext", "needle"),
+            "short needle text"
+        );
+    }
+
+    #[test]
     fn excerpts_center_case_insensitive_matches_on_unicode_boundaries() {
         for (prefix, text, query) in [
             ("unrelated ", "UseEffect( response", "useeffect("),
@@ -1137,7 +1161,7 @@ mod search_tests {
         ] {
             let snippet = search_snippet(&format!("{}{text}", prefix.repeat(400)), query);
             assert!(snippet.contains(text), "{query}: {snippet}");
-            assert!(snippet.len() <= 264);
+            assert!(snippet.len() <= 264 + 2 * '…'.len_utf8());
         }
     }
     #[test]
