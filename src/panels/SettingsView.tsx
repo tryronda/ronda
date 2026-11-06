@@ -262,7 +262,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               <div className="location-actions"><span className="panel-switch">
                 <Switch checked={location.enabled} disabled={busy} onCheckedChange={() => toggleLocation(location)} ariaLabel={`${location.agent} ${location.path}`} />
                 <span>{location.enabled ? t.enabled : t.disabled}</span>
-              </span>{location.custom && <button className="panel-link" disabled={busy} onClick={() => removeLocation(location)}>{t.remove}</button>}</div>
+              </span>{location.custom && <button className="panel-link" aria-label={`${t.remove} ${location.agent} location ${location.path}`} disabled={busy} onClick={() => removeLocation(location)}>{t.remove}</button>}</div>
             </div>) : <p className="panel-empty">{t.noLocations}</p>}</div>
           <h3>Recovered project folders</h3><p className="panel-help">Exact local project mappings affect resume only. Session sources and remote folders stay unchanged.</p>
           {Object.entries(resumeMappings).map(([from,to])=><div key={from} className="location-row"><div><code>{from}</code><code>→ {to}</code></div>
@@ -285,8 +285,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               {host.last_error && <small className="panel-danger">{t.remoteError}: {host.last_error}</small>}</div>
             <div className="location-actions"><span className="panel-switch"><Switch checked={host.enabled}
               disabled={busy} onCheckedChange={() => toggleHost(host)} ariaLabel={host.host} /><span>{host.enabled ? t.enabled : t.disabled}</span></span>
-              <button disabled={busy || !host.enabled} onClick={() => syncHost(host)}>{t.sync}</button>
-              <button className="panel-link" disabled={busy} onClick={() => removeHost(host)}>{t.remove}</button></div>
+              <button aria-label={`${t.sync} with ${host.host}`} disabled={busy || !host.enabled} onClick={() => syncHost(host)}>{t.sync}</button>
+              <button className="panel-link" aria-label={`${t.remove} host ${host.host}`} disabled={busy} onClick={() => removeHost(host)}>{t.remove}</button></div>
           </div>)}</div> : <p className="panel-empty">{t.noHosts}</p>}
         </section>}
         {section === 'connect' && <section className="panel-card">

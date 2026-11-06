@@ -4,6 +4,12 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Related sessions show the full match count and each session's agent, date, and archived state.
+
+### Fixed
+- Each location and host button in Settings has its own name for screen readers.
+
 ## [1.7.4] - 2026-11-06
 
 ### Added
