@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-11-06
+
 ### Added
 - `show` and `ronda_get_session` mark messages cut at the per-message limit and say how to raise it.
 
