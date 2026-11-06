@@ -1112,7 +1112,7 @@ fn sync_host(state: &Shared, host: &str) -> CommandResult<ScanReport> {
     }
     let home = remote_cache(host)?;
     let probe = format!(
-        "for p in {}; do test -e \"$HOME/$p\" && printf '%s\\n' \"$p\"; done",
+        "for p in {}; do test -e \"$HOME/$p\" && printf '%s\\n' \"$p\"; done; exit 0",
         REMOTE_PATHS
             .iter()
             .map(|p| shell_quote(p))
@@ -2128,7 +2128,14 @@ mod tests {
         std::env::set_var("RONDA_DB", &db);
         std::env::set_var("PATH", &bin);
         std::env::set_var("RONDA_FAKE_REMOTE_HOME", &remote);
-        executable(&bin.join("ssh"), "printf '.claude/projects\\n'");
+        let probe_home = root.join("probe home");
+        fs::create_dir_all(probe_home.join(".claude/projects")).unwrap();
+        std::env::set_var("RONDA_FAKE_PROBE_HOME", &probe_home);
+        // Runs the probe for real; the host lacks every path after .claude/projects.
+        executable(
+            &bin.join("ssh"),
+            "for last; do :; done\nHOME=\"$RONDA_FAKE_PROBE_HOME\" /bin/sh -c \"$last\"",
+        );
         executable(&bin.join("rsync"), "for last; do :; done\n/bin/cp -R \"$RONDA_FAKE_REMOTE_HOME/.claude/projects\" \"$last/\"");
         let state = Arc::new(AppState {
             store: Mutex::new(Store::open(&db).unwrap()),
@@ -2184,6 +2191,7 @@ mod tests {
             std::env::remove_var("PATH");
         }
         std::env::remove_var("RONDA_FAKE_REMOTE_HOME");
+        std::env::remove_var("RONDA_FAKE_PROBE_HOME");
         drop(state);
         fs::remove_dir_all(root).unwrap();
     }
