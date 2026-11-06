@@ -13,6 +13,9 @@ All notable changes to Ronda are recorded here.
 - Intelligence no longer shows “1 session” under “How sessions end” when no session has an outcome.
 - Insights activity tooltips and the chart label say “1 prompt” or “N prompts” instead of “1 Prompts”.
 - Screen readers announce starred and pinned sessions in the list and the transcript navigation toolbar.
+- `ronda-mcp` rejects unknown argument names as invalid parameters instead of silently ignoring them.
+- `ronda-mcp` ignores blank input lines instead of replying with a parse error.
+- `--project` and MCP `project` accept names that start with a dot, such as `.dotfiles`, and relative paths are a usage error.
 
 ## [1.7.2] - 2026-11-06
 

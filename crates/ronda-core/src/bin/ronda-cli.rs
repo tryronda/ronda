@@ -208,7 +208,10 @@ fn run() -> Result<String, (u8, String)> {
         if !rest.is_empty() {
             return Err((2, "index takes no arguments".into()));
         }
-        if db.exists() {
+        let populated = Store::open_existing_read_only(&db)
+            .and_then(|existing| existing.session_count())
+            .is_ok_and(|count| count > 0);
+        if populated {
             return Ok(format!(
                 "Index already exists at {}; Ronda maintains it.\n",
                 db.display()
@@ -218,6 +221,9 @@ fn run() -> Result<String, (u8, String)> {
         let report = Scanner::new(Scanner::default_home())
             .scan(&mut store, true)
             .map_err(|e| (1, e.to_string()))?;
+        for error in report.errors.iter().take(5) {
+            eprintln!("ronda-cli: {error}");
+        }
         return Ok(format!(
             "Indexed {} of {} discovered sessions ({} errors).\n",
             report.indexed,
@@ -244,6 +250,7 @@ fn run() -> Result<String, (u8, String)> {
                 return Err((2, "search needs a query".into()));
             }
             query::validate_search_text(&words.join(" ")).map_err(|e| (2, e.to_string()))?;
+            query::validate_project(filter.project.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_agents(&filter.agents).map_err(|e| (2, e.to_string()))?;
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
@@ -261,6 +268,7 @@ fn run() -> Result<String, (u8, String)> {
         }
         "sessions" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
+            query::validate_project(filter.project.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_agents(&filter.agents).map_err(|e| (2, e.to_string()))?;
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
@@ -310,6 +318,7 @@ fn run() -> Result<String, (u8, String)> {
             {
                 return Err((2, "insights only accepts --project and --since".into()));
             }
+            query::validate_project(filter.project.as_deref()).map_err(|e| (2, e.to_string()))?;
             if filter.since.as_deref() != Some("all") {
                 query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             }
