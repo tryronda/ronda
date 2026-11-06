@@ -82,6 +82,10 @@ test("shows every recurring error and stack row and copies a Markdown summary", 
   expect(text).toContain("- Project: All projects");
   expect(text).toContain("bad \\| pipe line");
   expect(text).toContain("Error 10");
+  for (const heading of ["## Where time goes (excluding recovery)", "## How sessions end", "## Agent failures", "## Recurring errors", "## Stack"]) expect(text).toContain(heading);
+  expect(text).not.toContain("| Recovering from failing commands |");
+  expect(text).toContain("| committed | 3 | 50 min |");
+  expect(text).toContain("| Tech0 | 10% | 1 |");
   expect(host.querySelector('[role="status"]')?.textContent).toBe("Summary copied");
 
   writeText.mockRejectedValueOnce(new Error("denied"));

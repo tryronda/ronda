@@ -63,9 +63,7 @@ const STACK_LIMIT = 10;
 /** Markdown for the current range: totals, time split, failures, and every recurring error. */
 export function intelligenceSummary(data: Intelligence, range: Range, project: string): string {
   const cell = (text: string) => text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\s+/g, ' ');
-  const split = data.time.map(row => ({ label: row.label, ms: row.active_ms, sessions: row.sessions }));
-  if (data.totals.recovery_ms > 0) split.push({ label: labels.recovering, ms: data.totals.recovery_ms, sessions: 0 });
-  const rows = split.filter(row => row.ms > 0).sort((a, b) => b.ms - a.ms);
+  const rows = data.time.filter(row => row.active_ms > 0).sort((a, b) => b.active_ms - a.active_ms);
   const failing = data.totals.sessions ? Math.round(data.totals.failed_sessions / data.totals.sessions * 100) : 0;
   return [
     '# Ronda intelligence', '',
@@ -73,17 +71,24 @@ export function intelligenceSummary(data: Intelligence, range: Range, project: s
     `- Project: ${project || labels.allProjects}`,
     `- Sessions: ${data.totals.sessions.toLocaleString('en-US')}`,
     `- Active time: ${hours(data.totals.active_ms)}`,
+    `- Recovering from failing commands: ${hours(data.totals.recovery_ms)}`,
     `- Ended failing: ${failing}%`,
     `- Recurring errors: ${data.totals.recurring_bugs.toLocaleString('en-US')}`, '',
-    `## ${labels.time}`, '',
+    '## Where time goes (excluding recovery)', '',
     ...(rows.length ? ['| Category | Time | Sessions |', '| --- | ---: | ---: |',
-      ...rows.map(row => `| ${cell(row.label)} | ${hours(row.ms)} | ${row.sessions} |`)] : [labels.none]), '',
-    `## ${labels.failures}`, '',
+      ...rows.map(row => `| ${cell(row.label)} | ${hours(row.active_ms)} | ${row.sessions} |`)] : [labels.none]), '',
+    '## How sessions end', '',
+    ...(data.outcomes.length ? ['| Outcome | Sessions | Time |', '| --- | ---: | ---: |',
+      ...data.outcomes.map(row => `| ${cell(row.label)} | ${row.sessions} | ${hours(row.active_ms)} |`)] : [labels.none]), '',
+    '## Agent failures', '',
     ...(data.failures.length ? ['| Pattern | Sessions |', '| --- | ---: |',
       ...data.failures.map(row => `| ${cell(row.label)} | ${row.sessions} |`)] : [labels.none]), '',
-    `## ${labels.bugs}`, '',
+    '## Recurring errors', '',
     ...(data.recurring.length ? ['| Error | Sessions | Agents |', '| --- | ---: | --- |',
-      ...data.recurring.map(bug => `| ${cell(bug.message)} | ${bug.sessions} | ${cell(bug.agents.join(', '))} |`)] : [labels.none]),
+      ...data.recurring.map(bug => `| ${cell(bug.message)} | ${bug.sessions} | ${cell(bug.agents.join(', '))} |`)] : [labels.none]), '',
+    '## Stack', '',
+    ...(data.stack.length ? ['| Tech | Share of sessions with tool calls | Sessions |', '| --- | ---: | ---: |',
+      ...data.stack.slice(0, 15).map(row => `| ${cell(row.tech)}${row.new ? ' (new)' : ''} | ${row.share}% | ${row.sessions} |`)] : [labels.none]),
     '',
   ].join('\n');
 }

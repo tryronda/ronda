@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Intelligence's copied summary uses the same headings as `ronda-cli insights` and adds how sessions end and your stack.
+
 ### Fixed
 - Insights clears “Summary copied” when you switch the board or metric.
 
