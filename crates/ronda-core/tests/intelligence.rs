@@ -302,9 +302,17 @@ fn insights_and_find_error_match_across_cli_and_mcp() {
         mcp(&path, "ronda_insights", json!({"since":"all"}))
     );
     let found = cli(&path, &["errors", LOCKED]);
-    assert_eq!(
-        found,
-        mcp(&path, "ronda_find_error", json!({"error": LOCKED}))
+    let via_mcp = mcp(&path, "ronda_find_error", json!({"error": LOCKED}));
+    let body = |text: &str| text.split("\nRead one from").next().unwrap().to_string();
+    assert_eq!(body(&found), body(&via_mcp));
+    assert!(
+        found.contains("ronda-cli show <ref> --tools") && !found.contains("ronda_get_session"),
+        "{found}"
+    );
+    assert!(
+        via_mcp.contains("`ronda_get_session` (key and from_seq)")
+            && !via_mcp.contains("ronda-cli"),
+        "{via_mcp}"
     );
     assert!(found.starts_with("Seen in 2 sessions"), "{found}");
     std::fs::remove_dir_all(dir).unwrap();

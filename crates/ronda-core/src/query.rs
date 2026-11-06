@@ -868,7 +868,18 @@ pub fn insights(store: &Store, args: &InsightsArgs) -> Result<String> {
     Ok(out)
 }
 
+/// Which front end renders the text, so follow-up hints name a command that exists there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Surface {
+    Cli,
+    Mcp,
+}
+
 pub fn find_error(store: &Store, args: &FindErrorArgs) -> Result<String> {
+    find_error_for(store, args, Surface::Mcp)
+}
+
+pub fn find_error_for(store: &Store, args: &FindErrorArgs, surface: Surface) -> Result<String> {
     if args.error.trim().is_empty() {
         return Err(anyhow!("error text is empty"));
     }
@@ -885,7 +896,10 @@ pub fn find_error(store: &Store, args: &FindErrorArgs) -> Result<String> {
     if hits.len() > 20 {
         out.push_str(&format!("… and {} more\n", hits.len() - 20));
     }
-    out.push_str("\nRead one from that message with `ronda_get_session` (key and from_seq), including tools, to see how it was handled.\n");
+    out.push_str(match surface {
+        Surface::Mcp => "\nRead one from that message with `ronda_get_session` (key and from_seq), including tools, to see how it was handled.\n",
+        Surface::Cli => "\nRead one from that message with `ronda-cli show <ref> --tools`, using a ref above, to see how it was handled.\n",
+    });
     Ok(out)
 }
 
