@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Performance
+- Refreshing Insights reads only prompt timestamps from the index instead of loading every transcript.
+
 ## [1.7.6] - 2026-11-06
 
 ### Changed
