@@ -10,6 +10,9 @@ All notable changes to Ronda are recorded here.
 ### Fixed
 - Qoder sessions titled from a prompt use its first line, so titles never span several lines.
 
+### Performance
+- CLI and MCP search look up each matching session once instead of once per matching message.
+
 ## [1.7.1] - 2026-11-06
 
 ### Added

@@ -1353,7 +1353,8 @@ mod tests {
     fn qoder_prompt_title_uses_its_first_line() {
         let data = concat!(
             "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"Start\"}}\n",
-            "{\"type\":\"last-prompt\",\"lastPrompt\":\"\\nFix  the build\\nmore\"}\n");
+            "{\"type\":\"last-prompt\",\"lastPrompt\":\"\\nFix  the build\\nmore\"}\n"
+        );
         let (root, sources) = fixture(AgentId::Qoder, "slug/s-title.jsonl", data);
         let parsed = FileAdapter(AgentId::Qoder)
             .parse(&sources[0])

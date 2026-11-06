@@ -547,13 +547,22 @@ impl Store {
                 r.get::<_, String>(2)?,
             ))
         })?;
+        let mut sessions: HashMap<String, Option<SessionMeta>> = HashMap::new();
         for row in rows {
             let (key, seq, full) = row?;
             let haystack = full.to_lowercase();
             if !terms.iter().all(|term| haystack.contains(term)) {
                 continue;
             }
-            let Some(session) = self.get_session(&key)? else {
+            let session = match sessions.get(&key) {
+                Some(cached) => cached.clone(),
+                None => {
+                    let loaded = self.get_session(&key)?;
+                    sessions.insert(key, loaded.clone());
+                    loaded
+                }
+            };
+            let Some(session) = session else {
                 continue;
             };
             if !filter.matches(&session) {
@@ -1423,6 +1432,42 @@ mod search_tests {
                 .is_err());
             assert!(store.search("needle", &invalid, 10).is_err());
         }
+    }
+
+    #[test]
+    fn search_returns_every_hit_of_a_session_with_many_matches() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+            "key":"many","native_id":"many","agent":"claude-code","host":null,"parent_key":null,
+            "title":"Many","project_path":"/repo","source_path":"/fixture","created_at":0,
+            "updated_at":1,"model":null,"source":null,"tokens":null,"archived":false,
+            "metadata_only":false,"can_delete":true,"starred":false,"pinned":false
+        }))
+        .unwrap();
+        let messages = (0..40)
+            .map(|seq| crate::TranscriptMessage {
+                seq,
+                role: crate::Role::Assistant,
+                kind: crate::MessageKind::Text,
+                text: format!("needle number {seq}"),
+                timestamp: None,
+                model: None,
+                thinking: None,
+                tool_calls: Vec::new(),
+                images: Vec::new(),
+            })
+            .collect();
+        store
+            .upsert(&crate::ParsedSession { meta, messages }, "fixture")
+            .unwrap();
+        let hits = store
+            .search("needle", &SessionQuery::default(), 100)
+            .unwrap();
+        assert_eq!(hits.len(), 40);
+        assert!(hits.iter().all(|h| h.session.key == "many"));
+        let mut seqs: Vec<i64> = hits.iter().map(|h| h.seq).collect();
+        seqs.sort();
+        assert_eq!(seqs, (0..40).collect::<Vec<_>>());
     }
 
     #[test]
