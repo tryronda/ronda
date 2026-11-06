@@ -88,6 +88,19 @@ export function intelligenceSummary(data: Intelligence, range: Range, project: s
   ].join('\n');
 }
 
+const pathParts = (path: string) => path.split(/[\\/]/).filter(Boolean);
+
+/** Folder names, with the parent folder added when two projects share a name. */
+export function projectLabels(paths: string[]): [string, string][] {
+  const name = (path: string) => pathParts(path).pop() ?? path;
+  const counts = new Map<string, number>();
+  for (const path of paths) counts.set(name(path), (counts.get(name(path)) ?? 0) + 1);
+  return paths.map(path => {
+    const parts = pathParts(path);
+    return [path, (counts.get(name(path)) ?? 0) > 1 && parts.length > 1 ? `${name(path)} — ${parts[parts.length - 2]}` : name(path)];
+  });
+}
+
 export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (key: string, seq: number) => void; active?: boolean; scope?:ProjectContext }) {
   const t = labels;
   const reduce = useReducedMotion();
@@ -152,9 +165,9 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
     </Tabs>
     <button type="button" disabled={!data} onClick={() => void copySummary()}>{t.copySummary}</button>
     {feedback && <span role={feedback.ok ? 'status' : 'alert'} className={feedback.ok ? 'panel-help' : 'text-destructive'}>{feedback.text}</span>}
-    <select className="intel-project" aria-label={t.project} value={project} onChange={event => setProject(event.target.value)}>
+    <select className="intel-project" aria-label={t.project} title={project || t.allProjects} value={project} onChange={event => setProject(event.target.value)}>
       <option value="">{t.allProjects}</option>
-      {projects.map(path => <option key={path} value={path}>{path.split(/[\\/]/).filter(Boolean).pop() ?? path}</option>)}
+      {projectLabels(projects).map(([path, label]) => <option key={path} value={path} title={path}>{label}</option>)}
     </select>
     {(hostScope.host || hostScope.local_only) && <p>{hostScope.local_only ? 'Local sessions' : `Remote host: ${hostScope.host}`} · <button type="button" onClick={()=>setHostScope({host:null,local_only:false})}>All hosts</button></p>}
   </div>;

@@ -4,10 +4,15 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The docs explain how `--project` finds a project, list the allowed size ranges, and describe the new `show` hints and clamp notes.
+
 ### Fixed
 - Claude Code subagent sessions with a multi-line description show only its first line.
 - Codex sessions keep their project folder when the Codex database has a blank one, and trim its stored title.
 - Codex sessions refresh when only the Codex database's write-ahead log changed.
+- The transcript header and library rows show the full title and project path on hover when they are shortened.
+- Intelligence's project picker tells apart folders with the same name and shows the full path on hover.
 
 ## [1.7.3] - 2026-11-06
 

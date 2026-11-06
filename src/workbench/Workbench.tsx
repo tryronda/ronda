@@ -1367,7 +1367,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             <strong className="mt-1.5 mb-1 line-clamp-2 pr-4 text-[16px] leading-snug font-normal tracking-[0.015em] text-foreground">{group ? <SearchHighlight text={titleFor(session)} query={searchContext.query} /> : titleFor(session)}</strong>
             {hasAlias(aliases, session.key) && <span className="block truncate text-[11px] text-muted-foreground" title={plainTitle(session.title)}>Original: {plainTitle(session.title)}</span>}
             <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-              <HugeiconsIcon icon={Folder01Icon} size={12} className="flex-none" /><span className="truncate">{session.project_path ? basename(session.project_path) : t.unknown}</span></div>
+              <HugeiconsIcon icon={Folder01Icon} size={12} className="flex-none" /><span className="truncate" title={session.project_path ?? undefined}>{session.project_path ? basename(session.project_path) : t.unknown}</span></div>
             <RowLabels ids={session.labels} catalog={labels} />
             {group && <p className="mt-1 text-[12px] text-muted-foreground">
               {group.title_match && "Title match · "}{group.message_matches} matching message{group.message_matches === 1 ? "" : "s"}
@@ -1403,8 +1403,8 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               {selected.archived && <span className="eyebrow-chip px-1.5 pt-0.5 pb-1 text-[11px]">{t.archived}</span>}
             </div>
             <h2 className="mt-1.5 mb-1 truncate font-serif text-[32px] leading-[1.1] tracking-[-0.01em]"
-              title={hasAlias(aliases, selected.key) ? `Original title: ${plainTitle(selected.title)}` : undefined}>{titleFor(selected) || selected.native_id}</h2>
-            {hasAlias(aliases, selected.key) && <p className="truncate text-[12px] text-muted-foreground">Original title: {plainTitle(selected.title) || selected.native_id}</p>}
+              title={`${titleFor(selected) || selected.native_id}${hasAlias(aliases, selected.key) ? `\nOriginal title: ${plainTitle(selected.title)}` : ""}`}>{titleFor(selected) || selected.native_id}</h2>
+            {hasAlias(aliases, selected.key) && <p className="truncate text-[12px] text-muted-foreground" title={`Original title: ${plainTitle(selected.title) || selected.native_id}`}>Original title: {plainTitle(selected.title) || selected.native_id}</p>}
             <div className="label-mono flex min-w-0 items-center gap-2 text-muted-foreground">
               <span className="truncate" title={selected.project_path ?? t.unknown}>{selected.project_path ?? t.unknown}</span>
               {selected.project_path && <button type="button" className="flex-none underline underline-offset-2 hover:text-foreground"
