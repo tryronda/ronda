@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Codex reasoning summaries now appear as thinking instead of being dropped.
+
 ## [1.7.10] - 2026-11-06
 
 ### Fixed

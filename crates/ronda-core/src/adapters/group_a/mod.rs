@@ -585,7 +585,7 @@ fn body(value: &Value) -> (String, Vec<ImageAttachment>) {
         }
         if matches!(
             kind,
-            "text" | "input_text" | "output_text" | "reasoning_text"
+            "text" | "input_text" | "output_text" | "reasoning_text" | "summary_text"
         ) {
             if let Some(s) = part["text"].as_str() {
                 if !s.is_empty() {
@@ -1420,6 +1420,22 @@ mod tests {
             Some("first\n\nsecond")
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_reasoning_summary_text_becomes_thinking() {
+        let rows: Vec<Value> = [
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Why?"}]}}"#,
+            r#"{"type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Weighing options"}]}}"#,
+        ]
+        .iter()
+        .map(|row| serde_json::from_str(row).unwrap())
+        .collect();
+        let parsed = parse_codex(&rows);
+        assert_eq!(
+            parsed.messages[1].thinking.as_deref(),
+            Some("Weighing options")
+        );
     }
 
     #[test]
