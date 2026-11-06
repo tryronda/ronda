@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- `ronda-cli errors` and `ronda_find_error` lines show each session's agent and date.
+
 ## [1.7.5] - 2026-11-06
 
 ### Added

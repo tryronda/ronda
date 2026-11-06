@@ -993,7 +993,17 @@ pub fn find_error_for(store: &Store, args: &FindErrorArgs, surface: Surface) -> 
         let label = Outcome::parse(outcome)
             .map(Outcome::label)
             .unwrap_or(outcome);
-        out.push_str(&format!("- {} · {} · {}\n", reference(e), label, e.title));
+        match store.get_session(&e.session_key)? {
+            Some(meta) => out.push_str(&format!(
+                "- {} · {} · {} · {} · {}\n",
+                reference(e),
+                meta.agent.as_str(),
+                date(meta.updated_at).chars().take(10).collect::<String>(),
+                label,
+                e.title
+            )),
+            None => out.push_str(&format!("- {} · {} · {}\n", reference(e), label, e.title)),
+        }
     }
     if hits.len() > 20 {
         out.push_str(&format!("… and {} more\n", hits.len() - 20));
@@ -1464,6 +1474,74 @@ mod tests {
             assert!(out.contains("- 🔧 Read: {}"), "{out}");
             assert!(!out.contains("Read (failed)"), "{out}");
         }
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn find_error_lines_name_agent_and_date() {
+        let path = std::env::temp_dir().join(format!("ronda-errline-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        for (key, agent) in [
+            ("codex:e1", AgentId::Codex),
+            ("claude-code:e2", AgentId::ClaudeCode),
+        ] {
+            seeded(&mut db, key, agent, "/tmp/err", 1_760_000_000_000, false);
+            let mut session = ParsedSession {
+                meta: db.get_session(key).unwrap().unwrap(),
+                messages: Vec::new(),
+            };
+            session.messages.push(TranscriptMessage {
+                seq: 0,
+                role: Role::User,
+                kind: MessageKind::Text,
+                text: "go".into(),
+                timestamp: Some(1_760_000_000_000),
+                model: None,
+                thinking: None,
+                tool_calls: Vec::new(),
+                images: Vec::new(),
+            });
+            session.messages.push(TranscriptMessage {
+                seq: 1,
+                role: Role::Assistant,
+                kind: MessageKind::Text,
+                text: "ran".into(),
+                timestamp: Some(1_760_000_001_000),
+                model: None,
+                thinking: None,
+                tool_calls: vec![crate::ToolCall {
+                    id: "1".into(),
+                    name: "Bash".into(),
+                    input: Some(r#"{"command":"bun test"}"#.into()),
+                    output: Some("Exit code 1\nError: SQLITE_BUSY: database is locked".into()),
+                    is_error: true,
+                }],
+                images: Vec::new(),
+            });
+            db.upsert(&session, "fixture").unwrap();
+        }
+        let args = FindErrorArgs {
+            error: "Error: SQLITE_BUSY: database is locked".into(),
+        };
+        let cli = find_error_for(&db, &args, Surface::Cli).unwrap();
+        let mcp = find_error(&db, &args).unwrap();
+        for out in [&cli, &mcp] {
+            assert!(out.starts_with("Seen in 2 sessions"), "{out}");
+            for agent in ["codex", "claude-code"] {
+                let line = out
+                    .lines()
+                    .find(|l| l.starts_with("- ") && l.contains(&format!("session/{agent}:")))
+                    .unwrap_or_else(|| panic!("{out}"));
+                let parts: Vec<_> = line.split(" · ").collect();
+                assert_eq!(parts[1], agent, "{line}");
+                assert_eq!(parts[2].len(), 10, "{line}");
+                assert!(parts[2].starts_with("2025-10-"), "{line}");
+            }
+        }
+        assert_eq!(
+            cli.split("\nRead one from").next(),
+            mcp.split("\nRead one from").next()
+        );
         let _ = std::fs::remove_file(&path);
     }
     #[test]
