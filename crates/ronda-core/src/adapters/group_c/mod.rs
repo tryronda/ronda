@@ -1085,16 +1085,20 @@ fn percent_decode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     struct Fixture(PathBuf);
     impl Fixture {
         fn new() -> Self {
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
             let n = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let p = std::env::temp_dir().join(format!("ronda-group-c-{}-{n}", std::process::id()));
+            let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let p =
+                std::env::temp_dir().join(format!("ronda-group-c-{}-{n}-{c}", std::process::id()));
             fs::create_dir_all(&p).unwrap();
             Self(p)
         }
