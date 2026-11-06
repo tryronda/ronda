@@ -402,6 +402,7 @@ impl Store {
             (
                 std::cmp::Reverse(b.sessions),
                 std::cmp::Reverse(b.last_seen),
+                b.signature.clone(),
             )
         });
         totals.recurring_bugs = recurring.len();

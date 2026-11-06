@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Intelligence, `ronda-cli insights`, and project overviews list tied recurring errors in a stable order.
+
 ## [1.7.4] - 2026-11-06
 
 ### Added
