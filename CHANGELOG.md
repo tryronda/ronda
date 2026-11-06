@@ -8,9 +8,11 @@ All notable changes to Ronda are recorded here.
 - Searching with double quotes matches the exact phrase.
 - The MCP server answers a client's supported protocol version in the handshake instead of always claiming 2025-03-26.
 - The MCP server answers `resources/list`, `prompts/list` and `resources/templates/list` with empty lists instead of an error.
+- Quoted search queries highlight the quoted phrase as one match and center the snippet on it.
 
 ### Performance
 - Scans skip deleted sessions instead of re-reading their transcripts every time.
+- Building a context bundle from many messages no longer rechecks the whole draft after every message.
 
 ## [1.7.8] - 2026-11-06
 

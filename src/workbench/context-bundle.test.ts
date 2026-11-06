@@ -42,3 +42,12 @@ test("selected bookmarks resolve only real messages, deduplicate references and 
   await expect(loadContext(api,[{key:"one",seq:9}])).rejects.toThrow(/message.*unavailable/);
   await expect(loadContext(api,[])).rejects.toThrow(/Select/);
 });
+
+test("formatContext accepts exactly the limit and rejects one code point more, with the validateContext message", () => {
+  const build = (length: number) => formatContext([{session:session("one"),messages:[{...message(0),text:"😀".repeat(length)}]}]);
+  const base = Array.from(build(0)).length;
+  const exact = 100_000 - base;
+  expect(Array.from(build(exact)).length).toBe(100_000);
+  expect(()=>build(exact + 1)).toThrow("Context exceeds 100,000 characters. Reduce the selection or draft; nothing was truncated.");
+  expect(()=>validateContext("a".repeat(100_001))).toThrow("Context exceeds 100,000 characters. Reduce the selection or draft; nothing was truncated.");
+});

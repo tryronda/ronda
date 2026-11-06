@@ -9,8 +9,9 @@ export const contextEligible = (message: TranscriptMessage) => message.kind === 
 export const sessionReference = (key: string, seq: number) => `ronda://session/${key}#${seq}`;
 export const contextLength = (text: string) => Array.from(text).length;
 
+const contextError = () => new Error("Context exceeds 100,000 characters. Reduce the selection or draft; nothing was truncated.");
 export function validateContext(text: string) {
-  if (contextLength(text) > CONTEXT_LIMIT) throw new Error("Context exceeds 100,000 characters. Reduce the selection or draft; nothing was truncated.");
+  if (contextLength(text) > CONTEXT_LIMIT) throw contextError();
 }
 
 const label = (text: string) => text.replace(/\r?\n/g, " ").replace(/[\\`*_{}\[\]<>!#|]/g, "\\$&");
@@ -21,21 +22,27 @@ const literal = (text: string) => {
 
 /** One formatter for the editable preview, clipboard, and Markdown file. */
 export function formatContext(sources: ContextSource[], options = { tools: false, thinking: false }) {
-  let draft = "# Selected Ronda context\n\n";
+  let draft = "";
+  let count = 0;
+  const append = (chunk: string) => {
+    draft += chunk;
+    count += contextLength(chunk);
+  };
+  append("# Selected Ronda context\n\n");
   for (const { session, messages } of sources) {
-    draft += `## ${label(session.title)}\n\nAgent: ${label(session.agent)}\nProject: ${label(session.project_path ?? "Unknown")}\nHost: ${label(session.host ?? "Local")}\n\n`;
+    append(`## ${label(session.title)}\n\nAgent: ${label(session.agent)}\nProject: ${label(session.project_path ?? "Unknown")}\nHost: ${label(session.host ?? "Local")}\n\n`);
     for (const message of [...messages].sort((a, b) => a.seq - b.seq)) {
       if (!contextEligible(message)) throw new Error(`Message #${message.seq} is internal context and cannot be included. Remove it from the selection.`);
       const date = message.timestamp === null ? null : new Date(message.timestamp);
       const timestamp = date && Number.isFinite(date.getTime()) ? date.toISOString() : "Not recorded";
-      draft += `### ${message.role} · message #${message.seq}\n\nTimestamp: ${timestamp}\nReference: ${sessionReference(session.key, message.seq)}\n\n${message.text}\n\n`;
+      append(`### ${message.role} · message #${message.seq}\n\nTimestamp: ${timestamp}\nReference: ${sessionReference(session.key, message.seq)}\n\n${message.text}\n\n`);
       if (options.tools) for (const tool of message.tool_calls) {
-        draft += `Tool: ${label(tool.name)}${tool.is_error ? " (recorded error)" : ""}\n\n`;
-        if (tool.input !== null) draft += `Input:\n\n${literal(tool.input)}\n\n`;
-        if (tool.output !== null) draft += `Output:\n\n${literal(tool.output)}\n\n`;
+        append(`Tool: ${label(tool.name)}${tool.is_error ? " (recorded error)" : ""}\n\n`);
+        if (tool.input !== null) append(`Input:\n\n${literal(tool.input)}\n\n`);
+        if (tool.output !== null) append(`Output:\n\n${literal(tool.output)}\n\n`);
       }
-      if (options.thinking && message.thinking !== null) draft += `Thinking:\n\n${literal(message.thinking)}\n\n`;
-      validateContext(draft);
+      if (options.thinking && message.thinking !== null) append(`Thinking:\n\n${literal(message.thinking)}\n\n`);
+      if (count > CONTEXT_LIMIT) throw contextError();
     }
   }
   validateContext(draft);
