@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Pressing Down in the library search moves focus to the first session.
+
 ### Performance
 - Session dates in the library reuse two date formatters instead of building one per row.
 
