@@ -514,3 +514,25 @@ test("a failed startup scan shows the error with a scan retry", async () => {
     expect(scan).toHaveBeenCalledTimes(1);
   } finally {await act(async()=>root.unmount());host.remove();Reflect.deleteProperty(window,"__TAURI_INTERNALS__");}
 });
+
+test("sidebar project rows show the full path only when basenames collide", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const projects = [
+    { path: "/a/app", session_count: 2, updated_at: 3 },
+    { path: "/b/app", session_count: 1, updated_at: 2 },
+    { path: "/c/unique", session_count: 1, updated_at: 1 },
+  ];
+  const api: WorkbenchBackend = { ...backend, libraryOptions: async () => ({ agents: ["codex" as const], models: ["gpt-5"], hosts: [], projects }), listSessions: async () => [session],
+    listProjects: async () => projects, getSession: async () => session, getTranscript: async () => [], onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    const rows = [...host.querySelectorAll<HTMLButtonElement>("aside button[title^='/']")];
+    const label = (path: string) => rows.find(row => row.title === path)?.querySelector("span.truncate")?.textContent;
+    expect(label("/a/app")).toBe("/a/app");
+    expect(label("/b/app")).toBe("/b/app");
+    expect(label("/c/unique")).toBe("unique");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

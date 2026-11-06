@@ -8,6 +8,9 @@ All notable changes to Ronda are recorded here.
 - Moving a session to Trash now shows the warning when some of its files could not be moved, instead of only "moved to Trash".
 - Deleting a label now says how many sessions it will be removed from.
 
+### Performance
+- The sidebar project list no longer rescans every project for each row when deciding whether to show the full path.
+
 ## [1.7.11] - 2026-11-06
 
 ### Fixed
