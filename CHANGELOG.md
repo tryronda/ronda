@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Moving a session to Trash now shows the warning when some of its files could not be moved, instead of only "moved to Trash".
+
 ## [1.7.11] - 2026-11-06
 
 ### Fixed

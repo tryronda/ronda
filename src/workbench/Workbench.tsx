@@ -1086,10 +1086,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
   const trash = async () => {
     if (!selected || selected.parent_key || !window.confirm(t.deleteConfirm)) return;
-    try { await api.trashSession(selected.key); await reload();
+    try { const warning = await api.trashSession(selected.key); await reload();
       setOpened(null); setSelectedKey(null); setMobileDetail(false);
       if (detail.kind === "session") navigateDetail({ kind: "home" });
-      setNotice(t.deleted); }
+      setNotice(warning ? `${t.deleted}. ${warning}` : t.deleted); }
     catch (cause) { setError(String(cause)); }
   };
 

@@ -40,7 +40,7 @@ test("opens on the library home, then loads a session, shows its transcript, and
     searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [{ path: "/projects/hello world", session_count: 1, updated_at: session.updated_at }],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
     setSessionFlags: setFlags, resumeSession: async () => "", exportSession: async () => {},
-    trashSession: async () => {}, onLibraryChanged: async () => () => {},
+    trashSession: async () => null, onLibraryChanged: async () => () => {},
   };
   api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host = document.createElement("div");
@@ -84,7 +84,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
     getTranscript, searchSessions: async () => [], searchGrouped,
     searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
-    setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => {},
+    setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => null,
     onLibraryChanged: async callback => { listeners.add(callback); return () => {listeners.delete(callback);}; },
   };
   api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
