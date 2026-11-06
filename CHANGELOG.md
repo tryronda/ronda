@@ -4,14 +4,19 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Added
+- `show` and `ronda_get_session` mark tool calls that failed.
+
 ### Changed
 - Related sessions show the full match count and each session's agent, date, and archived state.
 - Search excerpts show “…” where the text continues.
+- The MCP tool schemas state the time formats, size ranges, and valid agent ids.
 
 ### Fixed
 - Each location and host button in Settings has its own name for screen readers.
 - CLI and MCP search list excerpts in a stable order when sessions were updated at the same time.
 - Scan errors, including the first ones `ronda-cli index` prints, always appear in the same order.
+- Intelligence, `ronda-cli insights`, and project overviews list tied recurring errors in a stable order.
 
 ## [1.7.4] - 2026-11-06
 

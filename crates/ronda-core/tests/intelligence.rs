@@ -586,3 +586,59 @@ fn error_lookup_scopes_before_matching_and_keeps_cli_mcp_parity() {
         11
     );
 }
+
+#[test]
+fn tied_recurring_errors_list_in_signature_order() {
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("ronda-intel-ties-{}-{n}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let mut store = Store::open(&dir.join("ronda.db")).unwrap();
+    let errors: Vec<String> = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"]
+        .iter()
+        .map(|w| format!("Error: {w} connection refused"))
+        .collect();
+    let tools: Vec<(&str, &str, &str, bool)> = errors
+        .iter()
+        .map(|e| ("Bash", r#"{"command":"make"}"#, e.as_str(), true))
+        .collect();
+    // Two identical-shaped sessions, so every signature ties on sessions and last_seen.
+    for (agent, id) in [(AgentId::ClaudeCode, "t1"), (AgentId::Codex, "t2")] {
+        store
+            .upsert(
+                &session(agent, id, now - DAY, "Chase flaky builds", &tools),
+                "f",
+            )
+            .unwrap();
+    }
+    let first = store.intelligence(Some(now - 7 * DAY), None).unwrap();
+    let signatures: Vec<&str> = first
+        .recurring
+        .iter()
+        .map(|b| b.signature.as_str())
+        .collect();
+    assert_eq!(signatures.len(), 6, "{signatures:?}");
+    assert!(signatures.windows(2).all(|w| w[0] < w[1]), "{signatures:?}");
+    for _ in 0..3 {
+        let again = store.intelligence(Some(now - 7 * DAY), None).unwrap();
+        assert_eq!(
+            again
+                .recurring
+                .iter()
+                .map(|b| &b.signature)
+                .collect::<Vec<_>>(),
+            first
+                .recurring
+                .iter()
+                .map(|b| &b.signature)
+                .collect::<Vec<_>>()
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
