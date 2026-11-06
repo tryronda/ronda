@@ -16,6 +16,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Loader } from "@/components/motion/loader";
 import { SharedLayoutBg } from "@/components/motion/shared-layout-bg";
 import { PixelField, PixelStrip } from "@/components/brand/pixel-field";
+import { agentNames } from "@/lib/agents";
 import { EASE_OUT } from "@/lib/ease";
 import { cn, plural, timeLabel } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
@@ -73,14 +74,6 @@ const copy = {
   continueReading: "Continue reading", readingStale: "Saved place no longer matches this transcript",
   readingAmbiguous: "Saved place matches more than one message",
   saveSearch: "Save current search", savedSearches: "Saved searches", savedSearchName: "Name this search",
-};
-
-const agentNames: Record<AgentId, string> = {
-  "claude-code": "Claude Code", codex: "Codex", grok: "Grok Build", dsh: "DeepSeek Harness",
-  cursor: "Cursor", opencode: "OpenCode", pi: "Pi", omp: "Oh My Pi", kiro: "Kiro",
-  kimi: "Kimi Code", gemini: "Gemini CLI", copilot: "Copilot CLI",
-  antigravity: "Antigravity", qoder: "Qoder", hermes: "Hermes", openclaw: "OpenClaw",
-  codebuddy: "CodeBuddy", workbuddy: "WorkBuddy",
 };
 
 // Markdown rendering is the heaviest dependency; keep it out of the startup bundle and warm it up once the shell is idle.

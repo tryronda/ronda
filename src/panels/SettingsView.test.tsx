@@ -297,7 +297,7 @@ test("each location and host button has its own name", async () => {
   const labels = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).map(b => b.getAttribute("aria-label"));
   const locations = await mountSettings(rows, hosts, "Locations");
   try {
-    expect(labels(locations.host)).toEqual(expect.arrayContaining(["Remove codex location ~/.codex", "Remove gemini location /work/gemini"]));
+    expect(labels(locations.host)).toEqual(expect.arrayContaining(["Remove Codex location ~/.codex", "Remove Gemini CLI location /work/gemini"]));
   } finally { await act(async () => locations.root.unmount()); locations.host.remove(); }
   const remote = await mountSettings(rows, hosts, "Remote hosts");
   try {

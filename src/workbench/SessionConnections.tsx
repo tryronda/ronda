@@ -1,4 +1,5 @@
 import {useState} from "react";
+import {agentName} from "@/lib/agents";
 import {plural,timeLabel} from "@/lib/utils";
 import {sameJson,useLibraryRefresh} from "@/lib/hooks/use-library-refresh";
 import type {SessionMeta,SessionRelationships,WorkbenchBackend} from "./api";
@@ -28,7 +29,7 @@ export function SessionConnections({api,session,active,onOpen}:{api:WorkbenchBac
             {(data.related_total??0)>data.related.length && <p className="text-muted-foreground">Showing top {data.related.length} of {plural(data.related_total!, "same-project session")}</p>}
             {data.related.length ? <ul>{data.related.map(row=><li className="py-1" key={row.session.key}>
               <button className="underline" type="button" onClick={()=>onOpen(row.session)}>{title(row.session)}</button>
-              <p className="text-muted-foreground">{[row.session.agent,timeLabel(row.session.updated_at),row.session.archived&&"archived"].filter(Boolean).join(" · ")} · {row.explanation} · {plural(row.shared_errors, "shared error")} · {plural(row.shared_files, "shared file")}</p>
+              <p className="text-muted-foreground">{[agentName(row.session.agent),timeLabel(row.session.updated_at),row.session.archived&&"archived"].filter(Boolean).join(" · ")} · {row.explanation} · {plural(row.shared_errors, "shared error")} · {plural(row.shared_files, "shared file")}</p>
             </li>)}</ul> : <p>No other indexed root sessions in this project and host.</p>}
           </div>
         </details>

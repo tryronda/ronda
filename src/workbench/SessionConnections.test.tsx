@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {act} from "react";
+import {agentNames} from "@/lib/agents";
 import {createRoot} from "react-dom/client";
 import {MotionGlobalConfig} from "motion/react";
 MotionGlobalConfig.skipAnimations=true;
@@ -55,7 +56,7 @@ test("connections say when only the top related sessions are shown",async()=>{
     expect(host.textContent).toContain(`Related sessions · ${report.related_total}`);
     expect(host.textContent).not.toContain(`Related sessions · 5`);
     const first=report.related[0].session;
-    expect(host.textContent).toContain(`${first.agent} · ${timeLabel(first.updated_at)}`);
+    expect(host.textContent).toContain(`${agentNames[first.agent]} · ${timeLabel(first.updated_at)}`);
     await show({...report,related:[{...report.related[0],session:{...first,archived:true}}],related_total:1});
     expect(host.textContent).toContain("archived · ");
     await show(report);
