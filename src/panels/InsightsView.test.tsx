@@ -89,3 +89,21 @@ test("charts expose a screen-reader summary and label: value lists", async () =>
   expect(lists[2]).toContain("09:00: 4");
   await act(async () => root.unmount());
 });
+
+test("weekday, month, and heatmap totals cover only the last 12 months; headings state their span", async () => {
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = new Date(); const old = new Date(); old.setHours(12); old.setDate(old.getDate() - 400);
+  invoke.mockImplementationOnce(async () => ({ ...data, prompts: 99, activity: [[fmt(old), 40], [fmt(today), 3]] as [string, number][], hours: [[9, 4]] as [number, number][] }));
+  const { host, root } = await mount();
+  const lists = Array.from(host.querySelectorAll("ul.sr-only"));
+  const total = (list: Element) => Array.from(list.querySelectorAll("li")).reduce((sum, li) => sum + Number(li.textContent!.split(": ")[1]), 0);
+  expect(total(lists[0])).toBe(3);
+  expect(total(lists[1])).toBe(3);
+  expect(host.querySelector('[role="img"]')!.getAttribute("aria-label")).toBe("Activity: 3 Prompts");
+  expect(host.querySelector('[data-testid="heatmap-summary"]')!.textContent).toContain("1 active day");
+  const head = (name: string) => Array.from(host.querySelectorAll("h2")).find(h => h.textContent === name)!.parentElement!.textContent;
+  expect(head("Weekdays")).toContain("Last 12 months");
+  expect(head("Months")).toContain("Last 12 months");
+  expect(head("Hours")).toContain("All time");
+  await act(async () => root.unmount());
+});
