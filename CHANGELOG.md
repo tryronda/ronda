@@ -6,9 +6,12 @@ All notable changes to Ronda are recorded here.
 
 ### Changed
 - Related sessions show the full match count and each session's agent, date, and archived state.
+- Search excerpts show “…” where the text continues.
 
 ### Fixed
 - Each location and host button in Settings has its own name for screen readers.
+- CLI and MCP search list excerpts in a stable order when sessions were updated at the same time.
+- Scan errors, including the first ones `ronda-cli index` prints, always appear in the same order.
 
 ## [1.7.4] - 2026-11-06
 

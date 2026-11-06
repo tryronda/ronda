@@ -282,6 +282,7 @@ impl Scanner {
         if complete {
             store.prune_missing(host, &seen)?;
         }
+        report.errors.sort();
         let roots = root_states
             .into_values()
             .map(|root| {
@@ -363,5 +364,52 @@ mod tests {
             .filter(|l| l.agent == agent && l.custom)
             .count();
         assert_eq!(custom_count, 1);
+    }
+
+    struct BrokenAdapter {
+        root: PathBuf,
+    }
+
+    impl AgentAdapter for BrokenAdapter {
+        fn agent(&self) -> crate::AgentId {
+            crate::AgentId::ClaudeCode
+        }
+        fn roots(&self, _home: &Path) -> Vec<PathBuf> {
+            vec![self.root.clone()]
+        }
+        fn discover(&self, _root: &Path) -> Result<Vec<SourceRef>> {
+            Ok(["q", "c", "x", "a", "m", "f"]
+                .into_iter()
+                .map(|id| SourceRef {
+                    agent: crate::AgentId::ClaudeCode,
+                    native_id: id.into(),
+                    path: self.root.join(format!("{id}.jsonl")),
+                    modified_ms: 1,
+                    size: 1,
+                })
+                .collect())
+        }
+        fn parse(&self, source: &SourceRef) -> Result<Option<crate::ParsedSession>> {
+            anyhow::bail!("unparsable {}", source.native_id)
+        }
+    }
+
+    #[test]
+    fn scan_errors_are_sorted_and_repeat_across_scans() {
+        let root = std::env::temp_dir().join(format!("ronda-errs-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let scanner = Scanner {
+            adapters: vec![Box::new(BrokenAdapter { root: root.clone() })],
+            home: root.clone(),
+        };
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        let first = scanner.scan(&mut store, true).unwrap().errors;
+        let second = scanner.scan(&mut store, true).unwrap().errors;
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(first.len(), 6);
+        let mut sorted = first.clone();
+        sorted.sort();
+        assert_eq!(first, sorted);
+        assert_eq!(first, second);
     }
 }
