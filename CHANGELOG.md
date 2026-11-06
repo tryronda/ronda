@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The docs list every MCP argument next to its `ronda-cli` flag and describe the empty-index, dot-named-project, and blank-line behaviour.
+
 ### Fixed
 - Intelligence no longer shows “1 session” under “How sessions end” when no session has an outcome.
 - Insights activity tooltips and the chart label say “1 prompt” or “N prompts” instead of “1 Prompts”.

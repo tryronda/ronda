@@ -191,7 +191,7 @@ export const docs: DocSection[] = [
     id: "cli", title: "Command line",
     body: <>
       <P>`ronda-cli` ships beside the desktop app and reads the same index.</P>
-      <Code>{`ronda-cli index                    # create an index if none exists
+      <Code>{`ronda-cli index                    # build the index; also fills one that is empty
 ronda-cli sessions --project "$PWD"
 ronda-cli sessions --since 14d --until 7d   # a time window: 7d, 2w, 2026-01-31, or an ISO time
 ronda-cli search 'useEffect('
@@ -213,6 +213,22 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
     id: "mcp", title: "MCP server",
     body: <>
       <P>`ronda-mcp` is a read-only stdio server that lets an agent search your past sessions. It exposes `ronda_search`, `ronda_list_sessions`, `ronda_get_session`, `ronda_list_projects`, `ronda_insights`, and `ronda_find_error`, which checks whether an error has been seen before and how those sessions ended. `ronda_search` and `ronda_list_sessions` accept `since` and `until`, and `ronda_list_sessions` and `ronda_list_projects` accept `reverse`; unknown agents and invalid times are rejected as invalid parameters, as in `ronda-cli`. Desktop **Find error history** uses the same lookup with optional project/host scope and paged original evidence. Recorded commit commands do not prove a fix.</P>
+      <P>Each MCP argument matches a `ronda-cli` flag:</P>
+      <table className="docs-table"><tbody>
+        {([
+          ["`search QUERY`, `errors TEXT`", "`query` (`ronda_search`), `error` (`ronda_find_error`)"],
+          ["`show KEY`", "`key`"],
+          ["`--project`", "`project`"],
+          ["`--agent` (repeatable)", "`agents` (array)"],
+          ["`--since`, `--until`", "`since`, `until`"],
+          ["`--limit`", "`limit`"],
+          ["`--starred`, `--reverse`", "`starred`, `reverse`"],
+          ["`--subagent`, `--from`", "`subagent`, `from_seq`"],
+          ["`--messages`, `--chars`, `--message-chars`", "`max_messages`, `max_chars`, `max_message_chars`"],
+          ["`--tools`, `--thinking`", "`include_tools`, `include_thinking`"],
+        ] as const).map(([flag, argument]) => <tr key={flag}><td><Inline>{flag}</Inline></td><td><Inline>{argument}</Inline></td></tr>)}
+      </tbody></table>
+      <P>An argument a tool does not define is rejected as an invalid parameter. Project names may start with a dot; a relative path such as `./x` is a usage error. Blank input lines on the MCP server are ignored.</P>
       <P>**Settings → Connect** shows the installed path and ready-to-copy setup for Claude Code, Codex, and other MCP clients, plus a command-line snippet to paste into AGENTS.md or CLAUDE.md. For Claude Code on macOS:</P>
       <Code>{`claude mcp add --scope user ronda -- '/Applications/Ronda.app/Contents/MacOS/ronda-mcp'`}</Code>
     </>,
