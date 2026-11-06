@@ -4,11 +4,15 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+
 ### Fixed
 - `ronda-mcp` now answers JSON-RPC batch requests with an array of replies instead of ignoring them.
 - `ronda-mcp` no longer exits when it receives a line that is not valid UTF-8; it replies with a parse error and keeps serving.
 - Very long session titles are now capped at 160 characters in CLI and MCP output.
 - Date filters like `--since 2025-03-09` no longer fail as "ambiguous date" when local midnight falls in a daylight saving gap.
+
+### Performance
+- Listing sessions loads stars, pins and labels with two queries instead of two per session, speeding up the sidebar, projects, insights and CLI/MCP lists.
 
 ## [1.7.11] - 2026-11-06
 
