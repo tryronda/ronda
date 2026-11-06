@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- Scan errors, including the first ones `ronda-cli index` prints, always appear in the same order.
 - CLI and MCP search list excerpts in a stable order when sessions were updated at the same time.
 
 ## [1.7.4] - 2026-11-06
