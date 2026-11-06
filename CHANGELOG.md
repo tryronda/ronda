@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Docs code blocks can be focused and scrolled with the keyboard, and have a Copy button.
+
 ## [1.7.11] - 2026-11-06
 
 ### Fixed
