@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Global shortcuts no longer fire behind the open keyboard shortcuts dialog.
+
 ## [1.7.8] - 2026-11-06
 
 ### Fixed

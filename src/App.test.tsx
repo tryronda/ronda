@@ -155,3 +155,20 @@ test("Cmd-comma and Ctrl-comma open Settings, except inside a terminal", async (
   expect(host.textContent).toContain("Settings content");
   await act(async () => { root.unmount(); });
 });
+
+test("global shortcuts do nothing behind the open shortcuts dialog", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<App />); });
+  const press = async (key: string, init: KeyboardEventInit = {}) => act(async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...init }));
+  });
+  await press("?");
+  expect(host.querySelector("dialog")).not.toBeNull();
+  await press("2", { metaKey: true });
+  expect(host.textContent).not.toContain("Insights content");
+  expect(host.querySelector('.workspace-view')?.hasAttribute('hidden')).toBe(false);
+  expect(host.querySelector("dialog")).not.toBeNull();
+  await act(async () => { root.unmount(); });
+});

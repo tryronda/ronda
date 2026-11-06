@@ -112,6 +112,8 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
       const editing = event.target instanceof HTMLElement && (event.target.isContentEditable ||
         event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement);
       const inTerminal = event.target instanceof Element && event.target.closest(".xterm") !== null;
+      // Behind the open shortcuts dialog only "?" (and Escape, which the dialog handles itself) do anything.
+      if (helpOpen && event.key !== "?" && event.key !== "Escape") return;
       if (event.key === "?" && !modifier && !event.altKey && !editing && !inTerminal) { event.preventDefault(); setHelpOpen(true); }
       else if (modifier && event.key.toLowerCase() === "k") { event.preventDefault(); openSearch(); }
       else if (modifier && /^[1-4]$/.test(event.key)) { event.preventDefault(); navigate(pages[Number(event.key) - 1]); }
@@ -122,7 +124,7 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [embedded, go, navigate, openSearch, page]);
+  }, [embedded, go, helpOpen, navigate, openSearch, page]);
 
   return <div ref={rootRef} className={cn("flex h-full w-full min-h-0 flex-col bg-background", isMac && "platform-mac")}>
     <header className="flex h-[52px] flex-none items-stretch border-b border-border bg-paper select-none" data-tauri-drag-region="deep">
