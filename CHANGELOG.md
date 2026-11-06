@@ -17,6 +17,9 @@ All notable changes to Ronda are recorded here.
 - CLI and MCP search list excerpts in a stable order when sessions were updated at the same time.
 - Scan errors, including the first ones `ronda-cli index` prints, always appear in the same order.
 - Intelligence, `ronda-cli insights`, and project overviews list tied recurring errors in a stable order.
+- Screen readers announce which library filter is active.
+- The browser preview's Insights leaderboards add up to its session total.
+- Intelligence shows the selected project in its picker even when the project has only archived sessions.
 
 ## [1.7.4] - 2026-11-06
 

@@ -1284,3 +1284,29 @@ test("an empty search explains active filters and Clear filters restores results
     expect(host.querySelector(".session-card")).not.toBeNull();
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("the sidebar announces which library filter is active", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getSession: async () => session, getTranscript: async () => [], onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const find = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("aside button")].find(b => b.textContent?.includes(label))!;
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    expect(find("All sessions").getAttribute("aria-current")).toBe("true");
+    expect(find("Bookmarks").hasAttribute("aria-current")).toBe(false);
+    expect(find("Starred").getAttribute("aria-pressed")).toBe("false");
+    expect(find("hello world").hasAttribute("aria-current")).toBe(false);
+    await act(async () => find("Starred").click());
+    expect(find("Starred").getAttribute("aria-pressed")).toBe("true");
+    expect(find("All sessions").hasAttribute("aria-current")).toBe(false);
+    await act(async () => find("Starred").click());
+    await act(async () => find("hello world").click());
+    expect(find("hello world").getAttribute("aria-current")).toBe("true");
+    expect(find("All sessions").hasAttribute("aria-current")).toBe(false);
+    await act(async () => find("Bookmarks").click());
+    expect(find("Bookmarks").getAttribute("aria-current")).toBe("true");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

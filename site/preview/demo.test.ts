@@ -450,3 +450,9 @@ test("preview delete refuses remote and unknown samples like the desktop app and
   expect(left.some(session => session.key === "claude-code:demo-0")).toBe(false);
   stop();
 });
+
+test("preview Insights leaderboards add up to the session total", async () => {
+  installDemoBackend();
+  const insights = await invoke<{ sessions: number; agents: { sessions: number }[]; projects: { sessions: number }[]; models: { sessions: number }[] }>("get_insights");
+  for (const board of [insights.agents, insights.projects, insights.models]) expect(board.reduce((sum, row) => sum + row.sessions, 0)).toBe(insights.sessions);
+});
