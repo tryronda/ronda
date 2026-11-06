@@ -231,6 +231,7 @@ impl AgentAdapter for FileAdapter {
                     matches!(m.role, Role::User)
                         && matches!(m.kind, MessageKind::Text)
                         && !m.text.trim().is_empty()
+                        && !is_injected_prompt(&m.text)
                 })
                 .map(|m| crate::adapter::fallback_title(&m.text))
                 .unwrap_or_else(|| "Untitled session".to_owned());
@@ -1285,6 +1286,19 @@ fn cursor_project(path: &Path) -> Option<String> {
         .or_else(|| Some(format!("/{}", slug.replace('-', "/"))))
 }
 
+fn is_injected_prompt(text: &str) -> bool {
+    const PREFIXES: [&str; 6] = [
+        "<environment_context>",
+        "# AGENTS.md instructions",
+        "<user_instructions>",
+        "<command-name>",
+        "<command-message>",
+        "<local-command-stdout>",
+    ];
+    let text = text.trim_start();
+    PREFIXES.iter().any(|p| text.starts_with(p))
+}
+
 fn append_thinking(slot: &mut Option<String>, text: &str) {
     if text.is_empty() {
         return;
@@ -1701,6 +1715,26 @@ mod tests {
         assert_eq!(m.thinking.as_deref(), Some("Plan it"));
         assert!(m.tool_calls[0].is_error);
         assert_eq!(m.tool_calls[0].output.as_deref(), Some("boom"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_title_skips_injected_prompts() {
+        let data = concat!(
+            "{\"type\":\"session_meta\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"payload\":{\"id\":\"123e4567-e89b-12d3-a456-426614174001\",\"cwd\":\"/repo\",\"source\":\"cli\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"# AGENTS.md instructions for /repo\\n\\n<INSTRUCTIONS>be nice</INSTRUCTIONS>\"}]}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"<environment_context>cwd</environment_context>\"}]}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Fix the flaky test\"}]}}\n");
+        let (root, sources) = fixture(
+            AgentId::Codex,
+            "sessions/2026/01/01/rollout-2026-01-01T00-00-00-123e4567-e89b-12d3-a456-426614174001.jsonl",
+            data,
+        );
+        let parsed = FileAdapter(AgentId::Codex)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.meta.title, "Fix the flaky test");
         fs::remove_dir_all(root).unwrap();
     }
 
