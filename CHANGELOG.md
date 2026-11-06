@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Open in Terminal on macOS keeps the window usable after the agent exits instead of showing "[Process completed]".
+- Moving a session to the Trash tombstones it as soon as its main file is trashed, so a failing sidecar file no longer leaves a ghost session; the sidecar failure is reported as a warning.
 
 ## [1.7.10] - 2026-11-06
 
