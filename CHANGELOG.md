@@ -4,6 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Sessions from Grok, Kiro, Pi, OpenCode, Hermes and similar agents with a multi-line stored title show only its first line.
+- Settings → Locations no longer lists a folder twice when a custom location matches a default one.
+
 ## [1.7.2] - 2026-11-06
 
 ### Changed
