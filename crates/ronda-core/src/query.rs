@@ -391,7 +391,8 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
             continue;
         }
         if let Some((_, snippets)) = grouped.iter_mut().find(|(s, _)| s.key == h.session.key) {
-            if snippets.len() < 3 {
+            // The title row (seq -1) is not an excerpt, so it never counts toward the cap.
+            if h.seq < 0 || snippets.iter().filter(|(seq, _)| *seq >= 0).count() < 3 {
                 snippets.push((h.seq, h.snippet));
             } else {
                 capped = true;
@@ -435,11 +436,18 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
             if s.archived { " · archived" } else { "" }
         ));
         for (seq, snippet) in snippets {
-            out.push_str(&format!(
-                "  - seq {seq}: {}\n    ref: ronda://session/{}#{seq}\n",
-                snippet.replace('\n', " "),
-                s.key
-            ));
+            let snippet = snippet.replace('\n', " ");
+            if *seq < 0 {
+                out.push_str(&format!(
+                    "  - title: {snippet}\n    ref: ronda://session/{}\n",
+                    s.key
+                ));
+            } else {
+                out.push_str(&format!(
+                    "  - seq {seq}: {snippet}\n    ref: ronda://session/{}#{seq}\n",
+                    s.key
+                ));
+            }
         }
     }
     out.push_str(&freshness(store)?);
@@ -1259,6 +1267,49 @@ mod tests {
             out.contains("codex:day") && !out.contains("codex:next"),
             "{out}"
         );
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn title_only_hits_are_labelled_and_open_by_plain_reference() {
+        let path = std::env::temp_dir().join(format!("ronda-title-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        seeded(
+            &mut db,
+            "codex:zebramigration",
+            AgentId::Codex,
+            "/tmp/p",
+            10,
+            false,
+        );
+        let out = search_capped(
+            &db,
+            &SearchArgs {
+                query: "zebramigration".into(),
+                filter: ListArgs::default(),
+            },
+            10,
+        )
+        .unwrap();
+        assert!(out.contains("1 session matches"), "{out}");
+        assert!(out.contains("  - title: "), "{out}");
+        assert!(!out.contains("seq -1") && !out.contains("#-1"), "{out}");
+        assert!(
+            out.contains("ref: ronda://session/codex:zebramigration\n"),
+            "{out}"
+        );
+        assert!(!out.contains("Up to 3 excerpts"), "{out}");
+        let shown = get_session(
+            &db,
+            &ShowArgs {
+                key: "ronda://session/codex:zebramigration".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(shown.contains("codex:zebramigration"), "{shown}");
         drop(db);
         let _ = std::fs::remove_file(&path);
     }
