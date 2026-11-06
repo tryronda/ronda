@@ -202,8 +202,13 @@ ronda-cli show 'claude-code:SESSION_ID' --subagent '*'
 ronda-cli sessions --reverse --limit 5      # oldest activity first (also on projects)
 ronda-cli projects
 ronda-cli insights --since 7d      # time, failures, recurring errors, stack
+ronda-cli insights --project "$PWD" --since all   # one project, all time
 ronda-cli errors 'database is locked'
-ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Code>
+ronda-cli setup                    # print paths and an AGENTS.md snippet
+ronda-cli --db /path/to/ronda.db sessions   # read another index database
+ronda-cli --version`}</Code>
+      <P>`--db PATH` (also `--db=PATH`), `--help`, and `--version` are global options. `--db` points `ronda-cli` at a different index database instead of the default one; `ronda-mcp` accepts `--db PATH` too.</P>
+      <P>`insights` takes `--project PATH` and `--since WHEN|all`. Without `--since` it covers the last `30d`; `--since all` covers all time.</P>
       <P>List output says what it leaves out. `sessions` excludes archived sessions and states that in its heading; when `--limit` trims the list it reads “showing M of N sessions”. Each session line adds a token count when one was recorded. `search` includes archived sessions and marks them “· archived”; it applies project, agent, and time filters before limiting hits, groups matches by session, and adds “Up to 3 excerpts per session.” when excerpts were capped. `projects` says “Showing X of Y projects.” when it is limited, and notes that archived sessions are not counted. In `show` and `ronda_get_session`, a tool call that failed is marked “(failed)”. `sessions --starred` and `search --starred` (MCP `starred`) keep only starred sessions. A date such as 2026-01-31 in `--until` includes that whole day. Search hits that match only a title are shown as “title” with a plain session reference. `ronda-cli errors` ends with the `ronda-cli show … --tools` command to open a match (MCP still names `ronda_get_session`). The `show` and `ronda_get_session` header gives the start time, the visible message count with “(+K injected)” when context was injected, the token count when one was recorded, and whether the session is starred or archived. `ronda_list_sessions`, `ronda_search`, and `ronda_list_projects` return the same text over MCP.</P>
       <P>`--project` (MCP `project`) takes a project name or an absolute path. A bare name matches the last folder of a known project path, ignoring case, so `app` finds both `/work/app` and `/play/app`. An absolute path matches a known project exactly; otherwise it resolves to the closest known project that contains it, and failing that to every known project inside it. A relative path is a usage error, and a name or path with no match lists the known projects. `sessions`, `search`, and `projects` use every project that matches; `insights` needs exactly one, so when a name matches several it lists their paths and asks for one. Projects whose sessions are all archived still resolve. Size options are clamped to these ranges: `--limit` 1–100 for `sessions`, 1–30 for `search`, and 1–200 for `projects`; `--messages` 1–200; `--chars` 200–100000; `--message-chars` 100–50000. A `show` continuation hint names `--from` on the CLI and `from_seq` over MCP. A message cut at the per-message limit ends with a “clipped” marker that says how to raise it.</P>
       <P>`show` takes `--subagent ID|*`, `--from SEQ`, `--messages N`, `--chars N`, `--message-chars N`, `--tools`, and `--thinking`.</P>
@@ -222,6 +227,7 @@ ronda-cli setup                    # print paths and an AGENTS.md snippet`}</Cod
           ["`--project`", "`project`"],
           ["`--agent` (repeatable)", "`agents` (array)"],
           ["`--since`, `--until`", "`since`, `until`"],
+          ["`insights --since WHEN|all` (default `30d`)", "`since` (`ronda_insights`; `all` for all time, default `30d`)"],
           ["`--limit`", "`limit`"],
           ["`--starred`, `--reverse`", "`starred`, `reverse`"],
           ["`--subagent`, `--from`", "`subagent`, `from_seq`"],

@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The command line and MCP docs cover `--db`, `--version`, `insights --project`, `--since all`, and the 30d default.
+
 ### Fixed
 - Screen readers announce the Star and Pin buttons by a stable name with a pressed state, not “Unstar, pressed”.
 
