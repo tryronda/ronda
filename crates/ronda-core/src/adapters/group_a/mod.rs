@@ -37,14 +37,28 @@ impl AgentAdapter for FileAdapter {
     }
     fn fingerprint(&self, source: &SourceRef) -> String {
         let extra = if self.0 == AgentId::Codex {
-            codex_db(&source.path)
-                .and_then(|p| p.metadata().ok())
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
+            let stamp = |path: Option<PathBuf>| {
+                path.and_then(|p| p.metadata().ok())
+                    .and_then(|m| {
+                        let ms = m
+                            .modified()
+                            .ok()?
+                            .duration_since(UNIX_EPOCH)
+                            .ok()?
+                            .as_millis();
+                        Some((ms, m.len()))
+                    })
+                    .unwrap_or((0, 0))
+            };
+            let db = codex_db(&source.path);
+            let wal = db
+                .as_ref()
+                .map(|p| PathBuf::from(format!("{}-wal", p.display())));
+            let (db_ms, _) = stamp(db);
+            let (wal_ms, wal_len) = stamp(wal);
+            format!("{db_ms}:{wal_ms}:{wal_len}")
         } else {
-            0
+            "0".to_owned()
         };
         format!("{}:{}:{extra}", source.modified_ms, source.size)
     }
@@ -1522,6 +1536,27 @@ mod tests {
             serde_json::json!({"type":"event_msg","payload":{"type":"token_count","info":null}}),
         ];
         assert_eq!(parse_codex(&rows).tokens, Some(42));
+    }
+
+    #[test]
+    fn codex_fingerprint_tracks_wal() {
+        let line = "{\"type\":\"session_meta\",\"payload\":{\"id\":\"123e4567-e89b-12d3-a456-426614174000\"}}\n";
+        let (root, sources) = fixture(
+            AgentId::Codex,
+            "sessions/rollout-2026-01-01T00-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl",
+            line,
+        );
+        fs::write(root.join("state_5.sqlite"), b"db").unwrap();
+        let adapter = FileAdapter(AgentId::Codex);
+        let before = adapter.fingerprint(&sources[0]);
+        assert_eq!(before, adapter.fingerprint(&sources[0]));
+        fs::write(root.join("state_5.sqlite-wal"), b"wal").unwrap();
+        assert_ne!(before, adapter.fingerprint(&sources[0]));
+        let other = FileAdapter(AgentId::Qoder);
+        let plain = other.fingerprint(&sources[0]);
+        fs::write(root.join("state_5.sqlite-wal"), b"longer wal").unwrap();
+        assert_eq!(plain, other.fingerprint(&sources[0]));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
