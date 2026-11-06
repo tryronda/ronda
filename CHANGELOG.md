@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- The transcript header and library rows show the full title and project path on hover when they are shortened.
+
 ## [1.7.3] - 2026-11-06
 
 ### Changed
