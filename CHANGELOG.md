@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- The site's changelog no longer shows an empty Unreleased entry.
+
 ## [1.7.10] - 2026-11-06
 
 ### Fixed
