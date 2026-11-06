@@ -34,9 +34,11 @@ test("a leaderboard shows ten rows, expands to all, and collapses again", async 
   expect(button(host, "Show all")).toBeUndefined();
   await act(async () => { tab(host, "Projects").click(); });
   expect(host.querySelectorAll(".insight-bar")).toHaveLength(10);
-  await act(async () => { button(host, "Show all").click(); });
+  expect(button(host, "Show all (12)").getAttribute("aria-expanded")).toBe("false");
+  await act(async () => { button(host, "Show all (12)").click(); });
   expect(host.querySelectorAll(".insight-bar")).toHaveLength(12);
-  await act(async () => { button(host, "Show top 10").click(); });
+  expect(button(host, "Show all (12)").getAttribute("aria-expanded")).toBe("true");
+  await act(async () => { button(host, "Show all (12)").click(); });
   expect(host.querySelectorAll(".insight-bar")).toHaveLength(10);
   await act(async () => root.unmount());
 });
@@ -62,6 +64,16 @@ test("Copy summary writes Markdown for totals and the current board, and reports
   writeText.mockRejectedValueOnce(new Error("denied"));
   await act(async () => { button(host, "Copy summary").click(); });
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not copy the summary");
+  await act(async () => root.unmount());
+});
+
+test("the Summary copied message clears when the board changes", async () => {
+  const { host, root } = await mount();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(async (_text: string) => {}) } });
+  await act(async () => { button(host, "Copy summary").click(); });
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("Summary copied");
+  await act(async () => { tab(host, "Projects").click(); });
+  expect(host.textContent).not.toContain("Summary copied");
   await act(async () => root.unmount());
 });
 

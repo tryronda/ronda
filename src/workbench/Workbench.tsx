@@ -93,14 +93,14 @@ function plainTitle(title: string) {
   return title.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\*\*|__|`/g, "");
 }
 
-function IconButton({ icon, title, onClick, active, disabled }: {
+function IconButton({ icon, title, label, onClick, active, disabled }: {
   icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
-  title: string; onClick: () => void; active?: boolean; disabled?: boolean;
+  title: string; label?: string; onClick: () => void; active?: boolean; disabled?: boolean;
 }) {
   return <motion.button type="button" whileTap={{ scale: 0.9 }}
     className={cn("grid size-8 flex-none place-items-center text-muted-foreground transition-colors hover:bg-chip hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
       active && "bg-chip text-foreground")}
-    title={title} aria-label={title} aria-pressed={active} onClick={onClick} disabled={disabled}>
+    title={title} aria-label={label ?? title} aria-pressed={active} onClick={onClick} disabled={disabled}>
     <HugeiconsIcon icon={icon} size={16} strokeWidth={1.8} />
   </motion.button>;
 }
@@ -1423,9 +1423,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               onClick={() => void openProjectFolder()} />
             {canRevealSource(selected) &&
               <IconButton icon={FileSearchIcon} title={t.revealSource} onClick={() => void revealSourceFile()} />}
-            <IconButton icon={StarIcon} title={selected.starred ? t.unstar : t.star} active={selected.starred} onClick={() => void flag("starred")} />
+            <IconButton icon={StarIcon} title={selected.starred ? t.unstar : t.star} label={t.star} active={selected.starred} onClick={() => void flag("starred")} />
             <IconButton icon={Edit02Icon} title="Rename session" active={renaming} disabled={aliasStatus !== "ready"} onClick={() => setRenaming(value => !value)} />
-            <IconButton icon={PinIcon} title={selected.pinned ? t.unpin : t.pin} active={selected.pinned} onClick={() => void flag("pinned")} />
+            <IconButton icon={PinIcon} title={selected.pinned ? t.unpin : t.pin} label={t.pin} active={selected.pinned} onClick={() => void flag("pinned")} />
             <ExportMenu onExport={exportMarkdown} onCopy={copySession} />
             {readingPositionResolution?.status === "resolved" && !terminalShown[selected.key] && <button type="button" className="label-mono ml-2 bg-chip px-3 py-2 text-[12px] hover:bg-foreground hover:text-background"
               onClick={continueReading}>{t.continueReading}</button>}

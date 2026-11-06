@@ -59,9 +59,6 @@ fn usize_value(s: String, flag: &str) -> Result<usize, String> {
     s.parse()
         .map_err(|_| format!("{flag} needs a nonnegative integer"))
 }
-fn i64_value(s: String, flag: &str) -> Result<i64, String> {
-    s.parse().map_err(|_| format!("{flag} needs an integer"))
-}
 
 fn parse_list(args: &[String], positional: bool) -> Result<(ListArgs, Vec<String>), String> {
     let mut filter = ListArgs::default();
@@ -141,7 +138,7 @@ fn parse_show(args: &[String]) -> Result<ShowArgs, String> {
             if let Some(v) = option_value(args, &mut i, flag)? {
                 match flag {
                     "--subagent" => show.subagent = Some(v),
-                    "--from" => show.from_seq = Some(i64_value(v, flag)?),
+                    "--from" => show.from_seq = Some(usize_value(v, flag)? as i64),
                     "--messages" => show.max_messages = Some(usize_value(v, flag)?),
                     "--chars" => show.max_chars = Some(usize_value(v, flag)?),
                     _ => show.max_message_chars = Some(usize_value(v, flag)?),
@@ -336,11 +333,17 @@ fn run() -> Result<String, (u8, String)> {
             if rest.is_empty() {
                 return Err((2, "errors needs the error text".into()));
             }
-            let words: Vec<&str> = rest
-                .iter()
-                .map(String::as_str)
-                .filter(|w| *w != "--")
-                .collect();
+            let mut words: Vec<&str> = Vec::new();
+            let mut end = false;
+            for word in rest.iter().map(String::as_str) {
+                if !end && word == "--" {
+                    end = true;
+                } else if !end && word.starts_with('-') {
+                    return Err((2, format!("unknown option: {word}")));
+                } else {
+                    words.push(word);
+                }
+            }
             let error = words.join(" ");
             query::validate_search_text(&error).map_err(|e| (2, e.to_string()))?;
             query::find_error_for(&store, &FindErrorArgs { error }, query::Surface::Cli)
