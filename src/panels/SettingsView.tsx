@@ -187,7 +187,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     if (busy) return;
     const host = hostInput.trim(); if (!host) return;
     if (!validSshHost(host)) { setNotice(''); setError(t.invalidHost); return; }
-    if (hosts.some(item => item.host === host)) { setError(''); setNotice(`${t.alreadyHost}: ${host}`); return; }
+    if (hosts.some(item => item.host.toLowerCase() === host.toLowerCase())) { setError(''); setNotice(`${t.alreadyHost}: ${host}`); return; }
     void act(async () => { await invoke('set_remote_host', { host, enabled: true });
       await loadHosts(); setHostInput(''); }, t.saved);
   }

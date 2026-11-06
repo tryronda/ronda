@@ -306,6 +306,27 @@ test("each location and host button has its own name", async () => {
   } finally { await act(async () => remote.root.unmount()); remote.host.remove(); }
 });
 
+test("remote host duplicates ignore case and keep the stored value as typed", async () => {
+  const hosts: unknown[] = [];
+  const { host, root } = await mountSettings([], hosts, "Remote hosts");
+  invoke.mockImplementation((command: string, args?: { host: string }) => {
+    if (command === "set_remote_host") hosts.push({ host: args!.host, enabled: true, last_sync_ms: null, last_error: null });
+    if (command === "list_remote_hosts") return Promise.resolve(hosts);
+    return Promise.resolve(command === "list_locations" ? [] : null);
+  });
+  try {
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="SSH host or alias"]')!;
+    const add = () => Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-form button")).find(b => b.textContent === "Add")!;
+    await typeInto(input, "Box");
+    await act(async () => { add().click(); await Promise.resolve(); await Promise.resolve(); });
+    await typeInto(input, "box");
+    await act(async () => { add().click(); await Promise.resolve(); });
+    expect(host.querySelector('.panel-notice')?.textContent).toBe("Already configured: box");
+    expect(invoke.mock.calls.filter(call => call[0] === "set_remote_host")).toEqual([["set_remote_host", { host: "Box", enabled: true }]]);
+    expect(host.querySelector(".remote-row strong")?.textContent).toBe("Box");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
 test("last sync and last local scan use the short time label, with wording for zero", async () => {
   const stamp = 1_760_000_000_000;
   const { host, root } = await mountSettings([], [

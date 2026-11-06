@@ -9,6 +9,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Settings shows last sync and last scan times in the short form used elsewhere, with a plain fallback when there is none.
+- Settings treats remote host names as the same regardless of case, so `Box` and `box` are not added twice.
 
 ## [1.7.6] - 2026-11-06
 
