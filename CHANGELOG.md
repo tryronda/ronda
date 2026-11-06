@@ -14,10 +14,12 @@ All notable changes to Ronda are recorded here.
 - Settings shows last sync and last scan times in the short form used elsewhere, with a plain fallback when there is none.
 - Settings treats remote host names as the same regardless of case, so `Box` and `box` are not added twice.
 - Empty or unreadable transcript files are skipped instead of being indexed as empty “Untitled session” entries.
+- Pressing Down in the library search moves focus to the first session.
 
 ### Performance
 - Insights builds its month and hour chart labels once instead of on every render.
 - Refreshing Insights reads only prompt timestamps from the index instead of loading every transcript.
+- Session dates in the library reuse two date formatters instead of building one per row.
 
 ## [1.7.6] - 2026-11-06
 

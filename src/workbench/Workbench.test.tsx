@@ -1314,3 +1314,21 @@ test("the sidebar announces which library filter is active", async () => {
     expect(find("Bookmarks").getAttribute("aria-current")).toBe("true");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("ArrowDown in the library search moves focus to the first session card", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const api: WorkbenchBackend = { ...backend, libraryOptions, listSessions: async () => [session], listProjects: async () => [],
+    getSession: async () => session, getTranscript: async () => [], onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    const input = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    input.focus();
+    const event = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    await act(async () => { input.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(host.querySelector(".session-card"));
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

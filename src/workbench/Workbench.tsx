@@ -1160,6 +1160,12 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         <label className="glass flex h-9 items-center gap-2 px-2.5 text-muted-foreground transition-shadow focus-within:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--foreground)]">
           <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={2} />
           <input ref={searchRef} type="search" value={search} onChange={event => setSearch(event.target.value)}
+            onKeyDown={event => {
+              if (event.key !== "ArrowDown" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+              const first = sessionListRef.current?.querySelector<HTMLElement>(".session-card");
+              if (!first) return;
+              event.preventDefault(); first.focus();
+            }}
             placeholder={bookmarksOnly ? "Search notes and saved excerpts" : t.search} aria-label={bookmarksOnly ? "Search bookmarks" : t.search}
             className="w-full min-w-0 border-0 bg-transparent text-[15px] tracking-[0.02em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:shadow-none" />
           <kbd className="label-mono flex-none bg-chip px-1.5 py-px text-[10px]">{shortcut}K</kbd></label>
