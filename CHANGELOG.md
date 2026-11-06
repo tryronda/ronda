@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- A failing `cat vitest.config.ts` or `grep -rn pytest .` no longer flags a session as ending with tests failing; only commands that run a test tool count.
+
 ## [1.7.9] - 2026-11-06
 
 ### Fixed

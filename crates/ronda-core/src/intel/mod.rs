@@ -7,7 +7,7 @@ pub mod stack;
 pub mod tools;
 
 use crate::{MessageKind, Role, SessionMeta, TranscriptMessage};
-use patterns::{Pattern, TEST_COMMAND};
+use patterns::{is_test_command, Pattern};
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
@@ -144,9 +144,9 @@ static CONFIG_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\.(json|ya?ml|toml|lock|ini|env|cfg|conf)$|dockerfile|makefile|\.github[/\\]|\.gitignore$|\.config\.[cm]?[jt]s$|^[^/\\]*rc$)").unwrap()
 });
 /// One shell word: its text with quotes removed, and whether any part of it was quoted or escaped.
-struct Word {
-    text: String,
-    quoted: bool,
+pub(super) struct Word {
+    pub(super) text: String,
+    pub(super) quoted: bool,
 }
 
 #[derive(Default)]
@@ -186,7 +186,7 @@ impl Lexer {
 
 /// Split a command line into command segments of words. Understands single and double
 /// quotes and backslash escapes; only unquoted `&&`, `||`, `;`, `|`, and newlines end a segment.
-fn shell_segments(command: &str) -> Vec<Vec<Word>> {
+pub(super) fn shell_segments(command: &str) -> Vec<Vec<Word>> {
     let mut lx = Lexer::default();
     let mut chars = command.chars().peekable();
     while let Some(c) = chars.next() {
@@ -466,10 +466,7 @@ pub fn derive(meta: &SessionMeta, messages: &[TranscriptMessage]) -> Derived {
         e.is_error
             && e.kind == ToolKind::Shell
             && e.seq < first_edit
-            && !e
-                .command
-                .as_deref()
-                .is_some_and(|c| TEST_COMMAND.is_match(c))
+            && !e.command.as_deref().is_some_and(is_test_command)
     });
     let facts = SessionFacts {
         started_at: stamped.iter().map(|s| s.0).min().unwrap_or(meta.created_at),
