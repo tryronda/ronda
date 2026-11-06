@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Intelligence no longer shows “1 session” under “How sessions end” when no session has an outcome.
+- Insights activity tooltips and the chart label say “1 prompt” or “N prompts” instead of “1 Prompts”.
 
 ## [1.7.2] - 2026-11-06
 
