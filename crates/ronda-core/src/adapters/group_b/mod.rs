@@ -1254,6 +1254,48 @@ mod tests {
     }
 
     #[test]
+    fn empty_transcripts_parse_to_none() {
+        let layouts = [
+            (AgentId::Pi, ".pi/agent/sessions/-tmp/2026_e-1.jsonl"),
+            (AgentId::Omp, ".omp/agent/sessions/-tmp/2026_e-1.jsonl"),
+            (AgentId::Grok, ".grok/sessions/project/e-1/updates.jsonl"),
+            (AgentId::Gemini, ".gemini/tmp/slug/chats/session-e.jsonl"),
+            (AgentId::Kiro, ".kiro/sessions/cli/e-1.jsonl"),
+            (
+                AgentId::Kimi,
+                ".kimi-code/sessions/wd_a/session_e-1/agents/main/wire.jsonl",
+            ),
+        ];
+        let header_only = |agent: AgentId| match agent {
+            AgentId::Pi | AgentId::Omp => {
+                "{\"type\":\"session\",\"id\":\"e-1\",\"cwd\":\"/tmp/e\"}\n"
+            }
+            AgentId::Gemini => "{\"sessionId\":\"e\",\"startTime\":\"2026-01-01T00:00:00Z\"}\n",
+            _ => "{}\n",
+        };
+        for (agent, rel) in layouts {
+            for (case, content) in [
+                ("header-only", header_only(agent)),
+                ("zero-byte", ""),
+                ("blank-lines", "\n\n  \n\t\n"),
+            ] {
+                let h = home();
+                put(&h, rel, content);
+                let adapter = adapters().into_iter().find(|a| a.agent() == agent).unwrap();
+                let root = adapter.roots(&h).remove(0);
+                let found = adapter.discover(&root).unwrap();
+                // Discovery may already skip zero-byte files; anything it returns must parse to None.
+                assert!(found.len() <= 1, "{} {case}", agent.as_str());
+                for source in &found {
+                    let parsed = adapter.parse(source).unwrap();
+                    assert!(parsed.is_none(), "{} {case}", agent.as_str());
+                }
+                let _ = fs::remove_dir_all(&h);
+            }
+        }
+    }
+
+    #[test]
     fn dsh_ignores_subagents_and_prefers_newer_sibling() {
         let h = home();
         let root = h.join(".dsh/sessions");
