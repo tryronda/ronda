@@ -9,6 +9,8 @@ All notable changes to Ronda are recorded here.
 - Qoder sessions show failed tool calls as errors and keep the assistant's thinking.
 - Session titles no longer come from injected prompts such as AGENTS.md instructions or environment context.
 - A subagent session's parent no longer also appears in its related sessions.
+- Moving the open session to Trash now closes its transcript, so only the "moved to Trash" notice remains.
+- Bulk labeling sessions that already have the label (or removing a label none have) now says so instead of "Labeled 0 sessions", and clears the stale Undo.
 
 ## [1.7.10] - 2026-11-06
 

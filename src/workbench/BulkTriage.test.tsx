@@ -211,6 +211,9 @@ test("planLabelChange adds, removes, skips sessions at the cap, and leaves no-op
   expect(labelStatus("add", 5, 2)).toBe("Labeled 5 sessions, skipped 2 at the label limit");
   expect(labelStatus("add", 1, 0)).toBe("Labeled 1 session");
   expect(labelStatus("remove", 2, 0)).toBe("Removed label from 2 sessions");
+  expect(labelStatus("add", 0, 0)).toBe("Already labeled");
+  expect(labelStatus("remove", 0, 0)).toBe("None had that label");
+  expect(labelStatus("add", 0, 2)).toBe("Labeled 0 sessions, skipped 2 at the label limit");
 });
 
 test("bulk label add skips sessions at the cap, announces the result, and undo restores exact arrays", async () => {
@@ -235,6 +238,26 @@ test("bulk label add skips sessions at the cap, announces the result, and undo r
     expect(fake.rows().map(row => row.labels?.length)).toEqual([0, 0, 0, 4, 1]);
     await click(action(host, "Undo"));
     expect(fake.rows().slice(0, 2).map(row => row.labels)).toEqual([[LABEL], [LABEL]]);
+  } finally { await unmount(); }
+});
+
+test("bulk label with nothing to change says so and clears the stale undo", async () => {
+  const fake = fakeApi();
+  const { host, unmount } = await mount(fake.api);
+  try {
+    await click(cards(host)[0], { metaKey: true });
+    await click(cards(host)[1], { shiftKey: true });
+    await set(host, "#bulk-label", LABEL);
+    await click(action(host, "Add label"));
+    expect(status(host)).toBe("Already labeled");
+    expect(action(host, "Undo")?.hasAttribute("disabled") ?? true).toBe(true);
+    await click(action(host, "Remove label"));
+    expect(status(host)).toBe("Removed label from 2 sessions");
+    expect(action(host, "Undo")).toBeDefined();
+    await click(action(host, "Remove label"));
+    expect(status(host)).toBe("None had that label");
+    expect(fake.setLabel).toHaveBeenCalledTimes(2);
+    expect(action(host, "Undo")?.hasAttribute("disabled") ?? true).toBe(true);
   } finally { await unmount(); }
 });
 
