@@ -6,6 +6,9 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Searching for a phrase in double quotes now finds it instead of returning nothing.
+- Next prompt and Next error no longer stick on the prompt you just jumped to.
+- Find error history from a long tool output no longer opens with text over the 20,000 character limit.
+- Long thinking blocks are clamped with a Show all lines button like tool output.
 
 ## [1.7.7] - 2026-11-06
 

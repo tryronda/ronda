@@ -136,7 +136,7 @@ function Message({ message, animate, children, onFindError, onCopyMessage, onCop
       </div>}
       {message.thinking && <details className="group mt-3 bg-canvas px-3 py-2 shadow-lift">
         <summary className="label-mono cursor-pointer text-[12px] lowercase text-muted-foreground">{t.thinking}</summary>
-        <pre data-transcript-field="thinking" className="message-pre mt-2 border-0 bg-transparent p-0">{message.thinking}</pre></details>}
+        <ToolPre field="thinking" text={message.thinking} className="mt-2 border-0 bg-transparent p-0" /></details>}
       {message.tool_calls.length > 0 && <details className="mt-3 bg-canvas px-3 py-2 shadow-lift">
         <summary className="label-mono cursor-pointer text-[12px] lowercase text-muted-foreground">{plural(message.tool_calls.length, "tool")}{failedCalls > 0 && <> · <span className="text-destructive">{failedCalls} failed</span></>}</summary>
         {message.tool_calls.map((tool, index) => <div className="mt-2 border-t border-border pt-2.5 text-[11px]" key={`${tool.id}-${index}`}>
@@ -171,7 +171,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [findRequest,setFindRequest]=useState<{text:string;token:number}|null>(null);
   const findHistory=(text:string,context:ProjectContext|null=projectContext)=>{
     errorOpener.current=document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setErrorRequest({text,project:context?.path ?? null,host:context?.host ?? null,local_only:context?.local_only ?? false});
+    setErrorRequest({text:Array.from(text).slice(0,20000).join(""),project:context?.path ?? null,host:context?.host ?? null,local_only:context?.local_only ?? false});
   };
   const t = copy;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
