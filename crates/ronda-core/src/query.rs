@@ -188,41 +188,58 @@ pub fn validate_project(project: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Distinct project paths of root sessions, archived ones included, newest first.
+fn known_project_paths(store: &Store) -> Result<Vec<String>> {
+    let sessions = store.list_sessions(&SessionQuery {
+        include_archived: true,
+        ..Default::default()
+    })?;
+    let mut paths: Vec<String> = Vec::new();
+    for s in sessions.iter().filter(|s| s.parent_key.is_none()) {
+        if let Some(p) = s.project_path.as_deref().filter(|p| !p.is_empty()) {
+            if !paths.iter().any(|known| known == p) {
+                paths.push(p.to_string());
+            }
+        }
+    }
+    Ok(paths)
+}
+
 fn project_paths(store: &Store, project: Option<&str>) -> Result<Option<Vec<String>>> {
     let Some(project) = project else {
         return Ok(None);
     };
     validate_project(Some(project))?;
-    let projects = store.projects()?;
+    let projects = known_project_paths(store)?;
     let mut matches = Vec::new();
     if Path::new(project).is_absolute() {
         let path = Path::new(project);
-        if projects.iter().any(|p| p.path == project) {
+        if projects.iter().any(|p| p == project) {
             return Ok(Some(vec![project.into()]));
         }
         let ancestor = projects
             .iter()
-            .filter(|p| path.starts_with(&p.path))
-            .max_by_key(|p| p.path.len());
+            .filter(|p| path.starts_with(p))
+            .max_by_key(|p| p.len());
         if let Some(p) = ancestor {
-            return Ok(Some(vec![p.path.clone()]));
+            return Ok(Some(vec![p.clone()]));
         }
         matches.extend(
             projects
                 .iter()
-                .filter(|p| Path::new(&p.path).starts_with(path))
-                .map(|p| p.path.clone()),
+                .filter(|p| Path::new(p).starts_with(path))
+                .cloned(),
         );
     } else {
         matches.extend(
             projects
                 .iter()
                 .filter(|p| {
-                    Path::new(&p.path)
+                    Path::new(p)
                         .file_name()
                         .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(project))
                 })
-                .map(|p| p.path.clone()),
+                .cloned(),
         );
     }
     Ok(Some(matches))
@@ -265,8 +282,8 @@ fn freshness(store: &Store) -> Result<String> {
 }
 fn unknown_project(store: &Store, name: &str) -> Result<String> {
     let mut out = format!("No indexed project matches `{name}`. Known projects:\n");
-    for p in store.projects()?.into_iter().take(30) {
-        out.push_str(&format!("- {}\n", p.path));
+    for p in known_project_paths(store)?.into_iter().take(30) {
+        out.push_str(&format!("- {p}\n"));
     }
     Ok(out)
 }
@@ -1328,6 +1345,39 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[test]
+    fn archived_only_projects_are_recognised() {
+        let path = std::env::temp_dir().join(format!("ronda-archived-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        seeded(&mut db, "codex:old", AgentId::Codex, "/tmp/old", 5, true);
+        let filter = ListArgs {
+            project: Some("old".into()),
+            ..Default::default()
+        };
+        let out = list_sessions(&db, &filter).unwrap();
+        assert!(out.contains("0 sessions"), "{out}");
+        assert!(!out.contains("No indexed project"), "{out}");
+        let out = search(
+            &db,
+            &SearchArgs {
+                query: "haystack".into(),
+                filter,
+            },
+        )
+        .unwrap();
+        assert!(out.contains("codex:old"), "{out}");
+        let out = list_sessions(
+            &db,
+            &ListArgs {
+                project: Some("nope".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(out.contains("- /tmp/old"), "{out}");
+        let _ = std::fs::remove_file(&path);
+    }
     #[test]
     fn filters_apply_before_the_hit_cap_and_archived_is_marked() {
         let path = std::env::temp_dir().join(format!("ronda-cap-{}.db", std::process::id()));

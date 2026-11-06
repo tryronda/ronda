@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- `--project` and MCP `project` recognise projects whose sessions are all archived.
+
 ## [1.7.3] - 2026-11-06
 
 ### Changed
