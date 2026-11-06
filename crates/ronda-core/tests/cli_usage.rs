@@ -370,3 +370,43 @@ fn dot_named_projects_resolve_and_relative_paths_are_usage_errors() {
         }
     }
 }
+
+#[test]
+fn index_scans_an_empty_existing_database_but_keeps_a_populated_one() {
+    let home = db().parent().unwrap().join("home");
+    let session_dir = home.join(".codex/sessions/2026/01/01");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    std::fs::write(
+        session_dir.join("rollout-2026-01-01T00-00-00-abc.jsonl"),
+        concat!(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"abc","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:00Z"}}"#,
+            "\n",
+            r#"{"timestamp":"2026-01-01T00:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello fixture"}]}}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    let db = home.join("ronda.db");
+    Store::open(&db).unwrap();
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_ronda-cli"))
+            .env("RONDA_HOME", &home)
+            .arg("--db")
+            .arg(&db)
+            .arg("index")
+            .output()
+            .unwrap()
+    };
+    let first = run();
+    let text = out(&first);
+    assert!(text.starts_with("Indexed 1 of 1"), "{text}");
+    assert!(
+        Store::open_existing_read_only(&db)
+            .unwrap()
+            .session_count()
+            .unwrap()
+            > 0
+    );
+    let second = run();
+    assert!(out(&second).contains("Index already exists"));
+}
