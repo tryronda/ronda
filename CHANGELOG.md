@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Qoder sessions titled from a prompt use its first line, so titles never span several lines.
+
 ## [1.7.1] - 2026-11-06
 
 ### Added
