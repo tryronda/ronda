@@ -186,7 +186,7 @@ export interface WorkbenchBackend {
   resumeSession(key: string): Promise<string>;
   exportSession(key: string, destination: string, options?: ExportOptions): Promise<void>;
   sessionMarkdown(key: string, options?: ExportOptions): Promise<string>;
-  trashSession(key: string): Promise<void>;
+  trashSession(key: string): Promise<string | null>;
   onLibraryChanged(callback: () => void): Promise<() => void>;
   onScanError(callback: (message: string) => void): Promise<() => void>;
 }

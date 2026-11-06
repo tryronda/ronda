@@ -438,6 +438,26 @@ impl Store {
         Ok(meta)
     }
 
+    fn overlay_all_flags(&self, metas: &mut [SessionMeta]) -> Result<()> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT session_key,starred,pinned FROM user_data")?;
+        let flags: HashMap<String, (bool, bool)> = stmt
+            .query_map([], |r| {
+                Ok((r.get(0)?, (r.get::<_, bool>(1)?, r.get::<_, bool>(2)?)))
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut labels = self.all_session_labels()?;
+        for meta in metas {
+            if let Some((starred, pinned)) = flags.get(&meta.key) {
+                meta.starred = *starred;
+                meta.pinned = *pinned;
+            }
+            meta.labels = labels.remove(&meta.key).unwrap_or_default();
+        }
+        Ok(())
+    }
+
     pub fn get_session(&self, key: &str) -> Result<Option<SessionMeta>> {
         let json: Option<String> = self
             .conn
@@ -467,8 +487,9 @@ impl Store {
             .prepare("SELECT meta FROM sessions ORDER BY updated_at DESC, key")?;
         let mut sessions: Vec<SessionMeta> = stmt
             .query_map([], |r| r.get::<_, String>(0))?
-            .map(|row| -> Result<_> { self.overlay_flags(serde_json::from_str(&row?)?) })
+            .map(|row| -> Result<SessionMeta> { Ok(serde_json::from_str(&row?)?) })
             .collect::<Result<_>>()?;
+        self.overlay_all_flags(&mut sessions)?;
         sessions.retain(|session| filter.matches(session));
         sessions.sort_by(|a, b| filter.sort.compare(a, b));
         if let Some(limit) = filter.limit {

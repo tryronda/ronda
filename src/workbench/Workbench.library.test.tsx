@@ -40,7 +40,7 @@ test("opens on the library home, then loads a session, shows its transcript, and
     searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [{ path: "/projects/hello world", session_count: 1, updated_at: session.updated_at }],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
     setSessionFlags: setFlags, resumeSession: async () => "", exportSession: async () => {},
-    trashSession: async () => {}, onLibraryChanged: async () => () => {},
+    trashSession: async () => null, onLibraryChanged: async () => () => {},
   };
   api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
   const host = document.createElement("div");
@@ -84,7 +84,7 @@ test("coalesces library changes, refreshes open content and searches, and defers
     getTranscript, searchSessions: async () => [], searchGrouped,
     searchSessionMatches: async () => ({matches:[],total_matches:0}), listProjects: async () => [],
     scan: async () => ({ discovered: 1, indexed: 1, unchanged: 0, errors: [] }),
-    setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => {},
+    setSessionFlags: async () => {}, resumeSession: async () => "", exportSession: async () => {}, trashSession: async () => null,
     onLibraryChanged: async callback => { listeners.add(callback); return () => {listeners.delete(callback);}; },
   };
   api.sessionPage = async (query,offset,limit) => { const items=await api.listSessions(query); return {items:items.slice(offset,offset+limit),total:items.length,offset,limit}; };
@@ -513,4 +513,26 @@ test("a failed startup scan shows the error with a scan retry", async () => {
     await act(async()=>Array.from(alert!.querySelectorAll("button")).find(b=>b.textContent==="Retry scan")!.click());
     expect(scan).toHaveBeenCalledTimes(1);
   } finally {await act(async()=>root.unmount());host.remove();Reflect.deleteProperty(window,"__TAURI_INTERNALS__");}
+});
+
+test("sidebar project rows show the full path only when basenames collide", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const projects = [
+    { path: "/a/app", session_count: 2, updated_at: 3 },
+    { path: "/b/app", session_count: 1, updated_at: 2 },
+    { path: "/c/unique", session_count: 1, updated_at: 1 },
+  ];
+  const api: WorkbenchBackend = { ...backend, libraryOptions: async () => ({ agents: ["codex" as const], models: ["gpt-5"], hosts: [], projects }), listSessions: async () => [session],
+    listProjects: async () => projects, getSession: async () => session, getTranscript: async () => [], onLibraryChanged: async () => () => {} };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [session].slice(offset, offset + limit), total: 1, offset, limit });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Workbench api={api} />));
+    const rows = [...host.querySelectorAll<HTMLButtonElement>("aside button[title^='/']")];
+    const label = (path: string) => rows.find(row => row.title === path)?.querySelector("span.truncate")?.textContent;
+    expect(label("/a/app")).toBe("/a/app");
+    expect(label("/b/app")).toBe("/b/app");
+    expect(label("/c/unique")).toBe("unique");
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });

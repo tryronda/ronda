@@ -27,7 +27,8 @@ export function ExportMenu({ onExport, onCopy }: {
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", escape, true); };
   }, [open]);
   const action = "label-mono bg-chip px-3 py-2 text-[12px] hover:bg-foreground hover:text-background";
-  return <div ref={root} className="relative">
+  return <div ref={root} className="relative"
+    onBlur={event => { if (open && !root.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
     <button ref={trigger} type="button" title="Export Markdown" aria-label="Export Markdown" aria-haspopup="dialog" aria-expanded={open}
       className={cn("grid size-8 flex-none place-items-center text-muted-foreground transition-colors hover:bg-chip hover:text-foreground", open && "bg-chip text-foreground")}
       onClick={() => setOpen(value => !value)}>
