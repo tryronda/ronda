@@ -7,6 +7,9 @@ All notable changes to Ronda are recorded here.
 ### Changed
 - `ronda-cli errors` and `ronda_find_error` lines show each session's agent and date.
 
+### Fixed
+- `show --from` past the end of a transcript says where it ends, and a non-numeric `#` message reference is rejected instead of ignored.
+
 ## [1.7.5] - 2026-11-06
 
 ### Added

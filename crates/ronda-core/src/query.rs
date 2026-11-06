@@ -487,10 +487,14 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
 
 fn resolve_key(store: &Store, input: &str) -> Result<(String, Option<i64>)> {
     let input = input.strip_prefix("ronda://session/").unwrap_or(input);
-    let (key, seq) = input
-        .rsplit_once('#')
-        .map(|(k, n)| (k, n.parse::<i64>().ok()))
-        .unwrap_or((input, None));
+    let (key, seq) = match input.rsplit_once('#') {
+        Some((k, n)) => match n.parse::<i64>() {
+            Ok(n) => (k, Some(n)),
+            Err(_) if store.get_session(input)?.is_some() => (input, None),
+            Err(_) => return Err(anyhow!("invalid message reference `#{n}`")),
+        },
+        None => (input, None),
+    };
     if store.get_session(key)?.is_some() {
         return Ok((key.into(), seq));
     }
@@ -688,6 +692,17 @@ pub fn get_session_for(store: &Store, args: &ShowArgs, surface: Surface) -> Resu
         }
         out.push_str(&format!("### [seq {}] {role}{time}\n{body}\n\n", m.seq));
         shown += 1;
+    }
+    if shown == 0 && from > 0 && next.is_none() {
+        match messages.last() {
+            Some(last) => out.push_str(&format!(
+                "No messages at or after seq {from}; the transcript ends at seq {}.\n",
+                last.seq
+            )),
+            None => out.push_str(&format!(
+                "No messages at or after seq {from}; the transcript is empty.\n"
+            )),
+        }
     }
     if hidden_meta > 0 {
         out.push_str(&format!(
@@ -1541,6 +1556,56 @@ mod tests {
         assert_eq!(
             cli.split("\nRead one from").next(),
             mcp.split("\nRead one from").next()
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn show_past_the_end_says_where_the_transcript_ends() {
+        let path = std::env::temp_dir().join(format!("ronda-pastend-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        show_fixture(&mut db, "codex:p", &["one", "two"]);
+        let args = ShowArgs {
+            key: "codex:p".into(),
+            from_seq: Some(9),
+            ..Default::default()
+        };
+        for out in [
+            get_session_for(&db, &args, Surface::Cli).unwrap(),
+            get_session(&db, &args).unwrap(),
+        ] {
+            assert!(
+                out.contains("No messages at or after seq 9; the transcript ends at seq 1."),
+                "{out}"
+            );
+        }
+        let ok = ShowArgs {
+            key: "codex:p".into(),
+            from_seq: Some(1),
+            ..Default::default()
+        };
+        assert!(!get_session(&db, &ok)
+            .unwrap()
+            .contains("No messages at or after"));
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn show_rejects_a_non_numeric_message_reference() {
+        let path = std::env::temp_dir().join(format!("ronda-badref-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        show_fixture(&mut db, "codex:r", &["one"]);
+        let err = get_session(
+            &db,
+            &ShowArgs {
+                key: "codex:r#abc".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("invalid message reference `#abc`"),
+            "{err}"
         );
         let _ = std::fs::remove_file(&path);
     }
