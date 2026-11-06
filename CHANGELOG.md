@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- Remote sync gives up on unreachable hosts instead of hanging, ignores files that vanish mid-transfer, and shows rsync's error when a transfer fails.
 - Syncing a remote host no longer fails with an empty "SSH failed" message when the host lacks some of the session folders.
 
 ## [1.7.7] - 2026-11-06
