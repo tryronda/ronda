@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- Very long session titles are now capped at 160 characters in CLI and MCP output.
 - Date filters like `--since 2025-03-09` no longer fail as "ambiguous date" when local midnight falls in a daylight saving gap.
 
 ## [1.7.11] - 2026-11-06

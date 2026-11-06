@@ -292,6 +292,13 @@ fn unknown_project(store: &Store, name: &str) -> Result<String> {
     }
     Ok(out)
 }
+/// Caps a stored title at `max` characters, cutting on a char boundary and marking the cut.
+fn clip_title(title: &str, max: usize) -> String {
+    match title.char_indices().nth(max) {
+        Some((i, _)) => format!("{}…", &title[..i]),
+        None => title.to_string(),
+    }
+}
 fn session_line(meta: &SessionMeta) -> String {
     let mut suffix = String::new();
     if let Some(host) = &meta.host {
@@ -316,7 +323,7 @@ fn session_line(meta: &SessionMeta) -> String {
         "- `{}` · {} · {}\n  {} · updated {}{}\n",
         meta.key,
         meta.agent.as_str(),
-        meta.title,
+        clip_title(&meta.title, 160),
         meta.project_path.as_deref().unwrap_or("Unknown project"),
         date(meta.updated_at),
         suffix
@@ -469,13 +476,18 @@ fn search_capped(store: &Store, args: &SearchArgs, cap: usize) -> Result<String>
             i + 1,
             s.key,
             s.agent.as_str(),
-            s.title,
+            clip_title(&s.title, 160),
             s.project_path.as_deref().unwrap_or("Unknown project"),
             date(s.updated_at),
             if s.archived { " · archived" } else { "" }
         ));
         for (seq, snippet) in snippets {
             let snippet = snippet.replace('\n', " ");
+            let snippet = if *seq < 0 {
+                clip_title(&snippet, 160)
+            } else {
+                snippet
+            };
             if *seq < 0 {
                 out.push_str(&format!(
                     "  - title: {snippet}\n    ref: ronda://session/{}\n",
@@ -1089,6 +1101,16 @@ mod tests {
                 .unwrap();
             GapOffset(chrono::FixedOffset::west_opt(if *t < start { 3 } else { 2 } * 3600).unwrap())
         }
+    }
+
+    #[test]
+    fn long_titles_are_clipped_on_char_boundaries() {
+        let long = "é日".repeat(250);
+        let clipped = clip_title(&long, 160);
+        assert_eq!(clipped.chars().count(), 161);
+        assert!(clipped.ends_with('…'));
+        assert!(long.starts_with(clipped.trim_end_matches('…')));
+        assert_eq!(clip_title("short title", 160), "short title");
     }
 
     #[test]
