@@ -1578,13 +1578,66 @@ fn app_paths() -> CommandResult<(String, String, String)> {
     ))
 }
 
+/// Collects events until the channel is quiet for `quiet`, or `max` has
+/// elapsed in total, so a continuously writing agent cannot starve refreshes.
+fn drain<T>(
+    rx: &std::sync::mpsc::Receiver<T>,
+    quiet: std::time::Duration,
+    max: std::time::Duration,
+) -> Vec<T> {
+    let start = std::time::Instant::now();
+    let mut items = Vec::new();
+    while let Some(left) = max.checked_sub(start.elapsed()) {
+        match rx.recv_timeout(quiet.min(left)) {
+            Ok(item) => items.push(item),
+            Err(_) => break,
+        }
+    }
+    items
+}
+
+/// Where to watch a root: directories recursively, files via their parent
+/// directory so sibling files such as `<db>-wal` are seen too.
+fn watch_target(path: &Path) -> (PathBuf, notify::RecursiveMode) {
+    if path.is_dir() {
+        (path.to_path_buf(), notify::RecursiveMode::Recursive)
+    } else {
+        let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        (parent, notify::RecursiveMode::NonRecursive)
+    }
+}
+
+/// Whether a changed path belongs to a root: anything under a directory root,
+/// or a sibling whose file name starts with a file root's name.
+fn event_matches(changed: &Path, roots: &HashSet<PathBuf>) -> bool {
+    roots.iter().any(|root| {
+        if root.is_dir() {
+            return changed.starts_with(root);
+        }
+        let (Some(name), Some(changed_name)) = (root.file_name(), changed.file_name()) else {
+            return false;
+        };
+        changed.parent() == root.parent()
+            && changed_name
+                .to_string_lossy()
+                .starts_with(name.to_string_lossy().as_ref())
+    })
+}
+
+fn event_relevant(event: &notify::Result<notify::Event>, roots: &HashSet<PathBuf>) -> bool {
+    match event {
+        Ok(event) => event.paths.iter().any(|p| event_matches(p, roots)),
+        Err(_) => true,
+    }
+}
+
 fn start_watcher(state: Shared, app: tauri::AppHandle) {
     std::thread::spawn(move || {
         let (tx, rx) = std::sync::mpsc::channel();
         let Ok(mut watcher) = notify::recommended_watcher(tx) else {
             return;
         };
-        let mut watched = HashSet::new();
+        let mut watched: HashSet<PathBuf> = HashSet::new();
         loop {
             let locations = match state.store.lock() {
                 Ok(store) => state.scanner.locations(&store).unwrap_or_default(),
@@ -1596,24 +1649,32 @@ fn start_watcher(state: Shared, app: tauri::AppHandle) {
                 .map(|l| PathBuf::from(l.path))
                 .filter(|p| p.exists())
                 .collect();
+            let keep: HashSet<PathBuf> = desired.iter().map(|p| watch_target(p).0).collect();
             for path in watched.difference(&desired) {
-                let _ = watcher.unwatch(path);
+                let target = watch_target(path).0;
+                if !keep.contains(&target) {
+                    let _ = watcher.unwatch(&target);
+                }
             }
+            let active: HashSet<PathBuf> = watched.iter().map(|p| watch_target(p).0).collect();
             for path in desired.difference(&watched) {
-                let mode = if path.is_dir() {
-                    notify::RecursiveMode::Recursive
-                } else {
-                    notify::RecursiveMode::NonRecursive
-                };
-                let _ = watcher.watch(path, mode);
+                let (target, mode) = watch_target(path);
+                if !active.contains(&target) {
+                    let _ = watcher.watch(&target, mode);
+                }
             }
             watched = desired;
             match rx.recv_timeout(std::time::Duration::from_secs(2)) {
-                Ok(_) => {
-                    while rx
-                        .recv_timeout(std::time::Duration::from_millis(250))
-                        .is_ok()
-                    {}
+                Ok(first) => {
+                    let mut events = vec![first];
+                    events.extend(drain(
+                        &rx,
+                        std::time::Duration::from_millis(250),
+                        std::time::Duration::from_secs(2),
+                    ));
+                    if !events.iter().any(|e| event_relevant(e, &watched)) {
+                        continue;
+                    }
                     if let Ok(report) = scan_local(&state, false) {
                         let _ = app.emit("library-changed", report);
                     }
@@ -1753,6 +1814,48 @@ pub fn run() {
 
 #[cfg(all(test, unix))]
 mod tests {
+    #[test]
+    fn drain_stops_after_max_on_continuous_events() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = stop.clone();
+        let producer = std::thread::spawn(move || {
+            while !flag.load(std::sync::atomic::Ordering::Relaxed) {
+                if tx.send(()).is_err() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        });
+        let start = std::time::Instant::now();
+        let items = drain(
+            &rx,
+            std::time::Duration::from_millis(100),
+            std::time::Duration::from_millis(300),
+        );
+        let elapsed = start.elapsed();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        producer.join().unwrap();
+        assert!(!items.is_empty());
+        assert!(
+            elapsed < std::time::Duration::from_millis(900),
+            "{elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn event_matches_sibling_wal_of_file_root() {
+        let dir = std::env::temp_dir().join(format!("ronda-watch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("state.db");
+        std::fs::write(&db, b"").unwrap();
+        let roots: HashSet<PathBuf> = [db.clone()].into_iter().collect();
+        assert!(event_matches(&dir.join("state.db-wal"), &roots));
+        assert!(event_matches(&db, &roots));
+        assert!(!event_matches(&dir.join("other.txt"), &roots));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     use super::*;
     use std::{fs, os::unix::fs::PermissionsExt};
 

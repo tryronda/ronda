@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Live refresh no longer waits for an agent to stop writing, and changes to a SQLite session database's `-wal` file are picked up.
+
 ## [1.7.9] - 2026-11-06
 
 ### Fixed
