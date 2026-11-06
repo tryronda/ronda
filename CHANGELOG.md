@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Empty or unreadable transcript files are skipped instead of being indexed as empty “Untitled session” entries.
+
 ### Performance
 - Refreshing Insights reads only prompt timestamps from the index instead of loading every transcript.
 
