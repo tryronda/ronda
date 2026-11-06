@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import {act} from "react";
+import {agentNames} from "@/lib/agents";
 import {createRoot} from "react-dom/client";
 import {MotionGlobalConfig} from "motion/react";
 MotionGlobalConfig.skipAnimations=true;
 Reflect.deleteProperty(Element.prototype,"animate");
 import {expect,test,vi} from "vitest";
+import {timeLabel} from "@/lib/utils";
 import {backend,queryDefaults} from "./api";
 import {Workbench} from "./Workbench";
 import {SessionConnections} from "./SessionConnections";
@@ -50,6 +52,13 @@ test("connections say when only the top related sessions are shown",async()=>{
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
   const show=async(value:typeof report)=>act(async()=>root.render(<SessionConnections key={String(value.related_total)} api={{...backend,sessionRelationships:async()=>structuredClone(value)}} session={parent} active onOpen={()=>{}} />));
   try{
+    await show(report);
+    expect(host.textContent).toContain(`Related sessions · ${report.related_total}`);
+    expect(host.textContent).not.toContain(`Related sessions · 5`);
+    const first=report.related[0].session;
+    expect(host.textContent).toContain(`${agentNames[first.agent]} · ${timeLabel(first.updated_at)}`);
+    await show({...report,related:[{...report.related[0],session:{...first,archived:true}}],related_total:1});
+    expect(host.textContent).toContain("archived · ");
     await show(report);
     expect(host.textContent).toContain(`Showing top 5 of ${report.related_total} same-project sessions`);
     await show({...report,related_total:5});

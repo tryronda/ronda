@@ -116,3 +116,16 @@ test("project picker tells apart same-named folders and shows full paths", async
   expect(options.map(o => o.title)).toEqual(["/a/app", "/b/app", "/c/web"]);
   await act(async () => { root.unmount(); });
 });
+
+test("project picker keeps a scoped project that list_projects omits", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  invoke.mockImplementation(async (command: string) => command === "list_projects" ? [{ path: "/a/app" }] : report);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<IntelligenceView scope={{ path: "/old/archived-only", host: null, local_only: false }} />); });
+  const select = host.querySelector<HTMLSelectElement>(".intel-project")!;
+  expect(select.value).toBe("/old/archived-only");
+  expect([...select.options].find(o => o.selected)?.textContent).toBe("archived-only");
+  await act(async () => { root.unmount(); });
+});

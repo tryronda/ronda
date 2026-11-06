@@ -429,7 +429,7 @@ function insights() {
     if (count) activity.push([`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`, count]);
   }
   const prompts = activity.reduce((sum, [, count]) => sum + count, 0);
-  const row = (label: string, weight: number) => ({ label, sessions: Math.round(412 * weight), prompts: Math.round(prompts * weight), tokens: Math.round(61_000_000 * weight) });
+  const row = (label: string, weight: number) => ({ label, sessions: Math.round(1_284 * weight), prompts: Math.round(prompts * weight), tokens: Math.round(61_000_000 * weight) });
   return {
     sessions: 1_284, prompts, tokens: 61_400_000, activity,
     hours: Array.from({ length: 24 }, (_, hour) => [hour, Math.max(2, Math.round(46 + 38 * Math.sin((hour - 8) / 3.6)))]),

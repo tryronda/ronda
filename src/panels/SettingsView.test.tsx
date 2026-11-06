@@ -286,3 +286,21 @@ test("each Connect snippet has its own Copy button name", async () => {
     expect(names.some(name => /^Copy .*Claude Code.* snippet$/.test(name ?? ""))).toBe(true);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("each location and host button has its own name", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const rows = [
+    { agent: "codex", path: "~/.codex", health_id: "a", enabled: true, custom: true },
+    { agent: "gemini", path: "/work/gemini", health_id: "b", enabled: true, custom: true },
+  ];
+  const hosts = [{ host: "devbox", enabled: true, last_sync_ms: null, last_error: null }, { host: "nas", enabled: true, last_sync_ms: null, last_error: null }];
+  const labels = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).map(b => b.getAttribute("aria-label"));
+  const locations = await mountSettings(rows, hosts, "Locations");
+  try {
+    expect(labels(locations.host)).toEqual(expect.arrayContaining(["Remove Codex location ~/.codex", "Remove Gemini CLI location /work/gemini"]));
+  } finally { await act(async () => locations.root.unmount()); locations.host.remove(); }
+  const remote = await mountSettings(rows, hosts, "Remote hosts");
+  try {
+    expect(labels(remote.host)).toEqual(expect.arrayContaining(["Sync now with devbox", "Sync now with nas", "Remove host devbox", "Remove host nas"]));
+  } finally { await act(async () => remote.root.unmount()); remote.host.remove(); }
+});

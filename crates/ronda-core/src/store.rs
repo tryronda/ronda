@@ -56,7 +56,15 @@ fn search_snippet(full: &str, first: &str) -> String {
         .unwrap_or(0);
     let start = full.floor_char_boundary(match_start.saturating_sub(60));
     let end = full.ceil_char_boundary((start + 260).min(full.len()));
-    full[start..end].replace('\n', " ")
+    let mut snippet = String::with_capacity(end - start + 6);
+    if start > 0 {
+        snippet.push('…');
+    }
+    snippet.push_str(&full[start..end].replace('\n', " "));
+    if end < full.len() {
+        snippet.push('…');
+    }
+    snippet
 }
 
 pub struct Store {
@@ -536,9 +544,9 @@ impl Store {
         let (match_query, indexed) = search_expression(query);
         let mut results = Vec::new();
         let mut stmt = if indexed {
-            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE search_fts MATCH ?1 ORDER BY s.updated_at DESC")?
+            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE search_fts MATCH ?1 ORDER BY s.updated_at DESC, f.session_key, f.seq")?
         } else {
-            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE instr(lower(f.text),lower(?1))>0 ORDER BY s.updated_at DESC")?
+            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE instr(lower(f.text),lower(?1))>0 ORDER BY s.updated_at DESC, f.session_key, f.seq")?
         };
         let rows = stmt.query_map([match_query], |r| {
             Ok((
@@ -994,7 +1002,7 @@ impl Store {
 #[cfg(test)]
 mod search_tests {
     use super::*;
-    use crate::LibrarySort;
+    use crate::{LibrarySort, MessageKind, Role};
 
     fn insert_raw(store: &Store, key: &str, meta: &str) {
         store.conn.execute(
@@ -1070,6 +1078,49 @@ mod search_tests {
     }
 
     #[test]
+    fn search_lists_excerpts_in_key_and_seq_order_when_sessions_tie() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for key in ["s-c", "s-a", "s-b"] {
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+                "title":key,"project_path":"/p","source_path":"/missing-fixture","created_at":1,"updated_at":5,
+                "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
+            }))
+            .unwrap();
+            let messages = (0..4)
+                .map(|seq| TranscriptMessage {
+                    seq,
+                    role: Role::User,
+                    kind: MessageKind::Text,
+                    text: format!("needle number {seq}"),
+                    timestamp: None,
+                    model: None,
+                    thinking: None,
+                    tool_calls: vec![],
+                    images: vec![],
+                })
+                .collect();
+            store
+                .upsert(&ParsedSession { meta, messages }, "1")
+                .unwrap();
+        }
+        let order = |store: &Store| -> Vec<(String, i64)> {
+            store
+                .search("needle", &SessionQuery::default(), 100)
+                .unwrap()
+                .into_iter()
+                .map(|hit| (hit.session.key, hit.seq))
+                .collect()
+        };
+        let first = order(&store);
+        let mut expected = first.clone();
+        expected.sort();
+        assert_eq!(first.len(), 12);
+        assert_eq!(first, expected);
+        assert_eq!(order(&store), first);
+    }
+
+    #[test]
     fn excerpts_centre_on_the_longest_query_word() {
         let text = format!("a {} database schema", "filler ".repeat(60));
         let terms: Vec<String> = "a database"
@@ -1085,6 +1136,22 @@ mod search_tests {
     }
 
     #[test]
+    fn excerpts_mark_where_the_text_continues() {
+        let long = format!("{} needle {}", "a".repeat(300), "b".repeat(300));
+        let cut = search_snippet(&long, "needle");
+        assert!(cut.starts_with('…') && cut.ends_with('…'));
+        assert!(cut.contains("needle"));
+        let head = search_snippet(&format!("needle {}", "b".repeat(300)), "needle");
+        assert!(!head.starts_with('…') && head.ends_with('…'));
+        let tail = search_snippet(&format!("{} needle", "a".repeat(300)), "needle");
+        assert!(tail.starts_with('…') && !tail.ends_with('…'));
+        assert_eq!(
+            search_snippet("short needle\ntext", "needle"),
+            "short needle text"
+        );
+    }
+
+    #[test]
     fn excerpts_center_case_insensitive_matches_on_unicode_boundaries() {
         for (prefix, text, query) in [
             ("unrelated ", "UseEffect( response", "useeffect("),
@@ -1094,7 +1161,7 @@ mod search_tests {
         ] {
             let snippet = search_snippet(&format!("{}{text}", prefix.repeat(400)), query);
             assert!(snippet.contains(text), "{query}: {snippet}");
-            assert!(snippet.len() <= 264);
+            assert!(snippet.len() <= 264 + 2 * '…'.len_utf8());
         }
     }
     #[test]

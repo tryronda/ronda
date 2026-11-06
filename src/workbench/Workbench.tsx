@@ -16,6 +16,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Loader } from "@/components/motion/loader";
 import { SharedLayoutBg } from "@/components/motion/shared-layout-bg";
 import { PixelField, PixelStrip } from "@/components/brand/pixel-field";
+import { agentNames } from "@/lib/agents";
 import { EASE_OUT } from "@/lib/ease";
 import { cn, plural, timeLabel } from "@/lib/utils";
 import { inTauri } from "@/lib/tauri";
@@ -73,14 +74,6 @@ const copy = {
   continueReading: "Continue reading", readingStale: "Saved place no longer matches this transcript",
   readingAmbiguous: "Saved place matches more than one message",
   saveSearch: "Save current search", savedSearches: "Saved searches", savedSearchName: "Name this search",
-};
-
-const agentNames: Record<AgentId, string> = {
-  "claude-code": "Claude Code", codex: "Codex", grok: "Grok Build", dsh: "DeepSeek Harness",
-  cursor: "Cursor", opencode: "OpenCode", pi: "Pi", omp: "Oh My Pi", kiro: "Kiro",
-  kimi: "Kimi Code", gemini: "Gemini CLI", copilot: "Copilot CLI",
-  antigravity: "Antigravity", qoder: "Qoder", hermes: "Hermes", openclaw: "OpenClaw",
-  codebuddy: "CodeBuddy", workbuddy: "WorkBuddy",
 };
 
 // Markdown rendering is the heaviest dependency; keep it out of the startup bundle and warm it up once the shell is idle.
@@ -1092,21 +1085,22 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   } : null;
   const hasUnavailableSavedScope = !!savedScopeIssue && !!(savedScopeIssue.project || savedScopeIssue.model || savedScopeIssue.host || savedScopeIssue.label);
 
+  const allActive = !bookmarksOnly && !project && !starredOnly && !labelId && !agent && !host && !model && !dateFrom && !dateThrough && !includeArchived;
   return <div ref={scopeRef} onChangeCapture={()=>{preferenceTouched.current=true;}} onClickCapture={()=>{preferenceTouched.current=true;}} className={cn("workbench-layout relative flex h-full min-h-0 min-w-0", mobileDetail && "detail-open")}>
     <aside aria-label={t.library} aria-hidden={!sidebarOpen} inert={!sidebarOpen}
       className={cn("flex min-h-0 flex-none flex-col overflow-hidden border-r border-border bg-paper transition-[width,opacity] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
         sidebarOpen ? "w-[240px] px-2 pt-2 pb-3 opacity-100 max-[1100px]:w-[200px]" : "invisible w-0 border-r-0 p-0 opacity-0")}>
       <div className={sectionHeading}>{t.library}</div>
       <SharedLayoutBg inset={0} className="gap-px" pillClassName="rounded-none bg-chip/70">
-        <button key="all" className={navClass(!bookmarksOnly && !project && !starredOnly && !labelId && !agent && !host && !model && !dateFrom && !dateThrough && !includeArchived)} type="button"
+        <button key="all" className={navClass(allActive)} type="button" aria-current={allActive ? "true" : undefined}
           onClick={() => { clearFilters(); setBookmarksOnly(false); if(detail.kind==="project")navigateDetail({kind:"home"}); }}>
           <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />{t.all}<span className="label-mono ml-auto text-muted-foreground">{sessionTotal}</span>
         </button>
-        <button key="starred" className={navClass(!bookmarksOnly && starredOnly)} type="button"
+        <button key="starred" className={navClass(!bookmarksOnly && starredOnly)} type="button" aria-pressed={!bookmarksOnly && starredOnly}
           onClick={() => { setStarredOnly(value=>!value); setBookmarksOnly(false); }}>
           <HugeiconsIcon icon={StarIcon} size={16} strokeWidth={1.8} />{t.favorites}
         </button>
-        <button key="bookmarks" className={navClass(bookmarksOnly)} type="button" onClick={() => {
+        <button key="bookmarks" className={navClass(bookmarksOnly)} type="button" aria-current={bookmarksOnly ? "true" : undefined} onClick={() => {
           setBookmarksOnly(true); setProject(null); setAgent(null); setStarredOnly(false); if(detail.kind==="project")navigateDetail({kind:"home"});
         }}><HugeiconsIcon icon={Bookmark01Icon} size={16} />Bookmarks<span className="label-mono ml-auto text-muted-foreground">{bookmarks.length}</span></button>
         {!bookmarksOnly && <button key="archived" className={navClass(includeArchived)} type="button"
@@ -1122,7 +1116,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         </div></>}
       <div className={sectionHeading}>{t.projects}</div>
       <div className="max-h-[31vh] overflow-y-auto">
-        {projectOptions.map(item => <button className={navClass(project === item.path)}
+        {projectOptions.map(item => <button className={navClass(project === item.path)} aria-current={project === item.path ? "true" : undefined}
           title={item.path} key={item.path} type="button" onClick={() => {
             preferenceTouched.current=true;
             if(bookmarksOnly){setProject(item.path);return;}
@@ -1136,7 +1130,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
         </button>)}
       </div>
       {agents.length > 0 && <><div className={sectionHeading}>{t.agents}</div><div className="min-h-0 overflow-y-auto">
-        {agents.map(item => <button className={navClass(agent === item)} key={item} type="button"
+        {agents.map(item => <button className={navClass(agent === item)} key={item} type="button" aria-pressed={agent === item}
           onClick={() => setAgent(value=>value === item ? null : item)}>
           <div className="flex w-full min-w-0 items-center gap-2.5"><span className={`agent-dot agent-${item}`} />{agentNames[item]}</div></button>)}
       </div></>}
