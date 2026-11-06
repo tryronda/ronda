@@ -241,6 +241,26 @@ fn handle_line(store: &Store, line: &str) -> Option<Value> {
         return None;
     }
     match serde_json::from_str::<Value>(line) {
+        Ok(Value::Array(batch)) => {
+            if batch.is_empty() {
+                return Some(
+                    json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"empty batch"}}),
+                );
+            }
+            let replies: Vec<Value> = batch
+                .into_iter()
+                .filter_map(|request| {
+                    if request.is_object() {
+                        reply(store, request)
+                    } else {
+                        Some(
+                            json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"invalid request"}}),
+                        )
+                    }
+                })
+                .collect();
+            (!replies.is_empty()).then_some(Value::Array(replies))
+        }
         Ok(request) => reply(store, request),
         Err(e) => {
             Some(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":e.to_string()}}))
@@ -318,6 +338,25 @@ mod tests {
         assert_eq!(lines[0]["error"]["code"], -32700);
         assert_eq!(lines[1]["id"], 7);
         assert_eq!(lines[1]["result"], json!({}));
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn batch_requests_get_an_array_reply() {
+        let path = std::env::temp_dir().join(format!("ronda-mcp-batch-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let store = Store::open(&path).unwrap();
+        let batch = r#"[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/initialized"},{"jsonrpc":"2.0","id":2,"method":"ping"}]"#;
+        let out = handle_line(&store, batch).unwrap();
+        let arr = out.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["id"], 1);
+        assert_eq!(arr[1]["id"], 2);
+        let empty = handle_line(&store, "[]").unwrap();
+        assert_eq!(empty["error"]["code"], -32600);
+        let notes = r#"[{"jsonrpc":"2.0","method":"notifications/initialized"}]"#;
+        assert!(handle_line(&store, notes).is_none());
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
