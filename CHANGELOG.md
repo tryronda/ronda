@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- `ronda-cli show` suggests `--from N` and `--subagent '*'` and MCP suggests `from_seq` and `subagent`, instead of mixing the two.
 - `--project` and MCP `project` recognise projects whose sessions are all archived.
 
 ## [1.7.3] - 2026-11-06

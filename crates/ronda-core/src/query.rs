@@ -516,6 +516,23 @@ fn resolve_key(store: &Store, input: &str) -> Result<(String, Option<i64>)> {
 }
 
 pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
+    get_session_for(store, args, Surface::Mcp)
+}
+
+/// Single-quotes `value` for a shell unless it is made of safe characters only.
+fn shell_arg(value: &str) -> String {
+    let safe = !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-.:/#@".contains(c));
+    if safe {
+        value.into()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
+pub fn get_session_for(store: &Store, args: &ShowArgs, surface: Surface) -> Result<String> {
     let (key, from_ref) = resolve_key(store, &args.key)?;
     let main = store
         .get_session(&key)?
@@ -546,8 +563,12 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
         Some([child]) => (*child).clone(),
         Some([]) => {
             return Err(anyhow!(
-                "unknown subagent for `{}`; use `--subagent '*'` to list available IDs",
-                main.key
+                "unknown subagent for `{}`; use {} to list available IDs",
+                main.key,
+                match surface {
+                    Surface::Cli => "`--subagent '*'`",
+                    Surface::Mcp => "subagent \"*\"",
+                }
             ))
         }
         Some(_) => return Err(anyhow!("ambiguous subagent; use its full session key")),
@@ -660,16 +681,36 @@ pub fn get_session(store: &Store, args: &ShowArgs) -> Result<String> {
         ));
     }
     if let Some(next) = next {
-        out.push_str(&format!(
-            "Showing {shown} messages; continue with from_seq={next}.\n"
-        ));
+        let subagent = args.subagent.as_deref();
+        match surface {
+            Surface::Cli => {
+                let extra = subagent
+                    .map(|id| format!(" --subagent {}", shell_arg(id)))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "Showing {shown} messages; continue with `ronda-cli show {} --from {next}{extra}`.\n",
+                    shell_arg(&main.key)
+                ));
+            }
+            Surface::Mcp => {
+                let extra = subagent
+                    .map(|id| format!(" and subagent=\"{id}\""))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "Showing {shown} messages; continue with from_seq={next}{extra}.\n"
+                ));
+            }
+        }
     } else {
         out.push_str("End of transcript.\n");
         if args.subagent.is_none() && !children.is_empty() {
             out.push_str(&format!("\nSubagents ({}):\n", children.len()));
             append_child_refs(&mut out, &main, &children, 30);
             if children.len() > 30 {
-                out.push_str("Use --subagent '*' for the full list.\n");
+                out.push_str(match surface {
+                    Surface::Cli => "Use `--subagent '*'` for the full list.\n",
+                    Surface::Mcp => "Use subagent \"*\" for the full list.\n",
+                });
             }
         }
     }
@@ -1345,6 +1386,51 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    fn show_fixture(db: &mut Store, key: &str, texts: &[&str]) {
+        seeded(db, key, AgentId::Codex, "/tmp/show", 5, false);
+        let mut session = ParsedSession {
+            meta: db.get_session(key).unwrap().unwrap(),
+            messages: Vec::new(),
+        };
+        session.messages = texts
+            .iter()
+            .enumerate()
+            .map(|(seq, text)| TranscriptMessage {
+                seq: seq as i64,
+                role: Role::User,
+                kind: MessageKind::Text,
+                text: (*text).into(),
+                timestamp: None,
+                model: None,
+                thinking: None,
+                tool_calls: Vec::new(),
+                images: Vec::new(),
+            })
+            .collect();
+        db.upsert(&session, "fixture").unwrap();
+    }
+    #[test]
+    fn show_hints_name_the_surface_that_shows_them() {
+        let path = std::env::temp_dir().join(format!("ronda-hints-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        show_fixture(&mut db, "codex:h", &["one", "two", "three"]);
+        let args = ShowArgs {
+            key: "codex:h".into(),
+            max_messages: Some(1),
+            ..Default::default()
+        };
+        let cli = get_session_for(&db, &args, Surface::Cli).unwrap();
+        assert!(
+            cli.contains("continue with `ronda-cli show codex:h --from 1`."),
+            "{cli}"
+        );
+        assert!(!cli.contains("from_seq"), "{cli}");
+        let mcp = get_session(&db, &args).unwrap();
+        assert!(mcp.contains("continue with from_seq=1."), "{mcp}");
+        assert!(!mcp.contains("ronda-cli"), "{mcp}");
+        let _ = std::fs::remove_file(&path);
+    }
     #[test]
     fn archived_only_projects_are_recognised() {
         let path = std::env::temp_dir().join(format!("ronda-archived-{}.db", std::process::id()));

@@ -284,7 +284,8 @@ fn run() -> Result<String, (u8, String)> {
                 show.max_message_chars,
                 query::SHOW_MESSAGE_CHARS,
             );
-            query::get_session(&store, &show).map_err(|e| (1, e.to_string()))
+            query::get_session_for(&store, &show, query::Surface::Cli)
+                .map_err(|e| (1, e.to_string()))
         }
         "projects" => {
             let (filter, _) = parse_list(rest, false).map_err(|e| (2, e))?;
