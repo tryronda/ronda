@@ -60,9 +60,15 @@ const day = (ms: number) => new Intl.DateTimeFormat(undefined, { month: 'short',
 const BUG_LIMIT = 8;
 const STACK_LIMIT = 10;
 
-/** Markdown for the current range: totals, time split, failures, and every recurring error. */
+/** Same bullet lines as `ronda-cli insights`, for the current range. */
 export function intelligenceSummary(data: Intelligence, range: Range, project: string): string {
-  const cell = (text: string) => text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\s+/g, ' ');
+  const clean = (text: string) => text.replace(/\s+/g, ' ').trim();
+  const count = (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'}`;
+  const stamp = (ms: number) => {
+    const d = new Date(ms), p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  };
+  const evidence = (list: Evidence[]) => list.slice(0, 3).map(e => `  - ronda://session/${e.session_key}#${e.seq} · ${clean(e.title)}`);
   const rows = data.time.filter(row => row.active_ms > 0).sort((a, b) => b.active_ms - a.active_ms);
   const failing = data.totals.sessions ? Math.round(data.totals.failed_sessions / data.totals.sessions * 100) : 0;
   return [
@@ -75,20 +81,17 @@ export function intelligenceSummary(data: Intelligence, range: Range, project: s
     `- Ended failing: ${failing}%`,
     `- Recurring errors: ${data.totals.recurring_bugs.toLocaleString('en-US')}`, '',
     '## Where time goes (excluding recovery)', '',
-    ...(rows.length ? ['| Category | Time | Sessions |', '| --- | ---: | ---: |',
-      ...rows.map(row => `| ${cell(row.label)} | ${hours(row.active_ms)} | ${row.sessions} |`)] : [labels.none]), '',
+    ...(rows.length ? rows.map(row => `- ${clean(row.label)}: ${hours(row.active_ms)} · ${count(row.sessions)}`) : [labels.none]), '',
     '## How sessions end', '',
-    ...(data.outcomes.length ? ['| Outcome | Sessions | Time |', '| --- | ---: | ---: |',
-      ...data.outcomes.map(row => `| ${cell(row.label)} | ${row.sessions} | ${hours(row.active_ms)} |`)] : [labels.none]), '',
+    ...(data.outcomes.length ? data.outcomes.map(row => `- ${clean(row.label)}: ${count(row.sessions)} · ${hours(row.active_ms)}`) : [labels.none]), '',
     '## Agent failures', '',
-    ...(data.failures.length ? ['| Pattern | Sessions |', '| --- | ---: |',
-      ...data.failures.map(row => `| ${cell(row.label)} | ${row.sessions} |`)] : [labels.none]), '',
+    ...(data.failures.length ? data.failures.flatMap(row => [`- ${clean(row.label)}: ${count(row.sessions)}`, ...evidence(row.evidence)]) : [labels.none]), '',
     '## Recurring errors', '',
-    ...(data.recurring.length ? ['| Error | Sessions | Agents |', '| --- | ---: | --- |',
-      ...data.recurring.map(bug => `| ${cell(bug.message)} | ${bug.sessions} | ${cell(bug.agents.join(', '))} |`)] : [labels.none]), '',
-    '## Stack', '',
-    ...(data.stack.length ? ['| Tech | Share of sessions with tool calls | Sessions |', '| --- | ---: | ---: |',
-      ...data.stack.slice(0, 15).map(row => `| ${cell(row.tech)}${row.new ? ' (new)' : ''} | ${row.share}% | ${row.sessions} |`)] : [labels.none]),
+    ...(data.recurring.length ? data.recurring.flatMap(bug => [
+      `- ${clean(bug.message)} · ${count(bug.sessions)} · ${bug.agents.join(', ')} · last seen ${stamp(bug.last_seen)}${bug.came_back ? ' · came back after a committed fix' : ''}`,
+      ...evidence(bug.evidence)]) : [labels.none]), '',
+    `## Stack (${labels.shareOfSessions})`, '',
+    ...(data.stack.length ? data.stack.slice(0, 15).map(row => `- ${clean(row.tech)}: ${row.share}% · ${count(row.sessions)}${row.new ? ' · new' : ''}`) : [labels.none]),
     '',
   ].join('\n');
 }
