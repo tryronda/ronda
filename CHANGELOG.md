@@ -10,7 +10,7 @@ All notable changes to Ronda are recorded here.
 - `ronda-mcp` now answers JSON-RPC batch requests with an array of replies instead of ignoring them.
 - `ronda-mcp` no longer exits when it receives a line that is not valid UTF-8; it replies with a parse error and keeps serving.
 - Very long session titles are now capped at 160 characters in CLI and MCP output.
-- Date filters like `--since 2025-03-09` no longer fail as "ambiguous date" when local midnight falls in a daylight saving gap.
+- Date filters such as `--since` no longer fail as "ambiguous date" when the date or time falls in a daylight saving gap; they start at the next valid local time.
 - Docs code blocks can be focused and scrolled with the keyboard, and have a Copy button.
 - The section nav on small screens scrolls the active section into view.
 - Moving a session to Trash now shows the warning when some of its files could not be moved, instead of only "moved to Trash".
