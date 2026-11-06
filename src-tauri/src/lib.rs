@@ -1686,6 +1686,14 @@ fn start_watcher(state: Shared, app: tauri::AppHandle) {
     });
 }
 
+/// Startup refresh: announce the local scan immediately, then again once
+/// remote hosts have synced.
+fn startup_refresh<E: FnMut(), S: FnOnce()>(mut emit: E, sync: S) {
+    emit();
+    sync();
+    emit();
+}
+
 pub fn run() {
     let store = Store::open(&Store::default_path()).expect("open Ronda index");
     let state = Arc::new(AppState {
@@ -1725,26 +1733,27 @@ pub fn run() {
             let handle = app.handle().clone();
             let state = handle.state::<Shared>().inner().clone();
             std::thread::spawn(move || {
-                let report = scan_local(&state, false);
-                let hosts = state
-                    .store
-                    .lock()
-                    .ok()
-                    .and_then(|store| store.remote_hosts().ok())
-                    .unwrap_or_default();
-                for (host, enabled, _, _) in hosts {
-                    if enabled {
-                        let _ = sync_host(&state, &host);
-                    }
-                }
-                match report {
+                let emit_scan = || match scan_local(&state, false) {
                     Ok(report) => {
                         let _ = handle.emit("library-changed", report);
                     }
                     Err(error) => {
                         let _ = handle.emit("scan-error", error.to_string());
                     }
-                }
+                };
+                startup_refresh(emit_scan, || {
+                    let hosts = state
+                        .store
+                        .lock()
+                        .ok()
+                        .and_then(|store| store.remote_hosts().ok())
+                        .unwrap_or_default();
+                    for (host, enabled, _, _) in hosts {
+                        if enabled {
+                            let _ = sync_host(&state, &host);
+                        }
+                    }
+                });
             });
             let state = app.state::<Shared>().inner().clone();
             start_watcher(state, app.handle().clone());
@@ -1841,6 +1850,16 @@ mod tests {
             elapsed < std::time::Duration::from_millis(900),
             "{elapsed:?}"
         );
+    }
+
+    #[test]
+    fn startup_refresh_emits_before_and_after_sync() {
+        let log = std::cell::RefCell::new(Vec::new());
+        startup_refresh(
+            || log.borrow_mut().push("emit"),
+            || log.borrow_mut().push("sync"),
+        );
+        assert_eq!(*log.borrow(), vec!["emit", "sync", "emit"]);
     }
 
     #[test]
