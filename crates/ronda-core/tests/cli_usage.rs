@@ -120,6 +120,18 @@ fn help_flags_after_double_dash_are_search_text() {
 }
 
 #[test]
+fn help_shows_errors_double_dash() {
+    let db = db();
+    let o = cli(&db, &["--help"]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains("errors [--]"), "{out}");
+    assert!(
+        out.contains("-- ends options for search and errors"),
+        "{out}"
+    );
+}
+
+#[test]
 fn bare_duration_exits_2_with_clear_message() {
     let db = db();
     for bad in ["d", "w"] {

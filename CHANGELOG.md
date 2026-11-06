@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- `ronda-cli --help` lists `errors [--] ERROR_TEXT` and says `--` ends options for both search and errors.
+
 ## [1.7.6] - 2026-11-06
 
 ### Changed
