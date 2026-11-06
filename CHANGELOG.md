@@ -4,15 +4,18 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+
 ### Changed
 - Intelligence's copied summary uses the same bullet lines as `ronda-cli insights` instead of tables.
 
 ### Fixed
 - Settings shows last sync and last scan times in the short form used elsewhere, with a plain fallback when there is none.
 - Settings treats remote host names as the same regardless of case, so `Box` and `box` are not added twice.
+- Empty or unreadable transcript files are skipped instead of being indexed as empty “Untitled session” entries.
 
 ### Performance
 - Insights builds its month and hour chart labels once instead of on every render.
+- Refreshing Insights reads only prompt timestamps from the index instead of loading every transcript.
 
 ## [1.7.6] - 2026-11-06
 

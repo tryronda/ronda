@@ -1013,6 +1013,9 @@ impl AgentAdapter for Adapter {
             AgentId::Dsh => dsh(source)?,
             _ => return Ok(None),
         };
+        if parsed.messages.is_empty() {
+            return Ok(None);
+        }
         Ok(Some(parsed))
     }
 

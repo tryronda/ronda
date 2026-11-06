@@ -217,7 +217,7 @@ impl AgentAdapter for FileAdapter {
                 parsed.updated = state.updated.or(parsed.updated);
             }
         }
-        if parsed.messages.is_empty() && self.0 == AgentId::Cursor {
+        if parsed.messages.is_empty() {
             return Ok(None);
         }
         for (i, message) in parsed.messages.iter_mut().enumerate() {
@@ -1386,6 +1386,21 @@ mod tests {
             .unwrap();
         assert_eq!(parsed.meta.title, "Untitled session");
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn empty_and_garbage_files_are_skipped() {
+        for (name, data) in [
+            ("slug/empty.jsonl", ""),
+            ("slug/garbage.jsonl", "not json\n{broken\n\u{1}\u{2}\n"),
+        ] {
+            let (root, sources) = fixture(AgentId::ClaudeCode, name, data);
+            assert!(FileAdapter(AgentId::ClaudeCode)
+                .parse(&sources[0])
+                .unwrap()
+                .is_none());
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]
