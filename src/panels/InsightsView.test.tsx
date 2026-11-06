@@ -34,9 +34,11 @@ test("a leaderboard shows ten rows, expands to all, and collapses again", async 
   expect(button(host, "Show all")).toBeUndefined();
   await act(async () => { tab(host, "Projects").click(); });
   expect(host.querySelectorAll(".insight-bar")).toHaveLength(10);
-  await act(async () => { button(host, "Show all").click(); });
+  expect(button(host, "Show all (12)").getAttribute("aria-expanded")).toBe("false");
+  await act(async () => { button(host, "Show all (12)").click(); });
   expect(host.querySelectorAll(".insight-bar")).toHaveLength(12);
-  await act(async () => { button(host, "Show top 10").click(); });
+  expect(button(host, "Show all (12)").getAttribute("aria-expanded")).toBe("true");
+  await act(async () => { button(host, "Show all (12)").click(); });
   expect(host.querySelectorAll(".insight-bar")).toHaveLength(10);
   await act(async () => root.unmount());
 });

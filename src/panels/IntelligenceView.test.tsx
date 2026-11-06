@@ -73,7 +73,8 @@ test("shows every recurring error and stack row and copies a Markdown summary", 
   expect(host.querySelectorAll(".intel-bug")).toHaveLength(11);
   await act(async () => { button("Show all (12)").click(); });
   expect(host.querySelectorAll(".insight-bar")).toHaveLength(12);
-  await act(async () => { button("Show top 8").click(); });
+  expect(button("Show all (11)").getAttribute("aria-expanded")).toBe("true");
+  await act(async () => { button("Show all (11)").click(); });
   expect(host.querySelectorAll(".intel-bug")).toHaveLength(8);
 
   await act(async () => { button("Copy summary").click(); });

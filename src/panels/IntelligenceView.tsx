@@ -38,7 +38,7 @@ const labels = {
   sessionsCount: (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'}`, newTech: 'new',
   none: 'Nothing in this range.', empty: 'No sessions in this range yet.', retry: 'Retry',
   noTools: (agents: string) => `No tool data from ${agents}, so failures, errors, stack, and outcomes leave them out.`,
-  lastSeen: 'last seen', showAll: 'Show all', showTopBugs: 'Show top 8', showTopStack: 'Show top 10',
+  lastSeen: 'last seen', showAll: 'Show all',
   copySummary: 'Copy summary', copied: 'Summary copied', copyFailed: 'Could not copy the summary',
 } as const;
 
@@ -251,7 +251,7 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
             </li>)}
           </ul> : <p className="panel-empty">{t.none}</p>}
           {data.recurring.length > BUG_LIMIT && <button type="button" className="mt-3" aria-expanded={showAllBugs}
-            onClick={() => setShowAllBugs(value => !value)}>{showAllBugs ? t.showTopBugs : `${t.showAll} (${data.recurring.length})`}</button>}
+            onClick={() => setShowAllBugs(value => !value)}>{`${t.showAll} (${data.recurring.length})`}</button>}
         </section>
       </div>
 
@@ -266,7 +266,7 @@ export function IntelligenceView({ onOpen, active = true, scope }: { onOpen?: (k
             </div>)}
           </div> : <p className="panel-empty">{t.none}</p>}
           {data.stack.length > STACK_LIMIT && <button type="button" className="mt-3" aria-expanded={showAllStack}
-            onClick={() => setShowAllStack(value => !value)}>{showAllStack ? t.showTopStack : `${t.showAll} (${data.stack.length})`}</button>}
+            onClick={() => setShowAllStack(value => !value)}>{`${t.showAll} (${data.stack.length})`}</button>}
         </section>
 
         <section className="panel-card">
