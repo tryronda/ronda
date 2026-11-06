@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Claude Code subagent sessions with a multi-line description show only its first line.
+- Codex sessions keep their project folder when the Codex database has a blank one, and trim its stored title.
 
 ## [1.7.3] - 2026-11-06
 

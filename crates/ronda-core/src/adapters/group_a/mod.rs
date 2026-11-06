@@ -450,8 +450,8 @@ fn codex_enrichment(path: &Path, id: &str) -> Option<CodexState> {
             let archived: Option<i64> = r.get(6)?;
             let created: Option<i64> = r.get(7)?;
             let updated: Option<i64> = r.get(8)?;
-            Ok(CodexState { title: name.filter(|s| !s.trim().is_empty()).or(title.filter(|s| !s.trim().is_empty())),
-                cwd, model, source, tokens, archived: archived.map(|n| n != 0), created, updated })
+            Ok(CodexState { title: name.filter(|s| !s.trim().is_empty()).or(title.filter(|s| !s.trim().is_empty())).map(|t| crate::adapter::tidy_title(&t)),
+                cwd: cwd.filter(|c| !c.trim().is_empty()), model, source, tokens, archived: archived.map(|n| n != 0), created, updated })
         }).ok()
 }
 
@@ -1532,7 +1532,7 @@ mod tests {
         let (root, sources) = fixture(AgentId::Codex,
             "archived_sessions/rollout-2026-01-01T00-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl", public);
         let db = Connection::open(root.join("state_5.sqlite")).unwrap();
-        db.execute_batch("CREATE TABLE threads (id TEXT, title TEXT, name TEXT, cwd TEXT, model TEXT, source TEXT, tokens_used INTEGER, archived INTEGER, created_at_ms INTEGER, updated_at_ms INTEGER); INSERT INTO threads VALUES ('123e4567-e89b-12d3-a456-426614174000','DB title',NULL,'/repo','gpt-5','cli',42,1,1000,2000);").unwrap();
+        db.execute_batch("CREATE TABLE threads (id TEXT, title TEXT, name TEXT, cwd TEXT, model TEXT, source TEXT, tokens_used INTEGER, archived INTEGER, created_at_ms INTEGER, updated_at_ms INTEGER); INSERT INTO threads VALUES ('123e4567-e89b-12d3-a456-426614174000','  Padded  ',NULL,'','gpt-5','cli',42,1,1000,2000);").unwrap();
         drop(db);
         assert_eq!(sources.len(), 1);
         let parsed = FileAdapter(AgentId::Codex)
@@ -1544,7 +1544,8 @@ mod tests {
             "123e4567-e89b-12d3-a456-426614174000"
         );
         assert!(parsed.meta.archived);
-        assert_eq!(parsed.meta.title, "DB title");
+        assert_eq!(parsed.meta.title, "Padded");
+        assert_eq!(parsed.meta.project_path.as_deref(), Some("/repo"));
         assert_eq!(parsed.meta.source.as_deref(), Some("cli"));
         assert_eq!(parsed.meta.tokens, Some(42));
         assert_eq!(parsed.messages[0].text, "Fix 搜索");
