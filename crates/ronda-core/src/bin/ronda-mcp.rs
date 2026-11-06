@@ -69,6 +69,20 @@ fn reject_unknown_arguments(name: &str, args: &Value) -> Result<(), CallError> {
     }
 }
 
+/// Puts a `Note:` line for each clamped size argument ahead of the tool text.
+fn with_notes(notes: Vec<Option<String>>, text: String) -> String {
+    let notes: String = notes
+        .into_iter()
+        .flatten()
+        .map(|note| format!("Note: {note}\n"))
+        .collect();
+    if notes.is_empty() {
+        text
+    } else {
+        format!("{notes}\n{text}")
+    }
+}
+
 fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
     if !args.is_object() {
         return Err(CallError::Invalid("arguments must be an object".into()));
@@ -81,25 +95,48 @@ fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
             validate_filter(&a.filter)?;
             query::validate_window(a.filter.since.as_deref(), a.filter.until.as_deref())
                 .map_err(|e| CallError::Invalid(e.to_string()))?;
-            query::search(store, &a).map_err(|e| CallError::Tool(e.to_string()))
+            let notes = vec![query::clamp_note(
+                "limit",
+                a.filter.limit,
+                query::SEARCH_LIMIT,
+            )];
+            query::search(store, &a)
+                .map(|text| with_notes(notes, text))
+                .map_err(|e| CallError::Tool(e.to_string()))
         }
         "ronda_list_sessions" => {
             let a: ListArgs = parsed(args)?;
             validate_filter(&a)?;
-            query::list_sessions(store, &a).map_err(|e| CallError::Tool(e.to_string()))
+            let notes = vec![query::clamp_note("limit", a.limit, query::SESSIONS_LIMIT)];
+            query::list_sessions(store, &a)
+                .map(|text| with_notes(notes, text))
+                .map_err(|e| CallError::Tool(e.to_string()))
         }
         "ronda_get_session" => {
             if args.get("key").is_none() {
                 return Err(CallError::Tool("missing session key".into()));
             }
-            query::get_session(store, &parsed::<ShowArgs>(args)?)
+            let a = parsed::<ShowArgs>(args)?;
+            let notes = vec![
+                query::clamp_note("max_messages", a.max_messages, query::SHOW_MESSAGES),
+                query::clamp_note("max_chars", a.max_chars, query::SHOW_CHARS),
+                query::clamp_note(
+                    "max_message_chars",
+                    a.max_message_chars,
+                    query::SHOW_MESSAGE_CHARS,
+                ),
+            ];
+            query::get_session(store, &a)
+                .map(|text| with_notes(notes, text))
                 .map_err(|e| CallError::Tool(e.to_string()))
         }
         "ronda_list_projects" => {
             let a: ProjectsArgs = parsed(args)?;
             query::validate_since(a.since.as_deref())
                 .map_err(|e| CallError::Invalid(e.to_string()))?;
+            let notes = vec![query::clamp_note("limit", a.limit, query::PROJECTS_LIMIT)];
             query::list_projects_ordered(store, a.since.as_deref(), a.limit, a.reverse)
+                .map(|text| with_notes(notes, text))
                 .map_err(|e| CallError::Tool(e.to_string()))
         }
         "ronda_insights" => {
@@ -272,6 +309,32 @@ mod tests {
         }
         let missing = reply(&store, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ronda_get_session","arguments":{}}})).unwrap();
         assert_eq!(missing["result"]["isError"], true);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn clamped_arguments_are_noted_in_the_result_text() {
+        let path = std::env::temp_dir().join(format!("ronda-mcp-clamp-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let store = Store::open(&path).unwrap();
+        let text = |name: &str, arguments: Value| {
+            let r = reply(&store, json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).unwrap();
+            r["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let clamped = text("ronda_list_sessions", json!({"limit": 500}));
+        assert!(
+            clamped.starts_with("Note: limit 500 clamped to 100\n"),
+            "{clamped}"
+        );
+        assert!(!text("ronda_list_sessions", json!({"limit": 3})).contains("Note:"));
+        assert!(text("ronda_search", json!({"query": "x", "limit": 500}))
+            .contains("Note: limit 500 clamped to 30"));
+        assert!(text("ronda_list_projects", json!({"limit": 500}))
+            .contains("Note: limit 500 clamped to 200"));
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
