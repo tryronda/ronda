@@ -233,8 +233,37 @@ test("Escape cancels a label rename and returns focus; delete confirmation names
 
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Delete label Reference"]')!.click());
-    expect(confirm).toHaveBeenCalledWith("Delete the label “Reference”? It will be removed from every session.");
+    expect(confirm).toHaveBeenCalledWith("Delete the label “Reference”? It will be removed from 0 sessions.");
     expect(host.textContent).toContain("Reference");
+    confirm.mockRestore();
+  } finally { await unmount(); }
+});
+
+test.each([[1, "1 session"], [3, "3 sessions"]])("delete confirmation counts sessions with the label (%i)", async (total, text) => {
+  const fake = fakeApi();
+  const sessionPage = vi.fn(async (_q: SessionQuery, offset: number, limit: number) => ({ items: [], total, offset, limit }));
+  const { host, unmount } = await mount({ ...fake.api, sessionPage });
+  try {
+    host.querySelector("summary")!.click();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Delete label Reference"]')!.click());
+    expect(sessionPage).toHaveBeenCalledWith(expect.objectContaining({ label_id: LABEL_B, include_archived: true }), 0, 1);
+    expect(confirm).toHaveBeenCalledWith(`Delete the label “Reference”? It will be removed from ${text}.`);
+    confirm.mockRestore();
+  } finally { await unmount(); }
+});
+
+test("delete confirmation falls back to the generic message when counting fails", async () => {
+  const fake = fakeApi();
+  const { host, unmount } = await mount({ ...fake.api, sessionPage: vi.fn(async (_q: SessionQuery, offset: number, limit: number) => {
+    if (_q.label_id) throw new Error("boom");
+    return { items: [], total: 0, offset, limit };
+  }) });
+  try {
+    host.querySelector("summary")!.click();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Delete label Reference"]')!.click());
+    expect(confirm).toHaveBeenCalledWith("Delete the label “Reference”? It will be removed from every session.");
     confirm.mockRestore();
   } finally { await unmount(); }
 });

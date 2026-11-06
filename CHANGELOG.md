@@ -12,9 +12,13 @@ All notable changes to Ronda are recorded here.
 - Date filters like `--since 2025-03-09` no longer fail as "ambiguous date" when local midnight falls in a daylight saving gap.
 - Docs code blocks can be focused and scrolled with the keyboard, and have a Copy button.
 - The section nav on small screens scrolls the active section into view.
+- Moving a session to Trash now shows the warning when some of its files could not be moved, instead of only "moved to Trash".
+- The export popover now closes when keyboard focus moves out of it.
+- Deleting a label now says how many sessions it will be removed from.
 
 ### Performance
 - Listing sessions loads stars, pins and labels with two queries instead of two per session, speeding up the sidebar, projects, insights and CLI/MCP lists.
+- The sidebar project list no longer rescans every project for each row when deciding whether to show the full path.
 
 ## [1.7.11] - 2026-11-06
 

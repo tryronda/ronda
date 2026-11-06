@@ -142,3 +142,22 @@ test("Copy returns focus to the export button", async () => {
     expect(document.activeElement).toBe(button(host, "Export Markdown"));
   } finally { await unmount(); vi.restoreAllMocks(); }
 });
+
+test("the export popover closes when focus leaves it and stays open while focus moves inside", async () => {
+  const { api } = fakeApi(async () => "# ok");
+  const { host, unmount } = await mount(api);
+  try {
+    await click(host, "Export Markdown");
+    const dialog = () => host.querySelector('[role="dialog"][aria-label="Export options"]');
+    expect(dialog()).not.toBeNull();
+    const tools = checkbox(host, "Include tool input and output");
+    const thinking = checkbox(host, "Include thinking");
+    await act(async () => { thinking.focus(); });
+    await act(async () => { tools.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: thinking })); });
+    expect(dialog()).not.toBeNull();
+    const outside = document.createElement("button"); document.body.append(outside);
+    await act(async () => { tools.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: outside })); });
+    expect(dialog()).toBeNull();
+    outside.remove();
+  } finally { await unmount(); vi.restoreAllMocks(); }
+});

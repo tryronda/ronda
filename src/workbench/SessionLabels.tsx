@@ -51,7 +51,12 @@ export function LabelManager({ api, labels, onCatalog, onDeleted }: {
     } catch (cause) { setMessage(failure(cause)); }
   };
   const remove = async (label: SessionLabel) => {
-    if (!window.confirm(`Delete the label “${label.name}”? It will be removed from every session.`)) return;
+    let message = `Delete the label “${label.name}”? It will be removed from every session.`;
+    try {
+      const { total } = await api.sessionPage({ agent: null, project_path: null, host: null, starred_only: false, include_archived: true, limit: null, label_id: label.id }, 0, 1);
+      message = `Delete the label “${label.name}”? It will be removed from ${total} ${total === 1 ? "session" : "sessions"}.`;
+    } catch { /* keep the generic message */ }
+    if (!window.confirm(message)) return;
     try {
       await api.deleteSessionLabel(label.id);
       onCatalog(labels.filter(item => item.id !== label.id)); onDeleted(label.id); setMessage("Label deleted");

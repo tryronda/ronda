@@ -21,10 +21,13 @@ const transcript: TranscriptMessage[] = [
   { seq: 0, role: "assistant", kind: "text", text: "Unique transcript body", timestamp: null, model: null, thinking: null, tool_calls: [], images: [] },
 ];
 
-test("trashing the open session clears the transcript and shows the notice", async () => {
+test.each([
+  [null, "Session moved to Trash"],
+  ["Some files could not be moved.", "Session moved to Trash. Some files could not be moved."],
+])("trashing the open session clears the transcript and shows the notice (warning %s)", async (warning, notice) => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   let rows = [session];
-  const trashSession = vi.fn(async () => { rows = []; });
+  const trashSession = vi.fn(async (): Promise<string | null> => { rows = []; return warning; });
   const api: WorkbenchBackend = { ...backend, libraryOptions: async () => ({ agents: ["codex" as const], models: ["gpt-5"], hosts: [],
     projects: [{ path: session.project_path!, session_count: 1, updated_at: session.updated_at }] }),
     listSessions: async () => rows, listProjects: async () => [],
@@ -41,7 +44,7 @@ test("trashing the open session clears the transcript and shows the notice", asy
     expect(host.textContent).toContain("Unique transcript body");
     await act(async () => host.querySelector<HTMLButtonElement>('button[title="Move to Trash"], button[aria-label="Move to Trash"]')!.click());
     expect(trashSession).toHaveBeenCalledWith(session.key);
-    expect(host.textContent).toContain("Session moved to Trash");
+    expect(host.textContent).toContain(notice);
     expect(host.textContent).not.toContain("Unique transcript body");
   } finally { confirm.mockRestore(); await act(async () => root.unmount()); host.remove(); }
 });

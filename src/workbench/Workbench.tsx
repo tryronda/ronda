@@ -605,6 +605,11 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     }
     return [...projects, ...extra];
   }, [projects, bookmarks, bookmarksOnly]);
+  const basenameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of projectOptions) { const name = basename(item.path); counts.set(name, (counts.get(name) ?? 0) + 1); }
+    return counts;
+  }, [projectOptions]);
 
   useLibraryRefresh(() => { void reload(); return () => { reloadRun.current++; }; }, [reload], isActive, 400, subscribeToLibrary);
   useEffect(() => {
@@ -1086,10 +1091,10 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
 
   const trash = async () => {
     if (!selected || selected.parent_key || !window.confirm(t.deleteConfirm)) return;
-    try { await api.trashSession(selected.key); await reload();
+    try { const warning = await api.trashSession(selected.key); await reload();
       setOpened(null); setSelectedKey(null); setMobileDetail(false);
       if (detail.kind === "session") navigateDetail({ kind: "home" });
-      setNotice(t.deleted); }
+      setNotice(warning ? `${t.deleted}. ${warning}` : t.deleted); }
     catch (cause) { setError(String(cause)); }
   };
 
@@ -1146,7 +1151,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
             navigateDetail({kind:"project",path:item.path,host:host.startsWith("remote:") ? host.slice(7) : null,local_only:host==="local"});
           }}>
           <div className="flex w-full min-w-0 items-center gap-2.5">
-            <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} className="flex-none" /><span className="min-w-0 truncate">{projectOptions.filter(other=>basename(other.path)===basename(item.path)).length>1 ? item.path : basename(item.path)}</span>
+            <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} className="flex-none" /><span className="min-w-0 truncate">{(basenameCounts.get(basename(item.path)) ?? 0)>1 ? item.path : basename(item.path)}</span>
             <span className="label-mono ml-auto text-muted-foreground">{item.session_count}</span>
           </div>
         </button>)}
