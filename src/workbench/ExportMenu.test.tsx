@@ -117,3 +117,28 @@ test("outside the desktop shell, Export Markdown… downloads the session Markdo
     expect(host.textContent).toContain("Transcript exported");
   } finally { anchor.mockRestore(); await unmount(); }
 });
+
+test("opening the export popover focuses the first option; Escape closes it, restores focus, and stays inside the menu", async () => {
+  const { api } = fakeApi(async () => "# x");
+  const { host, unmount } = await mount(api);
+  const outer = vi.fn();
+  document.addEventListener("keydown", outer); window.addEventListener("keydown", outer);
+  try {
+    await click(host, "Export Markdown");
+    expect(document.activeElement).toBe(checkbox(host, "Include tool input and output"));
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(button(host, "Export Markdown"));
+    expect(outer).not.toHaveBeenCalled();
+  } finally { document.removeEventListener("keydown", outer); window.removeEventListener("keydown", outer); await unmount(); }
+});
+
+test("Copy returns focus to the export button", async () => {
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
+  const { api } = fakeApi(async () => "# x");
+  const { host, unmount } = await mount(api);
+  try {
+    await click(host, "Export Markdown"); await click(host, "Copy as Markdown");
+    expect(document.activeElement).toBe(button(host, "Export Markdown"));
+  } finally { await unmount(); vi.restoreAllMocks(); }
+});

@@ -4,6 +4,13 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The docs list every `show` option, `sessions --starred`, and how `--until` dates, title-only hits, and the `errors` hint behave.
+
+### Fixed
+- The Export menu takes focus when opened and returns it to its button on Escape, without also clearing the session selection.
+- Insights weekday, month, and heatmap totals all cover the last 12 months instead of mixing in older history.
+
 ## [1.7.1] - 2026-11-06
 
 ### Added
