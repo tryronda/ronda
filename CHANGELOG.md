@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Docs code blocks can be focused and scrolled with the keyboard, and have a Copy button.
+- The section nav on small screens scrolls the active section into view.
 
 ## [1.7.11] - 2026-11-06
 

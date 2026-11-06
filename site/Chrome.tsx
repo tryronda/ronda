@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -92,7 +92,13 @@ export function SectionNav({ label, sections }: { label: string; sections: reado
     return () => observer.disconnect();
   }, [sections]);
 
-  return <nav aria-label={label} className="mt-6 flex gap-1 overflow-x-auto pb-1 lg:grid lg:overflow-visible">
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const link = navRef.current?.querySelector<HTMLElement>('[aria-current="location"]');
+    if (typeof link?.scrollIntoView === "function") link.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [active]);
+
+  return <nav ref={navRef} aria-label={label} className="mt-6 flex gap-1 overflow-x-auto pb-1 lg:grid lg:overflow-visible">
     {sections.map(section => <a key={section.id} href={`#${section.id}`} aria-current={active === section.id ? "location" : undefined}
       className={cn("relative flex-none px-3 py-2 font-mono text-[13px] tracking-[0.025em] lowercase transition-colors",
         active === section.id ? "text-foreground" : "text-foreground/50 hover:text-foreground")}>
