@@ -346,6 +346,10 @@ fn category(prompt: &str, tools: &[ToolEvent], early_errors: bool) -> Category {
         .filter_map(|e| e.path.as_deref())
         .collect();
     let file_name = |p: &str| p.rsplit(['/', '\\']).next().unwrap_or(p).to_owned();
+    // Asking for new tests wins over bug words such as "error" in the same prompt.
+    if TEST_WORDS.is_match(prompt) {
+        return Category::Tests;
+    }
     if BUG_WORDS.is_match(prompt) {
         return Category::Bugs;
     }
@@ -778,6 +782,12 @@ mod tests {
             ],
         );
         assert_eq!(tests.facts.category, Category::Tests);
+        let cat = |prompt: &str| derive(&meta(), &[user(0, 0, prompt)]).facts.category;
+        assert_eq!(
+            cat("Add tests for the error handling path"),
+            Category::Tests
+        );
+        assert_eq!(cat("Fix the failing test"), Category::Bugs);
         let refactor = derive(
             &meta(),
             &[
