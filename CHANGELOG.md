@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- The MCP server answers `resources/list`, `prompts/list` and `resources/templates/list` with empty lists instead of an error.
+
 ### Performance
 - Scans skip deleted sessions instead of re-reading their transcripts every time.
 

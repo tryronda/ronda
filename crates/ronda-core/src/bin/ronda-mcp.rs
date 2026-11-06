@@ -195,6 +195,9 @@ fn reply(store: &Store, req: Value) -> Option<Value> {
             json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"ronda-mcp","version":env!("CARGO_PKG_VERSION")}})
         }
         "ping" => json!({}),
+        "resources/list" => json!({"resources":[]}),
+        "prompts/list" => json!({"prompts":[]}),
+        "resources/templates/list" => json!({"resourceTemplates":[]}),
         "tools/list" => json!({"tools":tools()}),
         "tools/call" => {
             let params = req.get("params").cloned().unwrap_or(Value::Null);
@@ -296,6 +299,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 6);
+        for (method, key) in [
+            ("resources/list", "resources"),
+            ("prompts/list", "prompts"),
+            ("resources/templates/list", "resourceTemplates"),
+        ] {
+            let empty = reply(&store, json!({"jsonrpc":"2.0","id":3,"method":method})).unwrap();
+            assert!(empty.get("error").is_none(), "{method}");
+            assert_eq!(empty["result"][key], json!([]), "{method}");
+        }
         let no_reply = reply(
             &store,
             json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
