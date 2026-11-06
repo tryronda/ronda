@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-11-06
+
 ### Changed
 - The docs list every MCP argument next to its `ronda-cli` flag and describe the empty-index, dot-named-project, and blank-line behaviour.
 
