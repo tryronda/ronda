@@ -8,6 +8,7 @@ All notable changes to Ronda are recorded here.
 ### Changed
 - Intelligence's copied summary uses the same headings as `ronda-cli insights` and adds how sessions end and your stack.
 - `ronda-cli errors` and `ronda_find_error` lines show each session's agent and date.
+- The command line and MCP docs cover `--db`, `--version`, `insights --project`, `--since all`, and the 30d default.
 
 ### Fixed
 - `ronda-cli errors` rejects unknown options instead of searching for them; `--` ends options.
@@ -16,6 +17,7 @@ All notable changes to Ronda are recorded here.
 - The “Show all” buttons keep their label and report open or closed to screen readers.
 - Insights clears “Summary copied” when you switch the board or metric.
 - `show --from` past the end of a transcript says where it ends, and a non-numeric `#` message reference is rejected instead of ignored.
+- Screen readers announce the Star and Pin buttons by a stable name with a pressed state, not “Unstar, pressed”.
 
 ## [1.7.5] - 2026-11-06
 
