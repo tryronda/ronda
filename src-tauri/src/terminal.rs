@@ -53,7 +53,7 @@ fn command(plan_command: &str, directory: &str) -> CommandBuilder {
             "-l",
             "-i",
             "-c",
-            &format!("{plan_command}; exec {} -l", crate::shell_quote(&shell)),
+            &crate::resume::command_then_shell(plan_command, &shell),
         ]);
         cmd.cwd(directory);
         cmd

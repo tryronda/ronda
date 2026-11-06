@@ -1006,38 +1006,71 @@ async fn reveal_source_file(state: State<'_, Shared>, key: String) -> CommandRes
 }
 
 #[tauri::command]
-async fn trash_session(state: State<'_, Shared>, key: String) -> CommandResult<()> {
+async fn trash_session(state: State<'_, Shared>, key: String) -> CommandResult<Option<String>> {
     off_main(state, move |state| {
-        let mut store = state.store.lock().map_err(error)?;
-        let meta = store
-            .get_session(&key)
-            .map_err(error)?
-            .ok_or("unknown session")?;
-        if meta.host.is_some() || !meta.can_delete {
-            return Err("this session cannot be deleted".into());
-        }
-        let adapter = state
-            .scanner
-            .adapter(meta.agent)
-            .ok_or("unsupported agent")?;
-        let roots: Vec<PathBuf> = state
-            .scanner
-            .locations(&store)
-            .map_err(error)?
-            .into_iter()
-            .filter(|location| location.enabled && location.agent == meta.agent.as_str())
-            .map(|location| PathBuf::from(location.path))
-            .collect();
-        let paths = adapter.owned_paths(&meta);
-        if paths.is_empty() || paths.iter().any(|p| !within_root(p, &roots) || !p.exists()) {
-            return Err("session path is outside its data source".into());
-        }
-        for path in paths {
-            trash::delete(&path).map_err(error)?;
-        }
-        store.tombstone(&key).map_err(error)
+        let paths = {
+            let store = state.store.lock().map_err(error)?;
+            let meta = store
+                .get_session(&key)
+                .map_err(error)?
+                .ok_or("unknown session")?;
+            if meta.host.is_some() || !meta.can_delete {
+                return Err("this session cannot be deleted".into());
+            }
+            let adapter = state
+                .scanner
+                .adapter(meta.agent)
+                .ok_or("unsupported agent")?;
+            let roots: Vec<PathBuf> = state
+                .scanner
+                .locations(&store)
+                .map_err(error)?
+                .into_iter()
+                .filter(|location| location.enabled && location.agent == meta.agent.as_str())
+                .map(|location| PathBuf::from(location.path))
+                .collect();
+            let paths = adapter.owned_paths(&meta);
+            if paths.is_empty() || paths.iter().any(|p| !within_root(p, &roots) || !p.exists()) {
+                return Err("session path is outside its data source".into());
+            }
+            paths
+        };
+        trash_all(
+            &paths,
+            |path| trash::delete(path).map_err(error),
+            || {
+                let mut store = state.store.lock().map_err(error)?;
+                store.tombstone(&key).map_err(error)
+            },
+        )
     })
     .await
+}
+
+/// Trashes the main path first (failure aborts). Once it succeeds the session is tombstoned
+/// even if a sidecar fails to trash; that failure comes back as a warning.
+fn trash_all<D, T>(
+    paths: &[PathBuf],
+    mut delete_fn: D,
+    tombstone_fn: T,
+) -> CommandResult<Option<String>>
+where
+    D: FnMut(&Path) -> CommandResult<()>,
+    T: FnOnce() -> CommandResult<()>,
+{
+    let Some((main, sidecars)) = paths.split_first() else {
+        return Err("session has no files".into());
+    };
+    delete_fn(main)?;
+    let mut warning = None;
+    for path in sidecars {
+        if let Err(err) = delete_fn(path) {
+            warning.get_or_insert(err);
+        }
+    }
+    tombstone_fn()?;
+    Ok(warning
+        .map(|err| format!("Session removed, but a related file could not be trashed: {err}")))
 }
 
 fn shell_quote(value: &str) -> String {
@@ -1376,7 +1409,7 @@ async fn resume_session(state: State<'_, Shared>, key: String) -> CommandResult<
                     "cd {} && {} -l -i -c {}",
                     shell_quote(&directory),
                     shell_quote(&shell),
-                    shell_quote(&command)
+                    shell_quote(&resume::command_then_shell(&command, &shell))
                 )
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")
@@ -1823,6 +1856,45 @@ pub fn run() {
 
 #[cfg(all(test, unix))]
 mod tests {
+    #[test]
+    fn trash_all_tombstones_when_a_sidecar_fails() {
+        let paths = vec![PathBuf::from("main"), PathBuf::from("side")];
+        let mut tombstoned = false;
+        let out = trash_all(
+            &paths,
+            |p| {
+                if p == Path::new("side") {
+                    Err("boom".into())
+                } else {
+                    Ok(())
+                }
+            },
+            || {
+                tombstoned = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(tombstoned);
+        assert!(out.unwrap().contains("boom"));
+    }
+
+    #[test]
+    fn trash_all_keeps_the_session_when_main_fails() {
+        let paths = vec![PathBuf::from("main"), PathBuf::from("side")];
+        let mut tombstoned = false;
+        let out = trash_all(
+            &paths,
+            |_| Err("nope".into()),
+            || {
+                tombstoned = true;
+                Ok(())
+            },
+        );
+        assert!(out.is_err());
+        assert!(!tombstoned);
+    }
+
     #[test]
     fn drain_stops_after_max_on_continuous_events() {
         let (tx, rx) = std::sync::mpsc::channel();

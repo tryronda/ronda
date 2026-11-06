@@ -4,6 +4,19 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.11] - 2026-11-06
+
+### Fixed
+- Codex reasoning summaries now appear as thinking instead of being dropped.
+- Qoder sessions show failed tool calls as errors and keep the assistant's thinking.
+- Session titles no longer come from injected prompts such as AGENTS.md instructions or environment context.
+- A subagent session's parent no longer also appears in its related sessions.
+- Moving the open session to Trash now closes its transcript, so only the "moved to Trash" notice remains.
+- Bulk labeling sessions that already have the label (or removing a label none have) now says so instead of "Labeled 0 sessions", and clears the stale Undo.
+- Open in Terminal on macOS keeps the window usable after the agent exits instead of showing "[Process completed]".
+- Moving a session to the Trash tombstones it as soon as its main file is trashed, so a failing sidecar file no longer leaves a ghost session.
+- The site's changelog no longer shows an empty Unreleased entry.
+
 ## [1.7.10] - 2026-11-06
 
 ### Fixed

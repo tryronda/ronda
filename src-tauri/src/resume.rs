@@ -114,6 +114,13 @@ fn checked_project_directory(directory: &str) -> CommandResult<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
+/// Runs `command`, then replaces the shell with an interactive login shell so the window stays
+/// usable after the agent exits.
+#[cfg(not(target_os = "windows"))]
+pub fn command_then_shell(command: &str, shell: &str) -> String {
+    format!("{command}; exec {} -l", shell_quote(shell))
+}
+
 pub fn login_shell() -> String {
     std::env::var("SHELL")
         .ok()
@@ -355,6 +362,17 @@ pub fn plan(state: &AppState, key: &str) -> CommandResult<Plan> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn command_then_shell_execs_login_shell_and_keeps_quoting() {
+        let out = command_then_shell("codex resume 'a b'", "/bin/zsh");
+        assert_eq!(out, "codex resume 'a b'; exec '/bin/zsh' -l");
+        let out = command_then_shell("x", "/opt/my shell/it's");
+        assert!(out.ends_with("; exec '/opt/my shell/it'\\''s' -l"));
+        let dir = shell_quote("/tmp/it's a dir");
+        assert_eq!(dir, "'/tmp/it'\\''s a dir'");
+    }
+
     use super::*;
     use std::fs;
     #[cfg(unix)]

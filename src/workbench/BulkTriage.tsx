@@ -48,6 +48,7 @@ export function planLabelChange(rows: { key: string; labels?: string[] }[], labe
 }
 
 export function labelStatus(mode: LabelMode, applied: number, skipped: number): string {
+  if (!applied && !skipped) return mode === "add" ? "Already labeled" : "None had that label";
   const base = mode === "add" ? `Labeled ${sessionCount(applied)}` : `Removed label from ${sessionCount(applied)}`;
   return skipped ? `${base}, skipped ${skipped} at the label limit` : base;
 }

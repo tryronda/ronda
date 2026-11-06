@@ -111,7 +111,7 @@ impl Store {
                    OR replace(t.path,char(92),'/') IN (SELECT ?5 || value FROM json_each(?4))) GROUP BY t.session_key) \
                  SELECT s.meta FROM sessions s LEFT JOIN error_scores e ON e.session_key=s.key LEFT JOIN file_scores f ON f.session_key=s.key \
                  WHERE s.key<>?1 AND json_extract(s.meta,'$.project_path')=?2 AND json_extract(s.meta,'$.host') IS ?3 \
-                 AND json_extract(s.meta,'$.parent_key') IS NULL \
+                 AND json_extract(s.meta,'$.parent_key') IS NULL AND s.key IS NOT ?7 \
                  ORDER BY coalesce(e.n,0) DESC,coalesce(f.n,0) DESC,s.updated_at DESC,s.key LIMIT ?6",
             )?;
             let candidates = stmt
@@ -122,7 +122,8 @@ impl Store {
                         main.host,
                         files_json,
                         root,
-                        candidate_limit as i64
+                        candidate_limit as i64,
+                        parent.as_ref().map(|p| p.key.as_str())
                     ],
                     |r| r.get::<_, String>(0),
                 )?
@@ -336,14 +337,9 @@ mod tests {
         assert_eq!(result.related[1].explanation, "Shared files");
         assert_eq!(result.related[2].session.key, "codex:recent-4999");
         assert_eq!(result.related[2].explanation, "Same project");
-        assert_eq!(
-            db.session_relationships("codex:child-a")
-                .unwrap()
-                .parent
-                .unwrap()
-                .key,
-            base.key
-        );
+        let child = db.session_relationships("codex:child-a").unwrap();
+        assert_eq!(child.parent.unwrap().key, base.key);
+        assert!(child.related.iter().all(|r| r.session.key != base.key));
         assert_eq!(
             db.session_relationships("remote:codex:child")
                 .unwrap()
