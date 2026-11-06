@@ -162,6 +162,35 @@ fn four_query_surfaces_have_identical_cli_and_mcp_text() {
             json!({"key":"codex:parity","subagent":"*"})
         )
     );
+    // Only the follow-up hint is surface-specific: `--from N` on the CLI, `from_seq` on MCP.
+    let paged_cli = cli(
+        &db_path,
+        &[
+            "show",
+            "codex:parity",
+            "--subagent",
+            "agent-1",
+            "--messages",
+            "1",
+        ],
+    );
+    let paged_mcp = mcp(
+        &db_path,
+        "ronda_get_session",
+        json!({"key":"codex:parity","subagent":"agent-1","max_messages":1}),
+    );
+    let (cli_body, cli_hint) = paged_cli.trim_end().rsplit_once('\n').unwrap();
+    let (mcp_body, mcp_hint) = paged_mcp.trim_end().rsplit_once('\n').unwrap();
+    assert_eq!(cli_body, mcp_body);
+    assert!(
+        cli_hint
+            .contains("continue with `ronda-cli show codex:parity --from 1 --subagent agent-1`"),
+        "{cli_hint}"
+    );
+    assert!(
+        mcp_hint.contains("continue with from_seq=1 and subagent=\"agent-1\""),
+        "{mcp_hint}"
+    );
     let selected = cli(
         &db_path,
         &[
