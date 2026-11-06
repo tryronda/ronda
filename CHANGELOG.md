@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- The MCP server answers a client's supported protocol version in the handshake instead of always claiming 2025-03-26.
 - The MCP server answers `resources/list`, `prompts/list` and `resources/templates/list` with empty lists instead of an error.
 
 ### Performance

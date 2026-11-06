@@ -187,12 +187,21 @@ fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
     }
 }
 
+const SUPPORTED_PROTOCOLS: [&str; 2] = ["2024-11-05", "2025-03-26"];
+const LATEST_PROTOCOL: &str = "2025-03-26";
+
 fn reply(store: &Store, req: Value) -> Option<Value> {
     let id = req.get("id")?.clone();
     let method = req.get("method").and_then(Value::as_str).unwrap_or("");
     let result = match method {
         "initialize" => {
-            json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"ronda-mcp","version":env!("CARGO_PKG_VERSION")}})
+            let protocol = req
+                .get("params")
+                .and_then(|p| p.get("protocolVersion"))
+                .and_then(Value::as_str)
+                .filter(|v| SUPPORTED_PROTOCOLS.contains(v))
+                .unwrap_or(LATEST_PROTOCOL);
+            json!({"protocolVersion":protocol,"capabilities":{"tools":{}},"serverInfo":{"name":"ronda-mcp","version":env!("CARGO_PKG_VERSION")}})
         }
         "ping" => json!({}),
         "resources/list" => json!({"resources":[]}),
@@ -293,6 +302,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(init["result"]["serverInfo"]["name"], "ronda-mcp");
+        assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
         let list = reply(
             &store,
             json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
@@ -315,6 +325,19 @@ mod tests {
         assert!(no_reply.is_none());
         drop(store);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn initialize_echoes_supported_protocol_versions() {
+        let store = Store::open(std::path::Path::new(":memory:")).unwrap();
+        let version = |requested: Value| {
+            let req = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":requested}});
+            reply(&store, req).unwrap()["result"]["protocolVersion"].clone()
+        };
+        assert_eq!(version(json!("2024-11-05")), "2024-11-05");
+        assert_eq!(version(json!("2025-03-26")), "2025-03-26");
+        assert_eq!(version(json!("bogus")), "2025-03-26");
+        assert_eq!(version(json!(7)), "2025-03-26");
     }
 
     #[test]
