@@ -155,6 +155,18 @@ fn reply(store: &Store, req: Value) -> Option<Value> {
     Some(json!({"jsonrpc":"2.0","id":id,"result":result}))
 }
 
+fn handle_line(store: &Store, line: &str) -> Option<Value> {
+    if line.trim().is_empty() {
+        return None;
+    }
+    match serde_json::from_str::<Value>(line) {
+        Ok(request) => reply(store, request),
+        Err(e) => {
+            Some(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":e.to_string()}}))
+        }
+    }
+}
+
 fn run() -> Result<(), (u8, String)> {
     let args: Vec<String> = env::args().skip(1).collect();
     let db = match args.as_slice() {
@@ -176,13 +188,7 @@ fn run() -> Result<(), (u8, String)> {
     let mut stdout = io::stdout().lock();
     for line in stdin.lock().lines() {
         let line = line.map_err(|e| (1, e.to_string()))?;
-        let response = match serde_json::from_str::<Value>(&line) {
-            Ok(request) => reply(&store, request),
-            Err(e) => Some(
-                json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":e.to_string()}}),
-            ),
-        };
-        if let Some(response) = response {
+        if let Some(response) = handle_line(&store, &line) {
             serde_json::to_writer(&mut stdout, &response).map_err(|e| (1, e.to_string()))?;
             stdout.write_all(b"\n").map_err(|e| (1, e.to_string()))?;
             stdout.flush().map_err(|e| (1, e.to_string()))?;
@@ -260,6 +266,19 @@ mod tests {
         }
         let missing = reply(&store, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ronda_get_session","arguments":{}}})).unwrap();
         assert_eq!(missing["result"]["isError"], true);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn blank_lines_are_skipped_and_bad_json_is_a_parse_error() {
+        let path = std::env::temp_dir().join(format!("ronda-mcp-lines-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let store = Store::open(&path).unwrap();
+        assert!(handle_line(&store, "   ").is_none());
+        assert!(handle_line(&store, "").is_none());
+        let bad = handle_line(&store, "{bad").unwrap();
+        assert_eq!(bad["error"]["code"], -32700);
         drop(store);
         let _ = std::fs::remove_file(&path);
     }

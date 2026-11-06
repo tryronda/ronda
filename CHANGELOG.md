@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - `ronda-mcp` rejects unknown argument names as invalid parameters instead of silently ignoring them.
+- `ronda-mcp` ignores blank input lines instead of replying with a parse error.
 
 ## [1.7.2] - 2026-11-06
 
