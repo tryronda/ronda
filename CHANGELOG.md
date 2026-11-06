@@ -4,6 +4,7 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.12] - 2026-11-06
 
 ### Fixed
 - `ronda-mcp` now answers JSON-RPC batch requests with an array of replies instead of ignoring them.
