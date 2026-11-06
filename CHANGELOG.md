@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- Exporting a session writes the file atomically, so a failed export no longer leaves a half-written file.
 - Remote sync gives up on unreachable hosts instead of hanging, ignores files that vanish mid-transfer, and shows rsync's error when a transfer fails.
 - Syncing a remote host no longer fails with an empty "SSH failed" message when the host lacks some of the session folders.
 

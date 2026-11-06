@@ -880,7 +880,7 @@ async fn export_session(
 ) -> CommandResult<()> {
     off_main(state, move |state| {
         let output = session_markdown_for(state, &key, options.unwrap_or_default())?;
-        std::fs::write(destination, output).map_err(error)
+        write_export(Path::new(&destination), output.as_bytes())
     })
     .await
 }
@@ -2110,6 +2110,24 @@ mod tests {
         assert!(write_export(&directory, text.as_bytes()).is_err());
         assert!(directory.is_dir());
         assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn write_export_writes_content_and_leaves_no_temporary_file() {
+        let root =
+            std::env::temp_dir().join(format!("ronda session export {}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let destination = root.join("session.md");
+        fs::write(&destination, "old").unwrap();
+        write_export(Path::new(destination.to_str().unwrap()), b"# Session\n").unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "# Session\n");
+        let names: Vec<_> = fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("session.md")]);
         fs::remove_dir_all(&root).unwrap();
     }
 
