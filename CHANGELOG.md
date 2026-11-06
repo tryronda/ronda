@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Moving a session to Trash now shows the warning when some of its files could not be moved, instead of only "moved to Trash".
+- The export popover now closes when keyboard focus moves out of it.
 - Deleting a label now says how many sessions it will be removed from.
 
 ### Performance
