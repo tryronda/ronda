@@ -269,7 +269,7 @@ fn title(messages: &[TranscriptMessage]) -> String {
                 && matches!(m.kind, MessageKind::Text)
                 && !m.text.trim().is_empty()
         })
-        .map(|m| m.text.trim().chars().take(100).collect())
+        .map(|m| crate::adapter::fallback_title(&m.text))
         .unwrap_or_else(|| "Untitled session".into())
 }
 
@@ -1097,6 +1097,28 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, content).unwrap();
         path
+    }
+
+    #[test]
+    fn two_line_prompt_titles_from_its_first_line() {
+        let h = home();
+        put(
+            &h,
+            ".omp/agent/sessions/-tmp/2026_omp-2.jsonl",
+            concat!(
+                "{\"type\":\"session\",\"id\":\"omp-2\",\"cwd\":\"/tmp/omp\"}\n",
+                "{\"type\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"Refactor   the parser\\nand add tests\"}}\n"
+            ),
+        );
+        let adapter = adapters()
+            .into_iter()
+            .find(|a| a.agent() == AgentId::Omp)
+            .unwrap();
+        let root = adapter.roots(&h).remove(0);
+        let found = adapter.discover(&root).unwrap();
+        let parsed = adapter.parse(&found[0]).unwrap().unwrap();
+        assert_eq!(parsed.meta.title, "Refactor the parser");
+        let _ = fs::remove_dir_all(&h);
     }
 
     #[test]

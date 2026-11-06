@@ -11,7 +11,7 @@ use std::{
 };
 
 fn help() -> &'static str {
-    "ronda-cli search QUERY [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--limit N]\n\
+    "ronda-cli search QUERY [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--starred] [--limit N]\n\
      ronda-cli sessions [--project PATH] [--agent ID] [--since WHEN] [--until WHEN] [--starred] [--reverse] [--limit N]\n\
      ronda-cli show KEY [--subagent ID|*] [--from SEQ] [--messages N] [--chars N] [--message-chars N] [--tools] [--thinking]\n\
      ronda-cli projects [--since WHEN] [--reverse] [--limit N]\n\
@@ -243,6 +243,7 @@ fn run() -> Result<String, (u8, String)> {
             if words.is_empty() {
                 return Err((2, "search needs a query".into()));
             }
+            query::validate_search_text(&words.join(" ")).map_err(|e| (2, e.to_string()))?;
             query::validate_agents(&filter.agents).map_err(|e| (2, e.to_string()))?;
             query::validate_since(filter.since.as_deref()).map_err(|e| (2, e.to_string()))?;
             query::validate_until(filter.until.as_deref()).map_err(|e| (2, e.to_string()))?;
@@ -330,13 +331,9 @@ fn run() -> Result<String, (u8, String)> {
                 .map(String::as_str)
                 .filter(|w| *w != "--")
                 .collect();
-            query::find_error(
-                &store,
-                &FindErrorArgs {
-                    error: words.join(" "),
-                },
-            )
-            .map_err(|e| (1, e.to_string()))
+            let error = words.join(" ");
+            query::validate_search_text(&error).map_err(|e| (2, e.to_string()))?;
+            query::find_error(&store, &FindErrorArgs { error }).map_err(|e| (1, e.to_string()))
         }
         _ => Err((2, format!("unknown command: {command}"))),
     }

@@ -213,7 +213,10 @@ fn reverse_lists_oldest_first_before_limit() {
     let o = cli(&db, &["projects", "--reverse", "--limit", "1"]);
     let out = String::from_utf8_lossy(&o.stdout);
     assert!(out.contains("/tmp/a") && !out.contains("/tmp/c"), "{out}");
-    assert!(out.contains("Showing 1 of 3 projects."), "{out}");
+    assert!(
+        out.contains("Showing 1 of 3 projects. Archived sessions are not counted."),
+        "{out}"
+    );
 }
 
 #[test]
@@ -222,6 +225,20 @@ fn reverse_is_rejected_where_it_does_not_apply() {
     for args in [
         vec!["insights", "--reverse"],
         vec!["search", "x", "--reverse"],
+    ] {
+        let o = cli(&db, &args);
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
+fn blank_search_and_error_text_are_usage_errors() {
+    let db = seeded();
+    for args in [
+        vec!["search", ""],
+        vec!["search", "  "],
+        vec!["errors", ""],
+        vec!["errors", " "],
     ] {
         let o = cli(&db, &args);
         assert_eq!(o.status.code(), Some(2), "{args:?}");
@@ -250,7 +267,10 @@ fn single_session_answers_use_singular_counts() {
         "{sessions}"
     );
     let projects = out(&cli(&db, &["projects"]));
-    assert!(projects.starts_with("1 project.\n"), "{projects}");
+    assert!(
+        projects.starts_with("1 project. Archived sessions are not counted.\n"),
+        "{projects}"
+    );
     assert!(projects.contains("· 1 session ·"), "{projects}");
     assert!(!projects.contains("1 sessions") && !projects.contains("1 projects"));
     assert!(

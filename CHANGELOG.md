@@ -4,6 +4,27 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-06
+
+### Added
+- Insights shows active days, the busiest day, and the longest streak under the activity chart.
+- Home and End jump to the first and last loaded session in the library list, and Shift extends the selection.
+- Transcript navigation can jump between messages with failed tool calls.
+- `ronda-cli show` and `ronda_get_session` headers include when the session started, its token count, and whether it is starred or archived.
+
+### Changed
+- The landing page describes Markdown bookmark export, session labels, and saved searches.
+- The related-sessions performance check no longer fails on a busy machine and still catches a slow query.
+- A message's tool summary shows how many of its tool calls failed without opening it.
+- Docs describe `search --starred`, the richer `show` header, blank-query errors, and wrapper flags that take a value.
+
+### Fixed
+- Sessions titled from a prompt use its first non-empty line, so titles never start blank or span several lines in `ronda-cli` and MCP lists.
+- Search excerpts centre on the longest word of a multi-word query, so they show the text that matched.
+- Intelligence counts commits and pushes run through `sudo -u USER`, `env -u VAR` and similar wrappers that take a value.
+- `ronda-cli` and MCP search apply `--starred` and reject a blank query as a usage error.
+- `ronda-cli projects` and `ronda_list_projects` say that archived sessions are not counted.
+
 ## [1.7.0] - 2026-11-02
 
 ### Added

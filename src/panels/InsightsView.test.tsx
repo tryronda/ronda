@@ -79,6 +79,10 @@ test("charts expose a screen-reader summary and label: value lists", async () =>
   invoke.mockImplementationOnce(async () => ({ ...data, activity: [[key, 3]] as [string, number][], hours: [[9, 4]] as [number, number][] }));
   const { host, root } = await mount();
   expect(host.querySelector('[data-testid="heatmap-summary"]')?.textContent).toContain(`Busiest day: ${key} with 3 prompts`);
+  const summary = host.querySelector('[data-testid="heatmap-summary"]')!;
+  expect(summary.classList.contains("sr-only")).toBe(false);
+  expect(summary.classList.contains("panel-help")).toBe(true);
+  expect(summary.closest("[aria-hidden='true']")).toBeNull();
   const lists = Array.from(host.querySelectorAll("ul.sr-only")).map(list => list.textContent);
   expect(lists).toHaveLength(3);
   expect(lists[0]).toContain("Sunday: ");

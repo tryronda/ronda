@@ -22,7 +22,7 @@ struct ProjectsArgs {
 
 fn tools() -> Value {
     json!([
-        {"name":"ronda_search","description":"Search indexed coding-agent sessions and return message references.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"agents":{"type":"array","items":{"type":"string"}},"since":{"type":"string"},"until":{"type":"string"},"limit":{"type":"integer"}},"required":["query"]}},
+        {"name":"ronda_search","description":"Search indexed coding-agent sessions and return message references.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"agents":{"type":"array","items":{"type":"string"}},"since":{"type":"string"},"until":{"type":"string"},"limit":{"type":"integer"},"starred":{"type":"boolean"}},"required":["query"]}},
         {"name":"ronda_list_sessions","description":"List recent sessions by project, agent, or time.","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"agents":{"type":"array","items":{"type":"string"}},"since":{"type":"string"},"until":{"type":"string"},"limit":{"type":"integer"},"starred":{"type":"boolean"},"reverse":{"type":"boolean"}}}},
         {"name":"ronda_get_session","description":"Read a paginated transcript by session key or ronda:// reference; select an indexed child with subagent, or use * to list children.","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"subagent":{"type":"string"},"from_seq":{"type":"integer"},"max_messages":{"type":"integer"},"max_chars":{"type":"integer"},"max_message_chars":{"type":"integer"},"include_tools":{"type":"boolean"},"include_thinking":{"type":"boolean"}},"required":["key"]}},
         {"name":"ronda_list_projects","description":"List indexed projects with session counts.","inputSchema":{"type":"object","properties":{"since":{"type":"string"},"limit":{"type":"integer"},"reverse":{"type":"boolean"}}}},
@@ -54,6 +54,7 @@ fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
     match name {
         "ronda_search" => {
             let a: SearchArgs = parsed(args)?;
+            query::validate_search_text(&a.query).map_err(|e| CallError::Invalid(e.to_string()))?;
             validate_filter(&a.filter)?;
             query::validate_window(a.filter.since.as_deref(), a.filter.until.as_deref())
                 .map_err(|e| CallError::Invalid(e.to_string()))?;
@@ -86,8 +87,11 @@ fn answer(store: &Store, name: &str, args: Value) -> Result<String, CallError> {
             }
             query::insights(store, &a).map_err(|e| CallError::Tool(e.to_string()))
         }
-        "ronda_find_error" => query::find_error(store, &parsed::<FindErrorArgs>(args)?)
-            .map_err(|e| CallError::Tool(e.to_string())),
+        "ronda_find_error" => {
+            let a: FindErrorArgs = parsed(args)?;
+            query::validate_search_text(&a.error).map_err(|e| CallError::Invalid(e.to_string()))?;
+            query::find_error(store, &a).map_err(|e| CallError::Tool(e.to_string()))
+        }
         _ => Err(CallError::Invalid(format!("unknown tool: {name}"))),
     }
 }
@@ -211,6 +215,8 @@ mod tests {
         let store = Store::open(&path).unwrap();
         for (name, arguments) in [
             ("ronda_search", json!({"query": 4})),
+            ("ronda_search", json!({"query": " "})),
+            ("ronda_find_error", json!({"error": "  "})),
             ("ronda_list_sessions", json!({"since": "yesterdayish"})),
             ("ronda_list_sessions", json!({"until": "yesterdayish"})),
             ("ronda_list_sessions", json!({"agents": ["nope"]})),
