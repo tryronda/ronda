@@ -4,6 +4,11 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- `ronda-cli errors` rejects unknown options instead of searching for them; `--` ends options.
+- `ronda_get_session` reports a missing or blank key as invalid params.
+- A negative `--from` or `from_seq` is rejected instead of being clamped.
+
 ## [1.7.5] - 2026-11-06
 
 ### Added
