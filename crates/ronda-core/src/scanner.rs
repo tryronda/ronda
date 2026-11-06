@@ -214,6 +214,9 @@ impl Scanner {
         let mut seen = HashSet::new();
         for (key, mut candidates) in refs {
             seen.insert(key.clone());
+            if store.is_tombstoned(&key)? {
+                continue;
+            }
             candidates.sort_by(|a, b| {
                 self.adapters[a.0]
                     .rank()
@@ -411,5 +414,55 @@ mod tests {
         sorted.sort();
         assert_eq!(first, sorted);
         assert_eq!(first, second);
+    }
+
+    struct CountingAdapter {
+        root: PathBuf,
+        parses: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl AgentAdapter for CountingAdapter {
+        fn agent(&self) -> crate::AgentId {
+            crate::AgentId::ClaudeCode
+        }
+        fn roots(&self, _home: &Path) -> Vec<PathBuf> {
+            vec![self.root.clone()]
+        }
+        fn discover(&self, _root: &Path) -> Result<Vec<SourceRef>> {
+            Ok(vec![SourceRef {
+                agent: crate::AgentId::ClaudeCode,
+                native_id: "gone".into(),
+                path: self.root.join("gone.jsonl"),
+                modified_ms: 1,
+                size: 1,
+            }])
+        }
+        fn parse(&self, _source: &SourceRef) -> Result<Option<crate::ParsedSession>> {
+            self.parses
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn tombstoned_sessions_are_not_parsed() {
+        let root = std::env::temp_dir().join(format!("ronda-tomb-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let parses = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let scanner = Scanner {
+            adapters: vec![Box::new(CountingAdapter {
+                root: root.clone(),
+                parses: parses.clone(),
+            })],
+            home: root.clone(),
+        };
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        store
+            .tombstone(&session_key("claude-code", None, "gone"))
+            .unwrap();
+        scanner.scan(&mut store, true).unwrap();
+        scanner.scan(&mut store, true).unwrap();
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(parses.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 }
