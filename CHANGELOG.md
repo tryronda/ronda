@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Performance
+- Scans skip deleted sessions instead of re-reading their transcripts every time.
+
 ## [1.7.8] - 2026-11-06
 
 ### Fixed
