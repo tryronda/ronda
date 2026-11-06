@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Global shortcuts no longer fire behind the open keyboard shortcuts dialog.
+- Ctrl+B, Ctrl+K and Ctrl+1-4 reach the terminal instead of being taken by Ronda; use Cmd for the app shortcuts there.
 
 ## [1.7.8] - 2026-11-06
 

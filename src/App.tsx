@@ -114,11 +114,13 @@ export default function App({ embedded = false }: { embedded?: boolean } = {}) {
       const inTerminal = event.target instanceof Element && event.target.closest(".xterm") !== null;
       // Behind the open shortcuts dialog only "?" (and Escape, which the dialog handles itself) do anything.
       if (helpOpen && event.key !== "?" && event.key !== "Escape") return;
+      // Ctrl+K/B/1-4 belong to the shell inside a terminal; only Cmd takes them there.
+      const globalModifier = inTerminal ? event.metaKey : modifier;
       if (event.key === "?" && !modifier && !event.altKey && !editing && !inTerminal) { event.preventDefault(); setHelpOpen(true); }
-      else if (modifier && event.key.toLowerCase() === "k") { event.preventDefault(); openSearch(); }
-      else if (modifier && /^[1-4]$/.test(event.key)) { event.preventDefault(); navigate(pages[Number(event.key) - 1]); }
+      else if (globalModifier && event.key.toLowerCase() === "k") { event.preventDefault(); openSearch(); }
+      else if (globalModifier && /^[1-4]$/.test(event.key)) { event.preventDefault(); navigate(pages[Number(event.key) - 1]); }
       else if (modifier && !event.altKey && !event.shiftKey && event.key === "," && !inTerminal) { event.preventDefault(); navigate("settings"); }
-      else if (modifier && event.key.toLowerCase() === "b" && page === "workbench") { event.preventDefault(); setSidebarOpen(value => !value); }
+      else if (globalModifier && event.key.toLowerCase() === "b" && page === "workbench") { event.preventDefault(); setSidebarOpen(value => !value); }
       else if (!editing && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); go(-1); }
       else if (!editing && event.altKey && event.key === "ArrowRight") { event.preventDefault(); go(1); }
     };

@@ -172,3 +172,25 @@ test("global shortcuts do nothing behind the open shortcuts dialog", async () =>
   expect(host.querySelector("dialog")).not.toBeNull();
   await act(async () => { root.unmount(); });
 });
+
+test("Ctrl+B, Ctrl+K and Ctrl+digits pass through inside a terminal, Cmd still works", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(<App />); });
+  const toggle = () => host.querySelector<HTMLElement>("[aria-expanded]")!.getAttribute("aria-expanded");
+  const terminal = document.createElement("div"); terminal.className = "xterm"; host.append(terminal);
+  const press = async (key: string, init: KeyboardEventInit) => {
+    const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+    await act(async () => { terminal.dispatchEvent(event); });
+    return event;
+  };
+  expect(toggle()).toBe("true");
+  expect((await press("b", { ctrlKey: true })).defaultPrevented).toBe(false);
+  expect((await press("2", { ctrlKey: true })).defaultPrevented).toBe(false);
+  expect(toggle()).toBe("true");
+  expect(host.textContent).not.toContain("Insights content");
+  expect((await press("b", { metaKey: true })).defaultPrevented).toBe(true);
+  expect(toggle()).toBe("false");
+  await act(async () => { root.unmount(); });
+});
