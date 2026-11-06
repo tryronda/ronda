@@ -3,10 +3,17 @@ import { REVEAL_EVENT } from "./ToolPre";
 import { transcriptMatches, type TranscriptMatch } from "./transcript-find";
 
 /** Index of the prompt nearest to the viewport top in the given direction, or -1. */
-export function nearestPrompt(tops: number[], viewportTop: number, direction: 1 | -1): number {
-  if (direction === 1) return tops.findIndex(top => top > viewportTop + 1);
-  for (let i = tops.length - 1; i >= 0; i--) if (tops[i] < viewportTop - 1) return i;
+export function nearestPrompt(tops: number[], viewportTop: number, direction: 1 | -1, margin = 0): number {
+  const edge = viewportTop + margin;
+  if (direction === 1) return tops.findIndex(top => top > edge + 1);
+  for (let i = tops.length - 1; i >= 0; i--) if (tops[i] < edge - 1) return i;
   return -1;
+}
+
+/** The scroll-margin-top an element settles at after scrollIntoView, in px. */
+function scrollMargin(element: Element | undefined): number {
+  const value = element ? parseFloat(getComputedStyle(element).scrollMarginTop) : 0;
+  return Number.isFinite(value) ? value : 0;
 }
 
 export function TranscriptNavigation({ container, scope, active, embedded, promptsOnly, setPromptsOnly, reducedMotion, jumpToken, findRequest, onBeforeProgrammaticScroll }: {
@@ -99,7 +106,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
     if (!element) return;
     const prompts = Array.from(element.querySelectorAll<HTMLElement>("article[data-prompt]"));
     const top = element.getBoundingClientRect().top;
-    const target = prompts[nearestPrompt(prompts.map(prompt => prompt.getBoundingClientRect().top), top, direction)];
+    const target = prompts[nearestPrompt(prompts.map(prompt => prompt.getBoundingClientRect().top), top, direction, scrollMargin(prompts[0]))];
     if (!target) return;
     onBeforeProgrammaticScroll?.();
     target.scrollIntoView({ block: "start", behavior: reducedMotion ? "instant" : "smooth" });
@@ -109,7 +116,7 @@ export function TranscriptNavigation({ container, scope, active, embedded, promp
     if (!element) return;
     const failed = Array.from(element.querySelectorAll<HTMLElement>("article[data-failed]"));
     const top = element.getBoundingClientRect().top;
-    const target = failed[nearestPrompt(failed.map(article => article.getBoundingClientRect().top), top, direction)];
+    const target = failed[nearestPrompt(failed.map(article => article.getBoundingClientRect().top), top, direction, scrollMargin(failed[0]))];
     if (!target) return;
     target.querySelectorAll("details").forEach(details => { details.open = true; });
     onBeforeProgrammaticScroll?.();

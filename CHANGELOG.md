@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Next prompt and Next error no longer stick on the prompt you just jumped to.
+
 ## [1.7.7] - 2026-11-06
 
 ### Changed

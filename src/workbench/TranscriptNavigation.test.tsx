@@ -127,6 +127,8 @@ test("nearestPrompt picks the closest prompt above or below the viewport top", (
   expect(nearestPrompt([100],0,-1)).toBe(-1);
   expect(nearestPrompt([-100],0,1)).toBe(-1);
   expect(nearestPrompt([0,50],0,1)).toBe(1);
+  expect(nearestPrompt([24,300],0,1,24)).toBe(1);
+  expect(nearestPrompt([24,300],0,-1,24)).toBe(-1);
 });
 
 test("Previous/Next error buttons appear only with failed messages, open tools, and jump in order", async () => {
