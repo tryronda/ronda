@@ -1064,14 +1064,17 @@ fn parse_antigravity(s: &SourceRef) -> Result<Option<ParsedSession>> {
     m.kind = MessageKind::Meta;
     Ok(Some(finish(meta, vec![m])))
 }
+fn hex_val(c: u8) -> Option<u8> {
+    (c as char).to_digit(16).map(|d| d as u8)
+}
 fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(s.len());
     let b = s.as_bytes();
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(n) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(n);
+            if let (Some(h), Some(l)) = (hex_val(b[i + 1]), hex_val(b[i + 2])) {
+                out.push(h * 16 + l);
                 i += 3;
                 continue;
             }
@@ -1114,6 +1117,12 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+    #[test]
+    fn percent_decode_is_safe_on_char_boundaries() {
+        assert_eq!(percent_decode("/p/50%a€"), "/p/50%a€");
+        assert_eq!(percent_decode("/p/a%20b"), "/p/a b");
+        assert_eq!(percent_decode("%20"), " ");
     }
     fn only(adapter: &dyn AgentAdapter, root: &Path) -> ParsedSession {
         let refs = adapter.discover(root).unwrap();
