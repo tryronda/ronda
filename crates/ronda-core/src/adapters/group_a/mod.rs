@@ -1022,6 +1022,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
         let mut texts = Vec::new();
         let mut imgs = Vec::new();
         let mut tools = Vec::new();
+        let mut thinking = None;
         for block in content.as_array().map(Vec::as_slice).unwrap_or(&[]) {
             match block["type"].as_str().unwrap_or("") {
                 "tool_result" => {
@@ -1032,6 +1033,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
                     {
                         let (s, _) = body(&block["content"]);
                         out.messages[i].tool_calls[j].output = Some(s);
+                        out.messages[i].tool_calls[j].is_error = block["is_error"] == true;
                     }
                 }
                 "tool_use" => tools.push(tool(
@@ -1039,7 +1041,11 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
                     block["name"].as_str().unwrap_or("tool"),
                     &block["input"],
                 )),
-                "thinking" => {}
+                "thinking" => {
+                    if let Some(s) = block["thinking"].as_str() {
+                        append_thinking(&mut thinking, s);
+                    }
+                }
                 _ => {
                     let (s, images) = body(block);
                     if !s.is_empty() {
@@ -1052,7 +1058,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
         if let Some(s) = content.as_str() {
             texts.push(s.to_owned());
         }
-        if texts.is_empty() && tools.is_empty() && imgs.is_empty() {
+        if texts.is_empty() && tools.is_empty() && imgs.is_empty() && thinking.is_none() {
             continue;
         }
         let msg_kind = if row["isCompactSummary"] == true {
@@ -1064,6 +1070,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
         };
         let i = out.push(role, msg_kind, texts.join("\n\n"), ts);
         out.messages[i].images = imgs;
+        out.messages[i].thinking = thinking;
         out.messages[i].tool_calls = tools;
         for (j, call) in out.messages[i].tool_calls.iter().enumerate() {
             calls.insert(call.id.clone(), (i, j));
@@ -1676,6 +1683,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Start", "new answer"]
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn qoder_tool_error_and_thinking() {
+        let data = concat!(
+            "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"Run it\"}}\n",
+            "{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"Plan it\"},{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Bash\",\"input\":{\"command\":\"false\"}}]}}\n",
+            "{\"type\":\"user\",\"uuid\":\"r\",\"parentUuid\":\"a\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\",\"is_error\":true,\"content\":\"boom\"}]}}\n");
+        let (root, sources) = fixture(AgentId::Qoder, "slug/s1.jsonl", data);
+        let parsed = FileAdapter(AgentId::Qoder)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        let m = &parsed.messages[1];
+        assert_eq!(m.thinking.as_deref(), Some("Plan it"));
+        assert!(m.tool_calls[0].is_error);
+        assert_eq!(m.tool_calls[0].output.as_deref(), Some("boom"));
         fs::remove_dir_all(root).unwrap();
     }
 

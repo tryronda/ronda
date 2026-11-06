@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Codex reasoning summaries now appear as thinking instead of being dropped.
+- Qoder sessions show failed tool calls as errors and keep the assistant's thinking.
 
 ## [1.7.10] - 2026-11-06
 
