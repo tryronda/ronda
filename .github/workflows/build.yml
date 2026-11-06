@@ -1,8 +1,9 @@
 name: Build Ronda
 
 on:
+  # main only moves by merging a pull request whose head already passed, so
+  # pushes to main are not rebuilt; tags build the installer they publish.
   push:
-    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -15,14 +16,17 @@ permissions:
   contents: read
 
 jobs:
+  # The tagged tree is the merged pull request's tree, which already passed check.
   check:
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf
+          version: 1
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -42,8 +46,8 @@ jobs:
       - name: Verify installed-app smoke fixture
         run: python3 scripts/resume-smoke.py --self-check --output "$RUNNER_TEMP/resume-smoke-self-check"
 
+  # Runs alongside check rather than after it.
   bundle:
-    needs: check
     runs-on: macos-15
     env:
       CARGO_BUILD_TARGET: aarch64-apple-darwin
