@@ -4,10 +4,16 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+
+### Changed
+- Intelligence's copied summary uses the same headings as `ronda-cli insights` and adds how sessions end and your stack.
+
 ### Fixed
 - `ronda-cli errors` rejects unknown options instead of searching for them; `--` ends options.
 - `ronda_get_session` reports a missing or blank key as invalid params.
 - A negative `--from` or `from_seq` is rejected instead of being clamped.
+- The “Show all” buttons keep their label and report open or closed to screen readers.
+- Insights clears “Summary copied” when you switch the board or metric.
 
 ## [1.7.5] - 2026-11-06
 

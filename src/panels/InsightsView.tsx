@@ -1,6 +1,6 @@
 import { invoke } from '@/lib/tauri';
 import { sameJson, useLibraryRefresh } from '@/lib/hooks/use-library-refresh';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatedNumber } from '@/components/motion/animated-number';
 import { Tabs, TabsList, TabsTrigger } from '@/components/motion/tabs';
 import { PixelStrip } from '@/components/brand/pixel-field';
@@ -27,7 +27,7 @@ const labels = {
   prompts: 'Prompts', tokens: 'Tokens', activity: 'Activity', lastYear: 'Last 12 months', allTime: 'All time',
   less: 'Less', more: 'More', weekday: 'Weekdays', month: 'Months', hour: 'Hours',
   agents: 'Agents', projects: 'Projects', models: 'Models', empty: 'No sessions indexed yet.',
-  retry: 'Retry', noData: 'No data yet', showAll: 'Show all', showTop: 'Show top 10',
+  retry: 'Retry', noData: 'No data yet', showAll: 'Show all',
   copySummary: 'Copy summary', copied: 'Summary copied', copyFailed: 'Could not copy the summary',
 } as const;
 
@@ -102,6 +102,7 @@ export function InsightsView({ active = true }: { active?: boolean }) {
   const [board, setBoard] = useState<Board>('agents');
   const [expanded, setExpanded] = useState<Record<Board, boolean>>({ agents: false, projects: false, models: false });
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => setFeedback(null), [board, metric, data]);
 
   useLibraryRefresh(() => {
     let live = true;
@@ -182,7 +183,7 @@ export function InsightsView({ active = true }: { active?: boolean }) {
       <Bars rows={data?.[board] ?? []} metric={metric} empty={t.noData} all={expanded[board]} />
       <div className="insight-actions mt-3 flex flex-wrap items-center gap-3">
         {(data?.[board].length ?? 0) > LIMIT && <button type="button" aria-expanded={expanded[board]}
-          onClick={() => setExpanded(current => ({ ...current, [board]: !current[board] }))}>{expanded[board] ? t.showTop : `${t.showAll} (${data?.[board].length})`}</button>}
+          onClick={() => setExpanded(current => ({ ...current, [board]: !current[board] }))}>{`${t.showAll} (${data?.[board].length})`}</button>}
         <button type="button" disabled={!data} onClick={() => void copySummary()}>{t.copySummary}</button>
         {feedback && <span role={feedback.ok ? 'status' : 'alert'} className={feedback.ok ? 'panel-help' : 'text-destructive'}>{feedback.text}</span>}
       </div>
