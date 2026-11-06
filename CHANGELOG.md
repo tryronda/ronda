@@ -5,7 +5,8 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
-- Session paths containing a stray `%` followed by a multi-byte character no longer crash the scan.
+- A session with an unreadable transcript no longer stops Ronda from opening after an update; it is skipped and the rest are rebuilt.
+- Opening a session from an Antigravity-style path with a stray `%` no longer crashes the scan.
 
 ## [1.7.9] - 2026-11-06
 

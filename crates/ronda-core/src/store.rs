@@ -292,13 +292,29 @@ impl Store {
             .prepare("SELECT key FROM sessions")?
             .query_map([], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?;
-        for key in &keys {
-            let (Some(meta), transcript) = (self.get_session(key)?, self.get_transcript(key)?)
-            else {
-                continue;
-            };
+        for chunk in keys.chunks(200) {
+            let mut loaded = Vec::with_capacity(chunk.len());
+            for key in chunk {
+                let data = self
+                    .get_session(key)
+                    .and_then(|meta| Ok((meta, self.get_transcript(key)?)));
+                match data {
+                    Ok((Some(meta), transcript)) => loaded.push((meta, transcript)),
+                    Ok((None, _)) => {}
+                    Err(err) => eprintln!("ronda: skipping facts for session {key}: {err:#}"),
+                }
+            }
             let tx = self.conn.transaction()?;
-            write_facts(&tx, &meta, &transcript)?;
+            for (meta, transcript) in &loaded {
+                tx.execute_batch("SAVEPOINT rederive")?;
+                match write_facts(&tx, meta, transcript) {
+                    Ok(()) => tx.execute_batch("RELEASE rederive")?,
+                    Err(err) => {
+                        eprintln!("ronda: skipping facts for session {}: {err:#}", meta.key);
+                        tx.execute_batch("ROLLBACK TO rederive; RELEASE rederive")?;
+                    }
+                }
+            }
             tx.commit()?;
         }
         Ok(keys.len())
@@ -1212,6 +1228,66 @@ mod search_tests {
                 .unwrap();
         }
         store
+    }
+
+    #[test]
+    fn migration_skips_a_corrupt_session_and_still_opens() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "ronda-migrate-{}-{}.db",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        {
+            let mut store = Store::open(&path).unwrap();
+            for key in ["bad", "good"] {
+                let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                    "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+                    "title":key,"project_path":"/p","source_path":"/missing-fixture","created_at":1,"updated_at":5,
+                    "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
+                }))
+                .unwrap();
+                let messages = vec![TranscriptMessage {
+                    seq: 0,
+                    role: Role::User,
+                    kind: MessageKind::Text,
+                    text: "hello".into(),
+                    timestamp: None,
+                    model: None,
+                    thinking: None,
+                    tool_calls: vec![],
+                    images: vec![],
+                }];
+                store
+                    .upsert(&ParsedSession { meta, messages }, "1")
+                    .unwrap();
+            }
+            store
+                .conn
+                .execute(
+                    "UPDATE messages SET payload='{not json' WHERE session_key='bad'",
+                    [],
+                )
+                .unwrap();
+            store.conn.execute("DELETE FROM session_facts", []).unwrap();
+            store.conn.pragma_update(None, "user_version", 0).unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let facts = |k: &str| -> i64 {
+            store
+                .conn
+                .query_row(
+                    "SELECT count(*) FROM session_facts WHERE session_key=?1",
+                    [k],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(facts("good"), 1);
+        assert_eq!(facts("bad"), 0);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
