@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- Moving the open session to Trash now closes its transcript, so only the "moved to Trash" notice remains.
 - Bulk labeling sessions that already have the label (or removing a label none have) now says so instead of "Labeled 0 sessions", and clears the stale Undo.
 
 ## [1.7.10] - 2026-11-06
