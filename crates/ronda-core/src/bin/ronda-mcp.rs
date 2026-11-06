@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_parameters_are_protocol_errors_but_missing_key_is_tool_error() {
+    fn invalid_parameters_and_a_missing_key_are_protocol_errors() {
         let path = std::env::temp_dir().join(format!("ronda-mcp-errors-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let store = Store::open(&path).unwrap();
@@ -377,7 +377,7 @@ mod tests {
             assert!(ok.get("error").is_none(), "{ok}");
         }
         let missing = reply(&store, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ronda_get_session","arguments":{}}})).unwrap();
-        assert_eq!(missing["result"]["isError"], true);
+        assert_eq!(missing["error"]["code"], -32602);
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
