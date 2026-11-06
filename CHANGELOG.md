@@ -6,10 +6,14 @@ All notable changes to Ronda are recorded here.
 
 ### Changed
 - The docs list every `show` option, `sessions --starred`, and how `--until` dates, title-only hits, and the `errors` hint behave.
+- Intelligence recognises `make test`, `flutter test`, `tox`, `nox`, `ctest` and `bats` as test runs, and no longer matches words that merely start with a runner name.
 
 ### Fixed
 - The Export menu takes focus when opened and returns it to its button on Escape, without also clearing the session selection.
 - Insights weekday, month, and heatmap totals all cover the last 12 months instead of mixing in older history.
+- `ronda-cli errors` suggests `ronda-cli show … --tools` instead of the MCP tool name.
+- A date-only `--until` (or MCP `until`) includes that whole day instead of stopping at midnight.
+- Search results that match only a session's title show “title” with a plain session reference instead of “seq -1”.
 
 ## [1.7.1] - 2026-11-06
 
