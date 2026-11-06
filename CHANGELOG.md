@@ -4,6 +4,7 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.6] - 2026-11-06
 
 ### Changed
 - Intelligence's copied summary uses the same headings as `ronda-cli insights` and adds how sessions end and your stack.
