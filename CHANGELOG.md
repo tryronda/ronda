@@ -4,8 +4,10 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.8] - 2026-11-06
+
 ### Fixed
-- Searching for a phrase in double quotes now finds it instead of returning nothing.
+- Searching with double quotes, such as `"connection refused"`, matches the quoted words instead of returning nothing.
 - Next prompt and Next error no longer stick on the prompt you just jumped to.
 - Find error history from a long tool output no longer opens with text over the 20,000 character limit.
 - Long thinking blocks are clamped with a Show all lines button like tool output.
