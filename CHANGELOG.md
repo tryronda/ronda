@@ -7,6 +7,8 @@ All notable changes to Ronda are recorded here.
 
 ### Changed
 - Intelligence's copied summary uses the same bullet lines as `ronda-cli insights` instead of tables.
+- Checking for updates no longer freezes the window, times out after 10 seconds, and reports no update when you already run the latest release.
+- `ronda-cli --help` lists `errors [--] ERROR_TEXT` and says `--` ends options for both search and errors.
 
 ### Fixed
 - Settings shows last sync and last scan times in the short form used elsewhere, with a plain fallback when there is none.

@@ -16,9 +16,9 @@ fn help() -> &'static str {
      ronda-cli show KEY [--subagent ID|*] [--from SEQ] [--messages N] [--chars N] [--message-chars N] [--tools] [--thinking]\n\
      ronda-cli projects [--since WHEN] [--reverse] [--limit N]\n\
      ronda-cli insights [--project PATH] [--since WHEN|all]  (default: 30d)\n\
-     ronda-cli errors ERROR_TEXT\n\
+     ronda-cli errors [--] ERROR_TEXT\n\
      ronda-cli setup | index\n\
-     Global: --db PATH, --help, --version. Use -- before a query beginning with -.\n"
+     Global: --db PATH, --help, --version. -- ends options for search and errors, so a query can begin with -.\n"
 }
 
 fn take_global(mut args: Vec<String>) -> Result<(PathBuf, Vec<String>), String> {

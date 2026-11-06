@@ -1510,21 +1510,37 @@ async fn remove_remote_host(state: State<'_, Shared>, host: String) -> CommandRe
     .await
 }
 
-#[tauri::command]
-fn check_updates() -> CommandResult<Option<String>> {
-    let response = match ureq::get("https://api.github.com/repos/tryronda/ronda/releases/latest")
-        .set("User-Agent", "Ronda")
-        .call()
-    {
-        Ok(response) => response,
-        Err(ureq::Error::Status(404, _)) => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-    };
-    let value: serde_json::Value = response.into_json().map_err(error)?;
-    Ok(value
+/// The release page to show, or `None` when the latest tag is the installed version
+/// (a leading `v` is ignored) or the response has no tag.
+fn release_url(release: &serde_json::Value, current: &str) -> Option<String> {
+    let tag = release.get("tag_name")?.as_str()?;
+    if tag.trim_start_matches('v') == current.trim_start_matches('v') {
+        return None;
+    }
+    release
         .get("html_url")
         .and_then(|v| v.as_str())
-        .map(str::to_string))
+        .map(str::to_string)
+}
+
+#[tauri::command]
+async fn check_updates() -> CommandResult<Option<String>> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let response =
+            match ureq::get("https://api.github.com/repos/tryronda/ronda/releases/latest")
+                .set("User-Agent", "Ronda")
+                .timeout(std::time::Duration::from_secs(10))
+                .call()
+            {
+                Ok(response) => response,
+                Err(ureq::Error::Status(404, _)) => return Ok(None),
+                Err(error) => return Err(error.to_string()),
+            };
+        let value: serde_json::Value = response.into_json().map_err(error)?;
+        Ok(release_url(&value, env!("CARGO_PKG_VERSION")))
+    })
+    .await
+    .map_err(error)?
 }
 
 #[tauri::command]
@@ -2170,5 +2186,37 @@ mod tests {
         std::env::remove_var("RONDA_FAKE_REMOTE_HOME");
         drop(state);
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod release_url_tests {
+    use super::release_url;
+    use serde_json::json;
+
+    fn release(tag: serde_json::Value) -> serde_json::Value {
+        json!({ "tag_name": tag, "html_url": "https://example.test/r" })
+    }
+
+    #[test]
+    fn newer_tag_returns_url() {
+        assert_eq!(
+            release_url(&release(json!("v1.8.0")), "1.7.7").as_deref(),
+            Some("https://example.test/r")
+        );
+    }
+
+    #[test]
+    fn equal_tag_with_or_without_v_is_none() {
+        assert_eq!(release_url(&release(json!("v1.7.7")), "1.7.7"), None);
+        assert_eq!(release_url(&release(json!("1.7.7")), "1.7.7"), None);
+    }
+
+    #[test]
+    fn missing_tag_is_none() {
+        assert_eq!(
+            release_url(&json!({ "html_url": "https://example.test/r" }), "1.7.7"),
+            None
+        );
     }
 }
