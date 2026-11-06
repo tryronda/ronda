@@ -636,8 +636,12 @@ test("opens on the library home, then loads a session, shows its transcript, and
   expect(host.querySelector('[data-transcript-field="text"]')?.textContent).toContain("Search for naïve ünicode");
   const star = host.querySelector<HTMLButtonElement>('button[aria-label="Star"]');
   expect(star).not.toBeNull();
+  expect(star!.getAttribute("aria-pressed")).toBe("false");
   await act(async () => { star!.click(); });
   expect(setFlags).toHaveBeenCalledWith("codex:one", true, false);
+  const after = host.querySelector<HTMLButtonElement>('button[aria-label="Star"]');
+  expect(after?.getAttribute("aria-pressed")).toBe("true");
+  expect(after?.title).toBe("Unstar");
   await act(async () => { root.unmount(); });
 });
 

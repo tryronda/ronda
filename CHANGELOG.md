@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Screen readers announce the Star and Pin buttons by a stable name with a pressed state, not “Unstar, pressed”.
+
 ## [1.7.5] - 2026-11-06
 
 ### Added
