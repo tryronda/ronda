@@ -171,7 +171,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const [findRequest,setFindRequest]=useState<{text:string;token:number}|null>(null);
   const findHistory=(text:string,context:ProjectContext|null=projectContext)=>{
     errorOpener.current=document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setErrorRequest({text,project:context?.path ?? null,host:context?.host ?? null,local_only:context?.local_only ?? false});
+    setErrorRequest({text:Array.from(text).slice(0,20000).join(""),project:context?.path ?? null,host:context?.host ?? null,local_only:context?.local_only ?? false});
   };
   const t = copy;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);

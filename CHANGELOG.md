@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - Next prompt and Next error no longer stick on the prompt you just jumped to.
+- Find error history from a long tool output no longer opens with text over the 20,000 character limit.
 
 ## [1.7.7] - 2026-11-06
 

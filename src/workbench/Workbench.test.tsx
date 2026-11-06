@@ -1332,3 +1332,21 @@ test("ArrowDown in the library search moves focus to the first session card", as
     expect(document.activeElement).toBe(host.querySelector(".session-card"));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("Find history truncates a long tool output to the error history limit", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  const transcript:TranscriptMessage[]=[{seq:1,role:"assistant",kind:"text",text:"ok",timestamp:null,model:null,thinking:null,tool_calls:[{id:"t",name:"tool",input:"in",output:"x".repeat(25_000),is_error:true}],images:[]}];
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>[session],listProjects:async()=>[],getSession:async()=>session,
+    getTranscript:async()=>transcript,onLibraryChanged:async()=>()=>{}};
+  api.sessionPage=async(query,offset,limit)=>({items:[session],total:1,offset,limit});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
+    await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Recent sessions"] .session-card')!.click());
+    await act(async()=>Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(b=>b.textContent?.startsWith("Find history for"))!.click());
+    const field=host.querySelector<HTMLTextAreaElement>('dialog[aria-labelledby="error-history-heading"] textarea')!;
+    expect(field.value).toHaveLength(20_000);
+    expect(host.textContent).not.toContain("1 to 20,000 characters");
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
