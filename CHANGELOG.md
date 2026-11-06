@@ -7,6 +7,9 @@ All notable changes to Ronda are recorded here.
 ### Fixed
 - Quoted search queries highlight the quoted phrase as one match and center the snippet on it.
 
+### Performance
+- Building a context bundle from many messages no longer rechecks the whole draft after every message.
+
 ## [1.7.8] - 2026-11-06
 
 ### Fixed
