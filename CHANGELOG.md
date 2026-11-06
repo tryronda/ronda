@@ -12,6 +12,8 @@ All notable changes to Ronda are recorded here.
 - A failing `cat vitest.config.ts` or `grep -rn pytest .` no longer flags a session as ending with tests failing; only commands that run a test tool count.
 - Live refresh no longer waits for an agent to stop writing, and changes to a SQLite session database's `-wal` file are picked up.
 - The library appears right after the local scan on startup instead of waiting for remote hosts to sync.
+- A failed startup scan now shows an error with a retry, and the first launch shows a loading state instead of "No sessions found" while the first scan runs.
+- Library refreshes keep the sessions you have loaded and your scroll position instead of jumping back to the top.
 
 ## [1.7.9] - 2026-11-06
 

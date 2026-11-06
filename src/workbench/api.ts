@@ -188,6 +188,7 @@ export interface WorkbenchBackend {
   sessionMarkdown(key: string, options?: ExportOptions): Promise<string>;
   trashSession(key: string): Promise<void>;
   onLibraryChanged(callback: () => void): Promise<() => void>;
+  onScanError(callback: (message: string) => void): Promise<() => void>;
 }
 
 export const backend: WorkbenchBackend = {
@@ -226,4 +227,5 @@ export const backend: WorkbenchBackend = {
   sessionMarkdown: (key, options) => invoke("session_markdown", { key, options }),
   trashSession: (key) => invoke("trash_session", { key }),
   onLibraryChanged: async (callback) => listen("library-changed", callback),
+  onScanError: async (callback) => listen<string>("scan-error", event => callback(String(event.payload))),
 };

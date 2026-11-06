@@ -1374,3 +1374,68 @@ test("Long thinking is clamped with a show-all button", async () => {
     expect(Array.from(host.querySelectorAll("button")).some(b=>b.textContent==="Show all 100 lines")).toBe(true);
   } finally {await act(async()=>root.unmount());host.remove();}
 });
+
+test("a library refresh keeps loaded pages and the scroll position", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  const all = Array.from({length:250},(_,i)=>({...session,key:`codex:s${i}`,native_id:`s${i}`,title:`Session ${i}`,updated_at:session.updated_at-i}));
+  let changed=()=>{};
+  const limits:number[]=[];
+  const api:WorkbenchBackend={...backend,libraryOptions,listSessions:async()=>all,listProjects:async()=>[],getSession:async()=>session,
+    getTranscript:async()=>[],onLibraryChanged:async cb=>{changed=cb;return ()=>{};}};
+  api.sessionPage=async(_query,offset,limit)=>{limits.push(limit);return {items:all.slice(offset,offset+limit),total:all.length,offset,limit};};
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<Workbench api={withSyntheticTranscriptSnapshot(api)}/>));
+    const list=host.querySelector<HTMLElement>('[aria-label="Recent sessions"]')!;
+    await act(async()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Load more sessions")!.click());
+    const rows=list.querySelectorAll(".session-card").length;
+    expect(rows).toBe(200);
+    list.scrollTop=300;
+    await act(async()=>{changed();await new Promise(resolve=>setTimeout(resolve,500));});
+    expect(limits.at(-1)).toBe(200);
+    expect(list.querySelectorAll(".session-card").length).toBe(rows);
+    expect(list.scrollTop).toBe(300);
+  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
+const emptyLibraryApi = (extra: Partial<WorkbenchBackend>): WorkbenchBackend => {
+  const api: WorkbenchBackend = { ...backend, libraryOptions: async () => ({agents:[],models:[],hosts:[],projects:[]}),
+    listSessions: async () => [], listProjects: async () => [], getSession: async () => null, getTranscript: async () => [],
+    onLibraryChanged: async () => () => {}, onScanError: async () => () => {}, ...extra };
+  api.sessionPage = async (_query, offset, limit) => ({ items: [], total: 0, offset, limit });
+  return withSyntheticTranscriptSnapshot(api);
+};
+
+test("an empty library shows the loading skeleton until the first scan reports", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  Object.assign(window,{__TAURI_INTERNALS__:{}});
+  let changed=()=>{};
+  const api=emptyLibraryApi({onLibraryChanged:async cb=>{changed=cb;return ()=>{};}});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    expect(host.querySelector(".session-skeletons")).not.toBeNull();
+    expect(host.textContent).not.toContain("No sessions found");
+    await act(async()=>{changed();await new Promise(resolve=>setTimeout(resolve,500));});
+    expect(host.querySelector(".session-skeletons")).toBeNull();
+    expect(host.textContent).toContain("No sessions found");
+  } finally {await act(async()=>root.unmount());host.remove();Reflect.deleteProperty(window,"__TAURI_INTERNALS__");}
+});
+
+test("a failed startup scan shows the error with a scan retry", async () => {
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  Object.assign(window,{__TAURI_INTERNALS__:{}});
+  let failed:(message:string)=>void=()=>{};
+  const scan=vi.fn(async()=>({}) as never);
+  const api=emptyLibraryApi({onScanError:async cb=>{failed=cb;return ()=>{};},scan});
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(<Workbench api={api}/>));
+    await act(async()=>failed("disk unreadable"));
+    const alert=host.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Local scan failed: disk unreadable");
+    expect(host.querySelector(".session-skeletons")).toBeNull();
+    await act(async()=>Array.from(alert!.querySelectorAll("button")).find(b=>b.textContent==="Retry scan")!.click());
+    expect(scan).toHaveBeenCalledTimes(1);
+  } finally {await act(async()=>root.unmount());host.remove();Reflect.deleteProperty(window,"__TAURI_INTERNALS__");}
+});
