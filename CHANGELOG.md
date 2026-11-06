@@ -14,7 +14,7 @@ All notable changes to Ronda are recorded here.
 - Moving the open session to Trash now closes its transcript, so only the "moved to Trash" notice remains.
 - Bulk labeling sessions that already have the label (or removing a label none have) now says so instead of "Labeled 0 sessions", and clears the stale Undo.
 - Open in Terminal on macOS keeps the window usable after the agent exits instead of showing "[Process completed]".
-- Moving a session to the Trash tombstones it as soon as its main file is trashed, so a failing sidecar file no longer leaves a ghost session; the sidecar failure is reported as a warning.
+- Moving a session to the Trash tombstones it as soon as its main file is trashed, so a failing sidecar file no longer leaves a ghost session.
 - The site's changelog no longer shows an empty Unreleased entry.
 
 ## [1.7.10] - 2026-11-06
