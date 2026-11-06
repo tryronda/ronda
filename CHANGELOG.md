@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.9] - 2026-11-06
+
 ### Fixed
 - Searching with double quotes matches the exact phrase.
 - The MCP server answers a client's supported protocol version in the handshake instead of always claiming 2025-03-26.
