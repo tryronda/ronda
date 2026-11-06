@@ -671,7 +671,18 @@ pub fn get_session_for(store: &Store, args: &ShowArgs, surface: Surface) -> Resu
         if !m.images.is_empty() {
             body.push_str(&format!("\n[{} image(s)]", m.images.len()));
         }
-        let body: String = body.chars().take(per_message).collect();
+        let total = body.chars().count();
+        let mut body: String = body.chars().take(per_message).collect();
+        if total > per_message {
+            let raise = match surface {
+                Surface::Cli => "--message-chars",
+                Surface::Mcp => "max_message_chars",
+            };
+            body.push_str(&format!(
+                "… [clipped: {} more characters; raise {raise}]",
+                total - per_message
+            ));
+        }
         out.push_str(&format!("### [seq {}] {role}{time}\n{body}\n\n", m.seq));
         shown += 1;
     }
@@ -1429,6 +1440,38 @@ mod tests {
         let mcp = get_session(&db, &args).unwrap();
         assert!(mcp.contains("continue with from_seq=1."), "{mcp}");
         assert!(!mcp.contains("ronda-cli"), "{mcp}");
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn show_marks_messages_cut_at_the_per_message_limit() {
+        let path = std::env::temp_dir().join(format!("ronda-clip-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        show_fixture(&mut db, "codex:long", &[&"x".repeat(500)]);
+        show_fixture(&mut db, "codex:short", &["short"]);
+        let show = |key: &str, surface| {
+            get_session_for(
+                &db,
+                &ShowArgs {
+                    key: key.into(),
+                    max_message_chars: Some(100),
+                    ..Default::default()
+                },
+                surface,
+            )
+            .unwrap()
+        };
+        let cli = show("codex:long", Surface::Cli);
+        assert!(
+            cli.contains("clipped: 400 more characters; raise --message-chars"),
+            "{cli}"
+        );
+        let mcp = show("codex:long", Surface::Mcp);
+        assert!(
+            mcp.contains("400 more") && mcp.contains("raise max_message_chars"),
+            "{mcp}"
+        );
+        assert!(!show("codex:short", Surface::Cli).contains("clipped"));
         let _ = std::fs::remove_file(&path);
     }
     #[test]
