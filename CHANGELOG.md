@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Date filters like `--since 2025-03-09` no longer fail as "ambiguous date" when local midnight falls in a daylight saving gap.
+
 ## [1.7.11] - 2026-11-06
 
 ### Fixed

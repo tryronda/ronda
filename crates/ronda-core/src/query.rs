@@ -137,9 +137,7 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
     }
     if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         let local_midnight = |d: NaiveDate| {
-            Local
-                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
-                .earliest()
+            resolve_local(&Local, d.and_hms_opt(0, 0, 0).unwrap())
                 .map(|t| t.timestamp_millis())
                 .ok_or_else(|| anyhow!("ambiguous date"))
         };
@@ -154,14 +152,21 @@ fn time_ms(raw: Option<&str>, name: &str) -> Result<Option<i64>> {
     }
     if let Ok(t) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M") {
         return Ok(Some(
-            Local
-                .from_local_datetime(&t)
-                .earliest()
+            resolve_local(&Local, t)
                 .ok_or_else(|| anyhow!("ambiguous date"))?
                 .timestamp_millis(),
         ));
     }
     Err(anyhow!("invalid {name} value: {s}"))
+}
+
+/// Maps a local wall-clock time to an instant. Times skipped by a DST gap do not exist, so step
+/// forward in 15-minute increments (up to 3 hours) to the first valid local time.
+fn resolve_local<Tz: TimeZone>(tz: &Tz, t: NaiveDateTime) -> Option<DateTime<Tz>> {
+    (0..=12).find_map(|i| {
+        tz.from_local_datetime(&(t + chrono::Duration::minutes(15 * i)))
+            .earliest()
+    })
 }
 
 pub fn validate_until(raw: Option<&str>) -> Result<()> {
@@ -1037,6 +1042,66 @@ pub fn find_error_for(store: &Store, args: &FindErrorArgs, surface: Surface) -> 
 mod tests {
     use super::*;
     use crate::{ParsedSession, TranscriptMessage};
+    // A zone that skips local 00:00-01:00 on 2024-03-10 (offset -3h -> -2h), like a DST gap at midnight.
+    #[derive(Clone, Copy, Debug)]
+    struct GapZone;
+    #[derive(Clone, Copy, Debug)]
+    struct GapOffset(chrono::FixedOffset);
+    impl chrono::Offset for GapOffset {
+        fn fix(&self) -> chrono::FixedOffset {
+            self.0
+        }
+    }
+    impl std::fmt::Display for GapOffset {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+    impl TimeZone for GapZone {
+        type Offset = GapOffset;
+        fn from_offset(_: &GapOffset) -> Self {
+            GapZone
+        }
+        fn offset_from_local_date(&self, d: &NaiveDate) -> chrono::LocalResult<GapOffset> {
+            self.offset_from_local_datetime(&d.and_hms_opt(12, 0, 0).unwrap())
+        }
+        fn offset_from_local_datetime(&self, t: &NaiveDateTime) -> chrono::LocalResult<GapOffset> {
+            let start = NaiveDate::from_ymd_opt(2024, 3, 10)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap();
+            let h = |n| GapOffset(chrono::FixedOffset::west_opt(n * 3600).unwrap());
+            if *t < start {
+                chrono::LocalResult::Single(h(3))
+            } else if *t < start + chrono::Duration::hours(1) {
+                chrono::LocalResult::None
+            } else {
+                chrono::LocalResult::Single(h(2))
+            }
+        }
+        fn offset_from_utc_date(&self, d: &NaiveDate) -> GapOffset {
+            self.offset_from_utc_datetime(&d.and_hms_opt(12, 0, 0).unwrap())
+        }
+        fn offset_from_utc_datetime(&self, t: &NaiveDateTime) -> GapOffset {
+            let start = NaiveDate::from_ymd_opt(2024, 3, 10)
+                .unwrap()
+                .and_hms_opt(3, 0, 0)
+                .unwrap();
+            GapOffset(chrono::FixedOffset::west_opt(if *t < start { 3 } else { 2 } * 3600).unwrap())
+        }
+    }
+
+    #[test]
+    fn nonexistent_local_times_step_past_the_dst_gap() {
+        let day = NaiveDate::from_ymd_opt(2024, 3, 10).unwrap();
+        let midnight = resolve_local(&GapZone, day.and_hms_opt(0, 0, 0).unwrap()).unwrap();
+        assert_eq!(midnight.format("%H:%M").to_string(), "01:00");
+        let mid_gap = resolve_local(&GapZone, day.and_hms_opt(0, 30, 0).unwrap()).unwrap();
+        assert_eq!(mid_gap.format("%H:%M").to_string(), "01:00");
+        let normal = resolve_local(&GapZone, day.and_hms_opt(5, 0, 0).unwrap()).unwrap();
+        assert_eq!(normal.format("%H:%M").to_string(), "05:00");
+    }
+
     #[test]
     fn search_reference_opens_same_sequence() {
         let path = std::env::temp_dir().join(format!("ronda-query-{}.db", std::process::id()));
