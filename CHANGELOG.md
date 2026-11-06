@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-11-06
+
 ### Changed
 - The docs list every `show` option, `sessions --starred`, and how `--until` dates, title-only hits, and the `errors` hint behave.
 - Intelligence recognises `make test`, `flutter test`, `tox`, `nox`, `ctest` and `bats` as test runs, and no longer matches words that merely start with a runner name.
