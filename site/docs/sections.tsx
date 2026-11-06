@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Inline } from "../Inline";
 import { ASSETS, REPO_URL, RELEASES_URL } from "../release";
 import { shortcuts } from "@/lib/shortcuts";
@@ -6,7 +6,24 @@ import { shortcuts } from "@/lib/shortcuts";
 export type DocSection = { id: string; title: string; body: ReactNode };
 
 const P = ({ children }: { children: string }) => <p><Inline>{children}</Inline></p>;
-const Code = ({ children }: { children: string }) => <pre className="docs-code"><code>{children}</code></pre>;
+/** Code block: keyboard-focusable scroll region with a Copy button that appears after mount, so prerendered markup matches hydration. */
+const Code = ({ children }: { children: string }) => {
+  const [canCopy, setCanCopy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => { setCanCopy(typeof navigator !== "undefined" && !!navigator.clipboard?.writeText); return () => clearTimeout(timer.current); }, []);
+  const copy = () => {
+    navigator.clipboard.writeText(children).then(() => {
+      setCopied(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1500);
+    }, () => {});
+  };
+  return <div className="docs-code-wrap">
+    <pre className="docs-code" tabIndex={0} role="region" aria-label="Code example"><code>{children}</code></pre>
+    {canCopy && <button type="button" className="docs-copy" onClick={copy}>{copied ? "Copied" : "Copy"}</button>}
+  </div>;
+};
 const List = ({ items }: { items: string[] }) => <ul>{items.map(item => <li key={item}><Inline>{item}</Inline></li>)}</ul>;
 
 const agents = ["Claude Code", "Codex", "Grok Build", "DeepSeek Harness", "Cursor", "OpenCode", "Pi", "Oh My Pi", "Kiro",

@@ -10,6 +10,8 @@ All notable changes to Ronda are recorded here.
 - `ronda-mcp` no longer exits when it receives a line that is not valid UTF-8; it replies with a parse error and keeps serving.
 - Very long session titles are now capped at 160 characters in CLI and MCP output.
 - Date filters like `--since 2025-03-09` no longer fail as "ambiguous date" when local midnight falls in a daylight saving gap.
+- Docs code blocks can be focused and scrolled with the keyboard, and have a Copy button.
+- The section nav on small screens scrolls the active section into view.
 
 ### Performance
 - Listing sessions loads stars, pins and labels with two queries instead of two per session, speeding up the sidebar, projects, insights and CLI/MCP lists.

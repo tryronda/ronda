@@ -12,7 +12,11 @@ html { scroll-behavior: smooth; }
 .docs-body li::marker { color: var(--olive); }
 .docs-body h3 { margin: 28px 0 10px; font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: .025em; text-transform: lowercase; color: var(--ink); }
 .docs-body .docs-table + h3 { margin-top: 32px; }
-.docs-code { margin: 4px 0 18px; overflow-x: auto; background: var(--canvas); box-shadow: var(--lift); padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.7; color: var(--ink); }
+.docs-code-wrap { position: relative; margin: 4px 0 18px; }
+.docs-copy { position: absolute; top: 8px; right: 8px; background: var(--chip); padding: 3px 10px 5px; font-family: var(--font-mono); font-size: 12px; letter-spacing: .025em; color: var(--ink-soft); cursor: pointer; }
+.docs-copy:hover, .docs-copy:focus-visible { color: var(--ink); }
+.docs-code:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.docs-code { margin: 0; overflow-x: auto; background: var(--canvas); box-shadow: var(--lift); padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.7; color: var(--ink); }
 .docs-agents { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
 .docs-agents span { background: var(--chip); padding: 4px 10px 6px; font-family: var(--font-mono); font-size: 13px; letter-spacing: .025em; }
 .docs-table { width: 100%; border-collapse: collapse; font-size: 16px; }
