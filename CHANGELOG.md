@@ -5,6 +5,7 @@ All notable changes to Ronda are recorded here.
 ## [Unreleased]
 
 ### Fixed
+- `ronda-cli sessions` orders sessions with equal timestamps by key, and says "No sessions match." instead of "0 sessions — showing 0" when nothing matches.
 - Prompts that ask to add tests are categorized as Tests even when they mention errors or bugs.
 - A failing `cat vitest.config.ts` or `grep -rn pytest .` no longer flags a session as ending with tests failing; only commands that run a test tool count.
 
