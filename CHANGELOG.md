@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- CLI and MCP search list excerpts in a stable order when sessions were updated at the same time.
+
 ## [1.7.4] - 2026-11-06
 
 ### Added

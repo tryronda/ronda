@@ -536,9 +536,9 @@ impl Store {
         let (match_query, indexed) = search_expression(query);
         let mut results = Vec::new();
         let mut stmt = if indexed {
-            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE search_fts MATCH ?1 ORDER BY s.updated_at DESC")?
+            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE search_fts MATCH ?1 ORDER BY s.updated_at DESC, f.session_key, f.seq")?
         } else {
-            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE instr(lower(f.text),lower(?1))>0 ORDER BY s.updated_at DESC")?
+            self.conn.prepare("SELECT f.session_key,f.seq,f.text FROM search_fts f JOIN sessions s ON s.key=f.session_key WHERE instr(lower(f.text),lower(?1))>0 ORDER BY s.updated_at DESC, f.session_key, f.seq")?
         };
         let rows = stmt.query_map([match_query], |r| {
             Ok((
@@ -994,7 +994,7 @@ impl Store {
 #[cfg(test)]
 mod search_tests {
     use super::*;
-    use crate::LibrarySort;
+    use crate::{LibrarySort, MessageKind, Role};
 
     fn insert_raw(store: &Store, key: &str, meta: &str) {
         store.conn.execute(
@@ -1067,6 +1067,49 @@ mod search_tests {
         assert!(!store
             .has_local_source_under_root("codex", Path::new("/data/root"))
             .unwrap());
+    }
+
+    #[test]
+    fn search_lists_excerpts_in_key_and_seq_order_when_sessions_tie() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for key in ["s-c", "s-a", "s-b"] {
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+                "title":key,"project_path":"/p","source_path":"/missing-fixture","created_at":1,"updated_at":5,
+                "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
+            }))
+            .unwrap();
+            let messages = (0..4)
+                .map(|seq| TranscriptMessage {
+                    seq,
+                    role: Role::User,
+                    kind: MessageKind::Text,
+                    text: format!("needle number {seq}"),
+                    timestamp: None,
+                    model: None,
+                    thinking: None,
+                    tool_calls: vec![],
+                    images: vec![],
+                })
+                .collect();
+            store
+                .upsert(&ParsedSession { meta, messages }, "1")
+                .unwrap();
+        }
+        let order = |store: &Store| -> Vec<(String, i64)> {
+            store
+                .search("needle", &SessionQuery::default(), 100)
+                .unwrap()
+                .into_iter()
+                .map(|hit| (hit.session.key, hit.seq))
+                .collect()
+        };
+        let first = order(&store);
+        let mut expected = first.clone();
+        expected.sort();
+        assert_eq!(first.len(), 12);
+        assert_eq!(first, expected);
+        assert_eq!(order(&store), first);
     }
 
     #[test]
