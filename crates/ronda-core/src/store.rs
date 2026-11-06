@@ -464,7 +464,7 @@ impl Store {
         filter.validate()?;
         let mut stmt = self
             .conn
-            .prepare("SELECT meta FROM sessions ORDER BY updated_at DESC")?;
+            .prepare("SELECT meta FROM sessions ORDER BY updated_at DESC, key")?;
         let mut sessions: Vec<SessionMeta> = stmt
             .query_map([], |r| r.get::<_, String>(0))?
             .map(|row| -> Result<_> { self.overlay_flags(serde_json::from_str(&row?)?) })
@@ -1288,6 +1288,35 @@ mod search_tests {
         assert_eq!(facts("bad"), 0);
         drop(store);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn list_sessions_breaks_updated_at_ties_by_key() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        for key in ["s-c", "s-a", "s-b"] {
+            let meta: SessionMeta = serde_json::from_value(serde_json::json!({
+                "key":key,"native_id":key,"agent":"claude-code","host":null,"parent_key":null,
+                "title":key,"project_path":"/p","source_path":"/missing-fixture","created_at":1,"updated_at":5,
+                "model":null,"source":null,"tokens":null,"archived":false,"metadata_only":false,"can_delete":true
+            }))
+            .unwrap();
+            store
+                .upsert(
+                    &ParsedSession {
+                        meta,
+                        messages: vec![],
+                    },
+                    "1",
+                )
+                .unwrap();
+        }
+        let keys: Vec<String> = store
+            .list_sessions(&SessionQuery::default())
+            .unwrap()
+            .into_iter()
+            .map(|s| s.key)
+            .collect();
+        assert_eq!(keys, ["s-a", "s-b", "s-c"]);
     }
 
     #[test]
