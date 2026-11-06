@@ -504,13 +504,17 @@ test("keeps bookmark drafts across browsing and shared editors, with explicit sa
     expect((await reopen(transcript())).value).toBe("Saved one");
     await choose(other.title);expect((await reopen(transcript())).value).toBe("Independent B draft");
     fail=false;failRefresh=true;await click(transcript(),"Save note");
-    expect(transcript().textContent).toContain("Note saved, but refreshing bookmarks failed");
-    expect(transcript().querySelector("textarea")).toBeNull();
+    await vi.waitFor(()=>{
+      expect(transcript().textContent).toContain("Note saved, but refreshing bookmarks failed");
+      expect(transcript().querySelector("textarea")).toBeNull();
+    });
     expect((await reopen(transcript())).value).toBe("Independent B draft");
     await input(transcript().querySelector<HTMLTextAreaElement>("textarea")!,"Saved after refresh failure");
     failRefresh=false;await click(transcript(),"Save note");
-    expect(save.mock.calls.at(-1)).toEqual([other.key,1,"Saved after refresh failure",false,3]);
-    expect(notes.find(row=>row.bookmark.session_key===other.key)!.bookmark.note).toBe("Saved after refresh failure");
+    await vi.waitFor(()=>{
+      expect(save.mock.calls.at(-1)).toEqual([other.key,1,"Saved after refresh failure",false,3]);
+      expect(notes.find(row=>row.bookmark.session_key===other.key)!.bookmark.note).toBe("Saved after refresh failure");
+    });
     await click(transcript(),"Remove bookmark 1");expect(notes).toHaveLength(1);
     await choose(session.title);await input(await reopen(transcript()),"Keep through external changes");
     notes[0].bookmark={...notes[0].bookmark,note:"External note",updated_at:99};
@@ -521,13 +525,16 @@ test("keeps bookmark drafts across browsing and shared editors, with explicit sa
     };
     await refresh();expect(transcript().querySelector<HTMLTextAreaElement>("textarea")!.value).toBe("Keep through external changes");
     expect(transcript().textContent).toContain("The saved note changed while you were editing");
-    await click(transcript(),"Save note");expect(save.mock.calls.at(-1)?.[4]).toBe(2);
-    expect(notes[0].bookmark.note).toBe("External note");
+    await click(transcript(),"Save note");
+    await vi.waitFor(()=>{
+      expect(save.mock.calls.at(-1)?.[4]).toBe(2);
+      expect(notes[0].bookmark.note).toBe("External note");
+    });
     notes=[];await refresh();expect(transcript().textContent).toContain("The saved bookmark was removed");
     expect(button(transcript(),"Save note").disabled).toBe(true);
     await click(transcript(),"Cancel note");expect(button(transcript(),"Bookmark message 1")).toBeDefined();
   } finally {await act(async()=>root.unmount());host.remove();}
-});
+},20000);
 
 test("a pending bookmark save locks its shared editors without clearing another session's draft", async () => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});

@@ -9,6 +9,8 @@ All notable changes to Ronda are recorded here.
 - The MCP server answers a client's supported protocol version in the handshake instead of always claiming 2025-03-26.
 - The MCP server answers `resources/list`, `prompts/list` and `resources/templates/list` with empty lists instead of an error.
 - Quoted search queries highlight the quoted phrase as one match and center the snippet on it.
+- Global shortcuts no longer fire behind the open keyboard shortcuts dialog.
+- Ctrl+B, Ctrl+K and Ctrl+1-4 reach the terminal instead of being taken by Ronda; use Cmd for the app shortcuts there.
 
 ### Performance
 - Scans skip deleted sessions instead of re-reading their transcripts every time.
