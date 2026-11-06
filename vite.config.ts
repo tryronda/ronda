@@ -7,5 +7,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   clearScreen: false,
+  test: { testTimeout: 20000 },
   server: { host: "127.0.0.1", port: 1420, strictPort: true },
 });

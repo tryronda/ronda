@@ -1,4 +1,5 @@
 //! Named rules for the ways agent sessions go wrong. Each rule reports the message where it fired.
+use super::shell_segments;
 use super::tools::{ToolEvent, ToolKind};
 use crate::{MessageKind, TranscriptMessage};
 use regex::Regex;
@@ -48,9 +49,40 @@ impl Pattern {
     }
 }
 
-pub static TEST_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)\b(?:pytest|vitest|jest|mocha|rspec|phpunit|go test|cargo (?:test|nextest)|(?:bun|npm|pnpm|yarn|deno) (?:run )?test|playwright test|swift test|dotnet test|mix test|gradle test|mvn test|bun run check|make (?:test|check)|flutter test)\b|(?:^|[;&|])\s*(?:tox|nox|ctest|bats)\b").unwrap()
+static TEST_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:(?:pytest|vitest|jest|mocha|rspec|phpunit|go test|cargo (?:test|nextest)|(?:bun|npm|pnpm|yarn|deno) (?:run )?test|playwright test|swift test|dotnet test|mix test|gradle test|mvn test|bun run check|make (?:test|check)|flutter test)\b|(?:tox|nox|ctest|bats)\b)").unwrap()
 });
+
+/// True when any shell segment of `command` runs a test tool as its program (or
+/// subcommand), so `cat vitest.config.ts` or `grep -rn pytest .` do not count.
+pub fn is_test_command(command: &str) -> bool {
+    shell_segments(command).iter().any(|segment| {
+        let mut words: Vec<&str> = segment
+            .iter()
+            .skip_while(|w| !w.quoted && w.text.contains('=') && !w.text.starts_with('-'))
+            .map(|w| w.text.as_str())
+            .collect();
+        if let Some(first) = words.first_mut() {
+            *first = first.rsplit('/').next().unwrap_or(first);
+        }
+        // Look through launchers that run another program.
+        let skip = match words.as_slice() {
+            ["npx" | "bunx" | "pnpx", ..] => 1,
+            ["pnpm" | "yarn" | "bun" | "npm", "exec" | "dlx" | "x", ..] => 2,
+            ["uv" | "poetry" | "pipenv", "run", ..] => 2,
+            ["python" | "python3", "-m", ..] => 2,
+            _ => 0,
+        };
+        let candidate = words
+            .iter()
+            .skip(skip)
+            .take(3)
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" ");
+        TEST_COMMAND.is_match(&candidate)
+    })
+}
 static DENIED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(permission (for this action )?(was )?denied|doesn't want to proceed|user (rejected|denied|declined)|rejected by (the )?user|requires approval|not allowed by|sandbox (denied|blocked))").unwrap()
 });
@@ -90,12 +122,10 @@ pub fn detect(messages: &[TranscriptMessage], events: &[ToolEvent]) -> Vec<(Patt
     {
         found.push((Pattern::ContextExhausted, m.seq));
     }
-    let last_test = events.iter().rev().find(|e| {
-        e.kind == ToolKind::Shell
-            && e.command
-                .as_deref()
-                .is_some_and(|c| TEST_COMMAND.is_match(c))
-    });
+    let last_test = events
+        .iter()
+        .rev()
+        .find(|e| e.kind == ToolKind::Shell && e.command.as_deref().is_some_and(is_test_command));
     if let Some(test) = last_test.filter(|e| e.is_error) {
         found.push((Pattern::TestsFailingAtEnd, test.seq));
     }
@@ -175,6 +205,33 @@ mod tests {
         ] {
             assert!(!fires(command), "{command} should not count as a test run");
         }
+    }
+
+    #[test]
+    fn only_the_program_counts_as_a_test_run() {
+        for command in [
+            "cat vitest.config.ts",
+            "grep -rn pytest .",
+            "npm install vitest",
+        ] {
+            assert!(!fires(command), "{command} is not a test run");
+        }
+        for command in [
+            "cd x && cargo test",
+            "npx vitest run",
+            "FOO=1 pytest -q",
+            "uv run pytest",
+        ] {
+            assert!(fires(command), "{command} is a test run");
+        }
+        let cat = shell("cat vitest.config.ts", 1);
+        assert!(!detect(&[], &[cat])
+            .iter()
+            .any(|(p, _)| *p == Pattern::TestsFailingAtEnd));
+        let cargo = shell("cd x && cargo test", 101);
+        assert!(detect(&[], &[cargo])
+            .iter()
+            .any(|(p, _)| *p == Pattern::TestsFailingAtEnd));
     }
 
     #[test]

@@ -331,11 +331,14 @@ pub fn list_sessions(store: &Store, args: &ListArgs) -> Result<String> {
     let mut sessions = store.list_sessions(&SessionQuery::default())?;
     sessions.retain(|s| s.parent_key.is_none() && accept(s, &paths, &agents, window, args.starred));
     if args.reverse {
-        sessions.sort_by_key(|s| s.updated_at);
+        sessions.sort_by(|a, b| (a.updated_at, &a.key).cmp(&(b.updated_at, &b.key)));
     } else {
-        sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+        sessions.sort_by(|a, b| (b.updated_at, &b.key).cmp(&(a.updated_at, &a.key)));
     }
     let count = sessions.len();
+    if count == 0 {
+        return Ok(format!("No sessions match.\n{}", freshness(store)?));
+    }
     sessions.truncate(
         args.limit
             .unwrap_or(20)
@@ -1674,7 +1677,8 @@ mod tests {
             ..Default::default()
         };
         let out = list_sessions(&db, &filter).unwrap();
-        assert!(out.contains("0 sessions"), "{out}");
+        assert!(out.starts_with("No sessions match."), "{out}");
+        assert!(!out.contains("showing 0"), "{out}");
         assert!(!out.contains("No indexed project"), "{out}");
         let out = search(
             &db,
@@ -1694,6 +1698,31 @@ mod tests {
         )
         .unwrap();
         assert!(out.contains("- /tmp/old"), "{out}");
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn session_ties_sort_by_key_in_both_directions() {
+        let path = std::env::temp_dir().join(format!("ronda-ties-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = Store::open(&path).unwrap();
+        for key in ["codex:b", "codex:c", "codex:a"] {
+            seeded(&mut db, key, AgentId::Codex, "/tmp/p", 7, false);
+        }
+        let order = |reverse| {
+            let out = list_sessions(
+                &db,
+                &ListArgs {
+                    reverse,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            ["codex:a", "codex:b", "codex:c"].map(|k| out.find(k).unwrap())
+        };
+        let [a, b, c] = order(true);
+        assert!(a < b && b < c);
+        let [a, b, c] = order(false);
+        assert!(c < b && b < a);
         let _ = std::fs::remove_file(&path);
     }
     #[test]

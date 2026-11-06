@@ -423,6 +423,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const transcriptRef = useRef<HTMLDivElement>(null);
   const loadedKey = useRef<string | null>(null);
   const reloadRun = useRef(0);
+  // The startup scan runs in the background; until it reports, an empty library is not yet known to be empty.
+  const [initialScanPending, setInitialScanPending] = useState(inTauri);
+  const reloadedFilter = useRef<SessionQuery | null>(null);
   const scrollRestore = useRef<{ bottom: boolean; seq: string | null; offset: number; top: number } | null>(null);
   const unavailableRef = useRef(unavailable);
   unavailableRef.current = unavailable;
@@ -509,10 +512,14 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
     const run = ++reloadRun.current;
     browseBusy.current = false; setLoadingMore(false); setLoading(true);
     if (dates.error) { setLoading(false); return; }
+    // Keep loaded pages and scroll position across a refresh of the same filter; only a new filter starts over.
+    const sameFilter = reloadedFilter.current === filter;
+    const limit = sameFilter ? Math.min(1000, Math.max(100, browseOffset.current)) : 100;
     try {
-      const [page, nextOptions, nextLabels] = await Promise.all([api.sessionPage(filter,0,100), api.libraryOptions(), api.listSessionLabels()]);
+      const [page, nextOptions, nextLabels] = await Promise.all([api.sessionPage(filter,0,limit), api.libraryOptions(), api.listSessionLabels()]);
       if (run !== reloadRun.current) return;
-      if (sessionListRef.current) sessionListRef.current.scrollTop = 0;
+      reloadedFilter.current = filter;
+      if (!sameFilter && sessionListRef.current) sessionListRef.current.scrollTop = 0;
       setSessions(page.items); setSessionTotal(page.total); browseOffset.current = page.offset + page.items.length;
       setProjects(nextOptions.projects);
       setOptions(nextOptions);
@@ -540,8 +547,19 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const subscribeToLibrary = useCallback((changed: () => void) => api.onLibraryChanged(() => {
     // Cancel pending pages immediately; the shared hook still coalesces the actual refresh.
     reloadRun.current++; searchRun.current++; setLoading(true); setSearching(false);
+    setInitialScanPending(false);
     changed();
   }), [api]);
+
+  useEffect(() => {
+    let live = true;
+    let stop: (() => void) | undefined;
+    void api.onScanError?.(message => {
+      setInitialScanPending(false);
+      setError(`Local scan failed: ${message}`, "scan");
+    }).then(unlisten => { if (live) stop = unlisten; else unlisten(); }).catch(() => {});
+    return () => { live = false; stop?.(); };
+  }, [api]);
 
   const reloadBookmarks = useCallback(async () => {
     const run = ++bookmarkRun.current;
@@ -967,9 +985,9 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
   const refresh = async () => {
     setNotice(null); setError(null);
     setScanning(true);
-    try { const report = await api.scan(); await reload(); setNotice(scanSummary(report)); }
+    try { const report = await api.scan(); setInitialScanPending(false); await reload(); setNotice(scanSummary(report)); }
     catch (cause) { setError(`Local scan failed: ${String(cause)}`, "scan"); }
-    finally { setScanning(false); }
+    finally { setScanning(false); setInitialScanPending(false); }
   };
 
   // Terminals sit below the (variable-height) session header, outside the keyed transcript view.
@@ -1339,7 +1357,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
               updateEditor={update=>updateBookmarkEditor(view.bookmark.session_key,view.bookmark.seq,update)}
               changed={(saved,refreshed)=>bookmarkChanged(view.bookmark.session_key,view.bookmark.seq,saved,view.session,refreshed)} />
           </div>)}
-        </> : loading && visible.length === 0 ? <div className="session-skeletons grid gap-1 p-1" role="status" aria-label={t.loading}>
+        </> : (loading || (initialScanPending && !search.trim())) && visible.length === 0 ? <div className="session-skeletons grid gap-1 p-1" role="status" aria-label={t.loading}>
           {[0, 1, 2, 3, 4].map(index => <div className="grid gap-2.5 px-2.5 py-3.5" key={index}>
             <i className="skeleton h-2 w-2/5" /><i className="skeleton h-3 w-4/5" /><i className="skeleton h-2 w-1/3" /></div>)}
         </div> : visible.length === 0 ? <div className="mx-5 mt-[18vh] flex flex-col items-center gap-3 text-center text-muted-foreground">

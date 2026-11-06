@@ -4,6 +4,19 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.10] - 2026-11-06
+
+### Fixed
+- A session with an unreadable transcript no longer stops Ronda from opening after an update; it is skipped and the rest are rebuilt.
+- Session paths containing a stray `%` followed by a multi-byte character no longer crash the scan.
+- `ronda-cli sessions` orders sessions with equal timestamps by key, and says "No sessions match." instead of "0 sessions — showing 0" when nothing matches.
+- Prompts that ask to add tests are categorized as Tests even when they mention errors or bugs.
+- A failing `cat vitest.config.ts` or `grep -rn pytest .` no longer flags a session as ending with tests failing; only commands that run a test tool count.
+- Live refresh no longer waits for an agent to stop writing, and changes to a SQLite session database's `-wal` file are picked up.
+- The library appears right after the local scan on startup instead of waiting for remote hosts to sync.
+- A failed startup scan now shows an error with a retry, and the first launch shows a loading state instead of "No sessions found" while the first scan runs.
+- Library refreshes keep the sessions you have loaded and your scroll position instead of jumping back to the top.
+
 ## [1.7.9] - 2026-11-06
 
 ### Fixed

@@ -75,11 +75,13 @@ test("changing the selected transcript replaces its connection evidence",async()
     expect((await backend.sessionPage(queryDefaults,0,100)).items.length).toBe(100);
     await act(async()=>root.render(<Workbench api={backend} />));
     await act(async()=>{const first=Array.from(host.querySelectorAll<HTMLButtonElement>('.session-card')).find(button=>button.textContent!.includes("Make session search"));if(!first)throw new Error(host.textContent ?? "No rendered library");first.click();});
-    expect(host.querySelector('section[aria-label="Session connections"]')!.textContent).toContain("Subagents · 2");
+    await vi.waitFor(() => expect(host.querySelector('section[aria-label="Session connections"]')!.textContent).toContain("Subagents · 2"));
     await act(async()=>Array.from(host.querySelectorAll<HTMLButtonElement>('section[aria-label="Session connections"] button')).find(button=>button.textContent==="Project overview synthetic error 1")!.click());
-    expect(host.querySelector('main[aria-label="Transcript"] h2')!.textContent).toBe("Project overview synthetic error 1");
-    expect(host.querySelector('section[aria-label="Session connections"]')!.textContent).toContain("Subagents · 0");
-    expect(host.querySelector('section[aria-label="Session connections"]')!.textContent).toContain("Shared error");
+    await vi.waitFor(() => {
+      expect(host.querySelector('main[aria-label="Transcript"] h2')!.textContent).toBe("Project overview synthetic error 1");
+      expect(host.querySelector('section[aria-label="Session connections"]')!.textContent).toContain("Subagents · 0");
+      expect(host.querySelector('section[aria-label="Session connections"]')!.textContent).toContain("Shared error");
+    });
   }finally{await act(async()=>root.unmount());host.remove();uninstallDemoBackend();}
 });
 
@@ -94,9 +96,10 @@ test("the real preview Workbench labels source reveal Desktop required under moc
       if(!row)throw new Error(host.textContent ?? "No preview session row");
       row.click();
     });
+    await vi.waitFor(() => expect(host.querySelector('button[aria-label="Reveal source file"]')).not.toBeNull());
     const reveal=host.querySelector<HTMLButtonElement>('button[aria-label="Reveal source file"]');
-    expect(reveal).not.toBeNull();
     await act(async()=>reveal!.click());
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')).not.toBeNull());
     const alert=host.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("Desktop required: sample sessions cannot reveal a source file.");
     expect(alert?.textContent).not.toMatch(/Retry (scan|refresh)/);
