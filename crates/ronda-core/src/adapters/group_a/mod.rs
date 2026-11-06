@@ -231,6 +231,7 @@ impl AgentAdapter for FileAdapter {
                     matches!(m.role, Role::User)
                         && matches!(m.kind, MessageKind::Text)
                         && !m.text.trim().is_empty()
+                        && !is_injected_prompt(&m.text)
                 })
                 .map(|m| crate::adapter::fallback_title(&m.text))
                 .unwrap_or_else(|| "Untitled session".to_owned());
@@ -585,7 +586,7 @@ fn body(value: &Value) -> (String, Vec<ImageAttachment>) {
         }
         if matches!(
             kind,
-            "text" | "input_text" | "output_text" | "reasoning_text"
+            "text" | "input_text" | "output_text" | "reasoning_text" | "summary_text"
         ) {
             if let Some(s) = part["text"].as_str() {
                 if !s.is_empty() {
@@ -1022,6 +1023,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
         let mut texts = Vec::new();
         let mut imgs = Vec::new();
         let mut tools = Vec::new();
+        let mut thinking = None;
         for block in content.as_array().map(Vec::as_slice).unwrap_or(&[]) {
             match block["type"].as_str().unwrap_or("") {
                 "tool_result" => {
@@ -1032,6 +1034,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
                     {
                         let (s, _) = body(&block["content"]);
                         out.messages[i].tool_calls[j].output = Some(s);
+                        out.messages[i].tool_calls[j].is_error = block["is_error"] == true;
                     }
                 }
                 "tool_use" => tools.push(tool(
@@ -1039,7 +1042,11 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
                     block["name"].as_str().unwrap_or("tool"),
                     &block["input"],
                 )),
-                "thinking" => {}
+                "thinking" => {
+                    if let Some(s) = block["thinking"].as_str() {
+                        append_thinking(&mut thinking, s);
+                    }
+                }
                 _ => {
                     let (s, images) = body(block);
                     if !s.is_empty() {
@@ -1052,7 +1059,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
         if let Some(s) = content.as_str() {
             texts.push(s.to_owned());
         }
-        if texts.is_empty() && tools.is_empty() && imgs.is_empty() {
+        if texts.is_empty() && tools.is_empty() && imgs.is_empty() && thinking.is_none() {
             continue;
         }
         let msg_kind = if row["isCompactSummary"] == true {
@@ -1064,6 +1071,7 @@ fn parse_qoder(rows: &[Value]) -> Parsed {
         };
         let i = out.push(role, msg_kind, texts.join("\n\n"), ts);
         out.messages[i].images = imgs;
+        out.messages[i].thinking = thinking;
         out.messages[i].tool_calls = tools;
         for (j, call) in out.messages[i].tool_calls.iter().enumerate() {
             calls.insert(call.id.clone(), (i, j));
@@ -1278,6 +1286,19 @@ fn cursor_project(path: &Path) -> Option<String> {
         .or_else(|| Some(format!("/{}", slug.replace('-', "/"))))
 }
 
+fn is_injected_prompt(text: &str) -> bool {
+    const PREFIXES: [&str; 6] = [
+        "<environment_context>",
+        "# AGENTS.md instructions",
+        "<user_instructions>",
+        "<command-name>",
+        "<command-message>",
+        "<local-command-stdout>",
+    ];
+    let text = text.trim_start();
+    PREFIXES.iter().any(|p| text.starts_with(p))
+}
+
 fn append_thinking(slot: &mut Option<String>, text: &str) {
     if text.is_empty() {
         return;
@@ -1420,6 +1441,22 @@ mod tests {
             Some("first\n\nsecond")
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_reasoning_summary_text_becomes_thinking() {
+        let rows: Vec<Value> = [
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Why?"}]}}"#,
+            r#"{"type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Weighing options"}]}}"#,
+        ]
+        .iter()
+        .map(|row| serde_json::from_str(row).unwrap())
+        .collect();
+        let parsed = parse_codex(&rows);
+        assert_eq!(
+            parsed.messages[1].thinking.as_deref(),
+            Some("Weighing options")
+        );
     }
 
     #[test]
@@ -1660,6 +1697,44 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Start", "new answer"]
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn qoder_tool_error_and_thinking() {
+        let data = concat!(
+            "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"Run it\"}}\n",
+            "{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"Plan it\"},{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Bash\",\"input\":{\"command\":\"false\"}}]}}\n",
+            "{\"type\":\"user\",\"uuid\":\"r\",\"parentUuid\":\"a\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\",\"is_error\":true,\"content\":\"boom\"}]}}\n");
+        let (root, sources) = fixture(AgentId::Qoder, "slug/s1.jsonl", data);
+        let parsed = FileAdapter(AgentId::Qoder)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        let m = &parsed.messages[1];
+        assert_eq!(m.thinking.as_deref(), Some("Plan it"));
+        assert!(m.tool_calls[0].is_error);
+        assert_eq!(m.tool_calls[0].output.as_deref(), Some("boom"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_title_skips_injected_prompts() {
+        let data = concat!(
+            "{\"type\":\"session_meta\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"payload\":{\"id\":\"123e4567-e89b-12d3-a456-426614174001\",\"cwd\":\"/repo\",\"source\":\"cli\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"# AGENTS.md instructions for /repo\\n\\n<INSTRUCTIONS>be nice</INSTRUCTIONS>\"}]}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"<environment_context>cwd</environment_context>\"}]}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Fix the flaky test\"}]}}\n");
+        let (root, sources) = fixture(
+            AgentId::Codex,
+            "sessions/2026/01/01/rollout-2026-01-01T00-00-00-123e4567-e89b-12d3-a456-426614174001.jsonl",
+            data,
+        );
+        let parsed = FileAdapter(AgentId::Codex)
+            .parse(&sources[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.meta.title, "Fix the flaky test");
         fs::remove_dir_all(root).unwrap();
     }
 
