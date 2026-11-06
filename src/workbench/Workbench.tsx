@@ -924,6 +924,7 @@ export function Workbench({ api = defaultBackend, sidebarOpen = true, isActive =
       if (labelId === labelIdFilterRef.current && done.length) void reload();
       if (done.length && generation === bulkGeneration.current)
         setBulkUndo({ label: mode === "add" ? "Add label" : "Remove label", labelId, changes: done });
+      else if (!done.length && !skipped && !failure && generation === bulkGeneration.current) setBulkUndo(null);
       if (failure) { setError(String(failure)); setBulkStatus(`Bulk label update stopped after ${sessionCount(done.length)}`); }
       else { setError(null); setBulkStatus(labelStatus(mode, done.length, skipped)); }
     } finally { setBulkBusy(false); }

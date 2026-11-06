@@ -4,6 +4,9 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- Bulk labeling sessions that already have the label (or removing a label none have) now says so instead of "Labeled 0 sessions", and clears the stale Undo.
+
 ## [1.7.10] - 2026-11-06
 
 ### Fixed
