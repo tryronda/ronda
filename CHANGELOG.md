@@ -4,6 +4,8 @@ All notable changes to Ronda are recorded here.
 
 ## [Unreleased]
 
+## [1.7.10] - 2026-11-06
+
 ### Fixed
 - A session with an unreadable transcript no longer stops Ronda from opening after an update; it is skipped and the rest are rebuilt.
 - Session paths containing a stray `%` followed by a multi-byte character no longer crash the scan.
