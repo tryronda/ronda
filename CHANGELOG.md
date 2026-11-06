@@ -6,6 +6,7 @@ All notable changes to Ronda are recorded here.
 
 ### Fixed
 - The transcript header and library rows show the full title and project path on hover when they are shortened.
+- Intelligence's project picker tells apart folders with the same name and shows the full path on hover.
 
 ## [1.7.3] - 2026-11-06
 
